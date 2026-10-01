@@ -1,0 +1,15 @@
+{
+  "_comment": "TEST FIXTURE for read_swatch_card (not recorded model output). Values are the ones printed on the Junfa card (品名 镜面A / 成分 50%TPU 50%棉 / 厚度 0.85mm±0.05 / 幅宽 138-140cm).",
+  "supplier": "JUNFA LEATHER",
+  "articleName": "SMOOTH PU",
+  "articleNo": "",
+  "colourNo": "#24",
+  "colourName": "IRIDESCENT PINK",
+  "composition": "50% TPU 50% COTTON",
+  "thickness": "0.85MM ±0.05",
+  "width": "138-140CM",
+  "finish": "MIRROR / IRIDESCENT, NO-WASH",
+  "chip_box": {"found":true,"x":0.77,"y":0.52,"w":0.20,"h":0.07},
+  "raw_text": "品名: 镜面A\n成分: 50%TPU 50%棉\n厚度: 0.85mm±0.05\n幅宽: 138-140cm\n属性: 免洗",
+  "agent_notes": "SUPPLIER FROM CARD HEADER 骏发皮革 / JUNFA LEATHER."
+}

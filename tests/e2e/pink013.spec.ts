@@ -1,0 +1,362 @@
+/**
+ * PHASE 1 ACCEPTANCE TEST
+ * "PINK013 can be entered end to end from its render with every answer in Part 6 captured."
+ *
+ * Needs the confidential reference pack in reference/ (gitignored). The render and swatch
+ * cards are extracted from it with `pdfimages` — see tests/e2e/assets.ts.
+ * AI calls are served from tests/fixtures/ai (AI_FIXTURE_DIR) because CI has no API key.
+ */
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { referenceAssets } from "./assets";
+
+const SHOTS = process.env.SHOTS_DIR;
+const shot = async (page: Page, name: string, fullPage = false) => {
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage });
+};
+
+const assets = referenceAssets();
+test.skip(!assets, "reference/PINK013-A_B_JODIE_SATCHEL.pdf not present — ask Jon for the reference packs");
+
+/* ----------------------------- helpers ----------------------------- */
+
+const q = (page: Page, id: string) => page.getByTestId(`q-${id}`);
+
+async function settled(page: Page) {
+  await expect(page.getByText("Saving…")).toHaveCount(0);
+}
+async function chip(scope: Locator, option: string) {
+  await scope.getByRole("radio", { name: option, exact: true }).click();
+}
+async function pickChip(page: Page, id: string, option: string) {
+  await chip(q(page, id), option);
+  await settled(page);
+  await expect(q(page, id)).toHaveAttribute("data-status", "confirmed");
+}
+async function other(page: Page, id: string, text: string) {
+  const box = q(page, id);
+  await box.getByRole("button", { name: "Other…" }).click();
+  await box.getByRole("textbox", { name: "Other" }).fill(text);
+  await box.getByRole("textbox", { name: "Other" }).press("Enter");
+  await settled(page);
+}
+async function yes(page: Page, id: string, v = true) {
+  await chip(q(page, id), v ? "Yes" : "No");
+  await settled(page);
+  await expect(q(page, id)).toHaveAttribute("data-status", "confirmed");
+}
+async function step(scope: Locator, label: string, value: number) {
+  const input = scope.getByRole("textbox", { name: label, exact: true });
+  await input.fill(String(value));
+  await input.press("Enter");
+}
+async function number(page: Page, id: string, label: string, value: number) {
+  await step(q(page, id), label, value);
+  await settled(page);
+  await expect(q(page, id)).toHaveAttribute("data-status", "confirmed");
+}
+async function confirm(page: Page, id: string) {
+  await page.getByTestId(`confirm-${id}`).click();
+  await expect(q(page, id)).toHaveAttribute("data-status", "confirmed");
+}
+async function text(page: Page, id: string, value: string) {
+  const input = page.getByTestId(`q-input-${id}`);
+  await input.fill(value);
+  await input.press("Enter");
+  await settled(page);
+}
+/** Opens a library picker and chooses the row matching `search`. */
+async function pick(page: Page, opener: Locator, search: string) {
+  await opener.click();
+  const drawer = page.getByRole("dialog");
+  await drawer.getByRole("textbox", { name: "Search library" }).fill(search);
+  await drawer.getByRole("button", { name: new RegExp(search.replace(/[#()]/g, "."), "i") }).first().click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await settled(page);
+}
+
+/* ----------------------------- the test ----------------------------- */
+
+test("PINK013 JODIE — entered end to end from its render with every Part 6 answer captured", async ({ page }) => {
+  const a = assets!;
+  if (SHOTS) mkdirSync(SHOTS, { recursive: true });
+
+  // Sign in (EMILY is the admin seeded for the test; she becomes SENT BY).
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("emily@iconluxury.test");
+  await page.getByLabel("Password").fill("Atelier-2026!");
+  await page.getByRole("button", { name: "Enter the studio" }).click();
+  await expect(page.getByRole("heading", { name: "Tech Packs" })).toBeVisible();
+
+  /* ---- Brand: Pink London uses PINK + 3 digits ---- */
+  await page.goto("/admin/brands");
+  await expect(page.getByTestId("brand-PINK")).toContainText("PINK001");
+
+  /* ---- Hardware: bulk import CSV + images folder; a row without a code gets the next free code ---- */
+  const tmp = path.join(process.cwd(), ".data", "e2e-import");
+  const imgDir = path.join(tmp, "images");
+  mkdirSync(imgDir, { recursive: true });
+  writeFileSync(path.join(imgDir, "PINK003.jpg"), a.keychain);
+  writeFileSync(path.join(imgDir, "pink-logo-plate.jpg"), a.logoPlate);
+  writeFileSync(
+    path.join(tmp, "pink-hardware.csv"),
+    [
+      "code,brand,type,name,dims mm,material,finish,logo treatment,enamel pantone,hollow/solid,photo",
+      "PINK003,Pink London,Keychain,HEART PADLOCK KEYCHAIN W/ LOBSTER CLASP,,ZINC ALLOY,SHINY CHAMPAGNE GOLD,ENAMEL INLAY,PINK UNION JACK,SOLID,",
+      "PINK004,Pink London,Woven label,PINK LONDON WOVEN LABEL,40 X 20,,,,,,",
+      "PINK005,Pink London,Logo plate,PINK LONDON LOGO,,,SHINY CHAMPAGNE GOLD,ENGRAVED,,,pink-logo-plate.jpg",
+      ",Pink London,Magnetic snap,MAGNETIC SNAP 14MM,14,IRON,SHINY CHAMPAGNE GOLD,,,,",
+    ].join("\n"),
+  );
+  await page.goto("/library/hardware/import");
+  await page.getByTestId("import-sheet").setInputFiles(path.join(tmp, "pink-hardware.csv"));
+  await page.getByTestId("import-images").setInputFiles(imgDir);
+  await page.getByTestId("run-import").click();
+  const report = page.getByTestId("import-report");
+  await expect(report).toContainText("4 created");
+  await expect(report).toContainText("New codes: PINK006");
+  await expect(report).toContainText("2 images linked");
+  await shot(page, "01-hardware-import");
+
+  /* ---- Materials: Junfa swatch cards #2 and #24, read by the agent, each field confirmed ---- */
+  for (const card of [
+    { file: a.swatchBlack, no: "#2", name: "IRIDESCENT BLACK" },
+    { file: a.swatchPink, no: "#24", name: "IRIDESCENT PINK" },
+  ]) {
+    await page.goto("/library/materials/new");
+    await page.getByTestId("card-photo-input").setInputFiles({ name: `junfa-${card.no.slice(1)}.jpg`, mimeType: "image/jpeg", buffer: card.file });
+    await page.locator("#m-supplier").fill("JUNFA LEATHER");
+    await page.locator("#m-colourNo").fill(card.no);
+    await page.getByRole("button", { name: "Read card with AI" }).click();
+    await expect(page.getByRole("status")).toContainText("confirm each");
+    await expect(page.locator("#m-composition")).toHaveValue("50% TPU 50% COTTON");
+    await expect(page.locator("#m-thickness")).toHaveValue("0.85MM ±0.05");
+    await expect(page.locator("#m-width")).toHaveValue("138-140CM");
+    await expect(page.locator("#m-colourName")).toHaveValue(card.name);
+    if (card.no === "#2") await shot(page, "02-swatch-ai-read");
+    // one click per AI-read field
+    const badges = page.getByRole("button", { name: /AI-read — confirm/ });
+    while ((await badges.count()) > 0) await badges.first().click();
+    await page.getByRole("button", { name: "Save material" }).click();
+    await page.waitForURL(/\/library\/materials\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`${card.no} ${card.name}`);
+  }
+
+  /* ---- Print artwork: PINK tonal heat-stamp repeat, 10 × 10 cm tile, Pantone 203 C ---- */
+  await page.goto("/library/prints/new");
+  await page.locator("#p-name").fill("PINK TONAL HEAT STAMP REPEAT");
+  await page.locator("#p-motif").fill("PINK WORDMARK");
+  await chip(page.locator("main"), "STRAIGHT");
+  await page.getByLabel("Tile width").fill("10");
+  await page.getByLabel("Tile height").fill("10");
+  await page.getByLabel("Colour 1").fill("PANTONE 203 C");
+  await chip(page.locator("main"), "TONAL HEAT STAMP");
+  await page.getByRole("button", { name: "Save artwork" }).click();
+  await page.waitForURL(/\/library\/prints\/[0-9a-f-]{36}$/);
+
+  /* ---- New pack ---- */
+  await page.goto("/packs/new");
+  await page.getByRole("button", { name: "Pink London" }).click();
+  await page.getByRole("button", { name: "Handbags", exact: true }).click();
+  await page.getByLabel("Style #").fill("PINK013");
+  await page.getByLabel("Style name").fill("JODIE");
+  await shot(page, "03-new-pack");
+  await page.getByRole("button", { name: "Create pack" }).click();
+  await page.waitForURL(/\/packs\/[0-9a-f-]{36}$/);
+  const packId = page.url().split("/").pop()!;
+
+  /* ---- Upload the render (a single image) and the colorway renders ---- */
+  await page.getByTestId("upload-render").setInputFiles({ name: "PINK013-A.jpg", mimeType: "image/jpeg", buffer: a.renderBlack });
+  await expect(page.getByTestId("render-image")).toBeVisible();
+  await page.getByTestId("upload-colorway_render").setInputFiles({ name: "PINK013-A.jpg", mimeType: "image/jpeg", buffer: a.renderBlack });
+  await expect(page.locator("select[aria-label=Colorway]")).toHaveCount(1);
+  await page.getByTestId("upload-colorway_render").setInputFiles({ name: "PINK013-B.jpg", mimeType: "image/jpeg", buffer: a.renderPink });
+  await expect(page.locator("select[aria-label=Colorway]")).toHaveCount(2);
+  await page.getByTestId("upload-construction").setInputFiles({ name: "strap-attachment.jpg", mimeType: "image/jpeg", buffer: a.strapDetail });
+
+  /* ---- AI pre-fill: everything it can see is marked "AI-suggested — confirm" ---- */
+  await page.getByTestId("run-prefill").click();
+  await expect(page.getByRole("status").filter({ hasText: "pre-filled" })).toBeVisible();
+  await expect(q(page, "hb.silhouette")).toHaveAttribute("data-status", "ai");
+  await expect(q(page, "hb.silhouette")).toContainText("AI-suggested — confirm");
+  await expect(q(page, "dims.h")).toHaveAttribute("data-status", "est");
+  await expect(q(page, "hb.closure")).toHaveAttribute("data-status", "inferred");
+  await shot(page, "04-after-prefill");
+  await shot(page, "04b-after-prefill-full", true);
+
+  /* ---- Header ---- */
+  await confirm(page, "header.description");
+  await expect(page.getByTestId("q-input-header.description")).toHaveValue("SHOULDER BAG SATCHEL W/ FLAP & LONG SHOULDER STRAP");
+  await other(page, "header.retailer", "PINK");
+  await page.getByTestId("q-input-header.due_date").click();
+  await settled(page);
+  await text(page, "header.reference_sample", "BETSY JOHNSON");
+  await yes(page, "header.physical_sample");
+
+  /* ---- Dimensions: 16 × 20 × 8 cm (AI estimates replaced / confirmed) ---- */
+  await pickChip(page, "dims.unit", "CM");
+  await number(page, "dims.h", "Height (H)", 16);
+  await number(page, "dims.w", "Width (W)", 20);
+  await number(page, "dims.d", "Depth (D)", 8);
+
+  /* ---- Colorway names ---- */
+  const names = q(page, "colorways.names").getByRole("textbox");
+  await names.nth(0).fill("IRIDESCENT BLACK");
+  await names.nth(0).press("Enter");
+  await settled(page);
+  await names.nth(1).fill("IRIDESCENT PINK");
+  await names.nth(1).press("Enter");
+  await settled(page);
+
+  /* ---- Handbag block ---- */
+  await confirm(page, "hb.silhouette");
+  await confirm(page, "hb.structure");
+  await confirm(page, "hb.closure");
+  await number(page, "hb.closure.snap_qty", "Snap qty", 2);
+  await pickChip(page, "hb.closure.snap_spacing", "SPACED EVENLY");
+  await confirm(page, "hb.flap");
+  await number(page, "hb.flap_height", "Flap height", 7.5);
+  await confirm(page, "hb.top_handle");
+  await confirm(page, "hb.top_handle.qty");
+  await number(page, "hb.top_handle.drop", "Handle drop", 6.5);
+  await confirm(page, "hb.top_handle.style");
+  await confirm(page, "hb.top_handle.attachment");
+  await confirm(page, "hb.strap");
+  await pickChip(page, "hb.strap.removable", "FIXED");
+  await yes(page, "hb.strap.adjustable", false);
+  await q(page, "hb.strap.attachment").getByRole("checkbox", { name: "SIDE LOOP" }).click();
+  await settled(page);
+  await confirm(page, "hb.gusset");
+  await confirm(page, "hb.base");
+  await yes(page, "hb.feet", false);
+  await confirm(page, "hb.charm");
+  await confirm(page, "hb.charm.code");
+
+  /* ---- Materials list (AI-detected) ---- */
+  await confirm(page, "materials.list");
+
+  /* ---- Branding: TPU logo plate, ref PINK005, centred, 1.5 cm (15 mm) above the flap edge ---- */
+  await pickChip(page, "branding.logo_type", "TPU / RUBBER PATCH");
+  await confirm(page, "branding.logo_code");
+  await confirm(page, "branding.placement");
+  await number(page, "branding.offset", "Offset from nearest edge", 15);
+  await confirm(page, "branding.offset_edge");
+  await pickChip(page, "branding.finish", "SHINY CHAMPAGNE GOLD");
+
+  /* ---- Edge + hardware ---- */
+  await confirm(page, "edge.treatment");
+  await confirm(page, "edge.paint_colour");
+  await confirm(page, "hardware.finish");
+  for (const [code, qty, placement] of [
+    ["PINK005", 1, "CENTERED ON FLAP"],
+    ["PINK006", 2, "UNDER FLAP, SPACED EVENLY"],
+    ["PINK003", 1, "CLIPPED TO LEFT D-RING"],
+  ] as const) {
+    await page.getByTestId("hardware.items-add").click();
+    const row = page.locator('[data-testid^="hardware.items-row-"]').last();
+    await pick(page, row.getByRole("button", { name: /Choose from library/ }), code);
+    await step(row, "Qty", qty);
+    await settled(page);
+    await row.getByRole("textbox").last().fill(placement);
+    await row.getByRole("textbox").last().press("Enter");
+    await settled(page);
+  }
+
+  /* ---- Interior: tonal heat-stamp lining, back-wall slip pocket, PINK004 woven label ---- */
+  await confirm(page, "interior.lined");
+  await pickChip(page, "interior.lining_artwork_type", "PRINT (LIBRARY)");
+  await pick(page, page.getByTestId("q-input-interior.lining_print"), "PINK TONAL");
+  await page.getByTestId("interior.pockets-add").click();
+  const pocket = page.getByTestId("interior.pockets-row-0");
+  await chip(pocket, "SLIP POCKET");
+  await settled(page);
+  await chip(pocket, "BACK WALL");
+  await settled(page);
+  await step(pocket, "W", 14);
+  await settled(page);
+  await step(pocket, "From top", 2.5);
+  await settled(page);
+  await chip(pocket, "Yes");
+  await settled(page);
+  await pickChip(page, "interior.pocket_edge", "BINDING");
+  await pick(page, page.getByTestId("q-input-interior.label"), "PINK004");
+  await step(q(page, "interior.label_size"), "Interior label size (W × H) width", 4);
+  await settled(page);
+  await step(q(page, "interior.label_size"), "Interior label size (W × H) height", 2);
+  await settled(page);
+  await number(page, "interior.label_offset", "Label offset below pocket top", 1.5);
+  await yes(page, "interior.label_centered");
+  await yes(page, "interior.seam_binding", false);
+
+  /* ---- Material / colour breakdown ---- */
+  await pick(page, page.getByTestId("cell--A-mat_1").getByRole("button").first(), "IRIDESCENT BLACK");
+  await pick(page, page.getByTestId("cell--B-mat_1").getByRole("button").first(), "IRIDESCENT PINK");
+  await page.getByTestId("matrix-autofill").click();
+  await settled(page);
+  await expect(page.getByTestId("cell--A-edge_paint").getByRole("button", { name: "DTM" })).toHaveClass(/bg-ink/);
+
+  /* ---- Comments (lettered red circles) ---- */
+  for (const c of [
+    "OVERALL EXTERIOR DIMENSIONS: 16 CM HEIGHT X 20 CM WIDTH X 8 CM DEPTH",
+    "SATCHEL HAS SHOULDER STRAP THAT IS NOT REMOVABLE. SEE REFERENCE PHOTOS FOR CONSTRUCTION.",
+    "TOP HANDLE DROP HEIGHT: 6.5 CM",
+    "FRONT FLAP HAS SNAP CLOSURE. 2 SNAPS TOTAL, SPACED EVENLY UNDER FLAP.",
+  ]) {
+    await page.getByTestId("comments.list-add").click();
+    const row = page.locator('[data-testid^="comments.list-row-"]').last();
+    await row.getByRole("textbox").fill(c);
+    await row.getByRole("textbox").press("Enter");
+    await settled(page);
+  }
+
+  await shot(page, "05-pack-complete");
+  await shot(page, "05b-pack-complete-full", true);
+
+  /* ---- Reload: everything persisted ---- */
+  await page.reload();
+  await expect(q(page, "branding.logo_type").getByRole("radio", { name: "TPU / RUBBER PATCH" })).toHaveAttribute("aria-checked", "true");
+
+  /* ---- Verify every Part 6 answer in the TechPack JSON ---- */
+  const res = await page.request.get(`/api/packs/${packId}/techpack`);
+  expect(res.ok()).toBeTruthy();
+  const tp = await res.json();
+  writeFileSync(path.join(process.cwd(), ".data", "PINK013.techpack.json"), JSON.stringify(tp, null, 2));
+
+  const results: { item: string; ok: boolean; got: unknown }[] = [];
+  const check = (item: string, got: unknown, ok: boolean) => results.push({ item, ok, got });
+  const c = tp.construction;
+  const pocket0 = tp.interior.pockets[0];
+  const art = tp.artwork.find((x: { name: string }) => x.name === "PINK TONAL HEAT STAMP REPEAT");
+  const cell = (cw: string, k: string) => tp.colorways.find((x: { code: string }) => x.code === cw).cells[k];
+
+  check("16 × 20 × 8 cm", tp.dimensions, tp.dimensions.unit === "cm" && tp.dimensions.height === 16 && tp.dimensions.width === 20 && tp.dimensions.depth === 8 && tp.dimensions.status === "confirmed");
+  check("6.5 cm handle drop", c["hb.top_handle.drop"], c["hb.top_handle.drop"] === "6.5 CM");
+  check("Flap 7.5 cm", c["hb.flap_height"], c["hb.flap_height"] === "7.5 CM");
+  check("2 magnetic snaps spaced evenly", [c["hb.closure"], c["hb.closure.snap_qty"], c["hb.closure.snap_spacing"]], c["hb.closure"] === "FLAP + MAGNETIC SNAP" && c["hb.closure.snap_qty"] === 2 && c["hb.closure.snap_spacing"] === "SPACED EVENLY");
+  check("Fixed shoulder strap on side loops with swivel hooks", [c["hb.strap"], c["hb.strap.removable"], c["hb.strap.attachment"]], c["hb.strap"] === true && c["hb.strap.removable"] === "FIXED" && c["hb.strap.attachment"].includes("SIDE LOOP") && c["hb.strap.attachment"].includes("SWIVEL HOOK"));
+  check("Standard gusset, no pleats", c["hb.gusset"], c["hb.gusset"] === "STANDARD (NO PLEATS)" && c["hb.gusset_width"] === "8 cm");
+  const b = tp.branding[0];
+  check("TPU logo plate centred 1.5 cm above flap edge, ref PINK005, shiny champagne gold", b, b.type === "TPU / RUBBER PATCH" && b.code === "PINK005" && b.placement === "CENTERED ON FLAP" && b.position_ref === "15 MM FROM FLAP EDGE" && b.finish === "SHINY CHAMPAGNE GOLD");
+  check("Keychain PINK003", c["hb.charm.code"], c["hb.charm"] === true && c["hb.charm.code"] === "PINK003" && tp.hardware.some((h: { code: string }) => h.code === "PINK003"));
+  check("Lining tonal heat-stamp PINK repeat, 10 × 10 cm tile, Pantone 203 C", art, tp.interior.lining_print === "PINK TONAL HEAT STAMP REPEAT" && art?.tile === "10 X 10 CM" && art?.colours.includes("PANTONE 203 C") && art?.application === "TONAL HEAT STAMP");
+  check("Back-wall slip pocket 14 cm wide, 2.5 cm from top, with binding", [pocket0, tp.interior.pocket_edge], pocket0.type === "SLIP POCKET" && pocket0.wall === "BACK WALL" && pocket0.w === 14 && pocket0.top_offset === 2.5 && pocket0.unit === "cm" && tp.interior.pocket_edge === "BINDING");
+  check("PINK004 woven label 4 × 2 cm, 1.5 cm below pocket top", tp.interior.label, tp.interior.label.code === "PINK004" && tp.interior.label.type === "WOVEN LABEL" && tp.interior.label.size.w === 4 && tp.interior.label.size.h === 2 && tp.interior.label.offset_below_pocket_top === 1.5);
+  check("-A: Junfa smooth PU #2 iridescent black", cell("-A", "mat_1"), /JUNFA LEATHER SMOOTH PU \/ #2 IRIDESCENT BLACK/.test(cell("-A", "mat_1").text));
+  check("-B: Junfa smooth PU #24 iridescent pink", cell("-B", "mat_1"), /JUNFA LEATHER SMOOTH PU \/ #24 IRIDESCENT PINK/.test(cell("-B", "mat_1").text));
+  check("Edge paint DTM", [tp.construction["edge.paint_colour"], cell("-A", "edge_paint"), cell("-B", "edge_paint")], tp.construction["edge.paint_colour"] === "DTM" && cell("-A", "edge_paint") === "DTM" && cell("-B", "edge_paint") === "DTM");
+
+  const part6Ids = [
+    "dims.h", "dims.w", "dims.d", "hb.top_handle.drop", "hb.flap_height", "hb.closure", "hb.closure.snap_qty", "hb.closure.snap_spacing",
+    "hb.strap", "hb.strap.removable", "hb.strap.attachment", "hb.gusset", "branding.logo_type", "branding.logo_code", "branding.placement",
+    "branding.offset", "branding.finish", "hb.charm", "hb.charm.code", "interior.lining_print", "interior.pockets", "interior.pocket_edge",
+    "interior.label", "interior.label_size", "interior.label_offset", "materials.matrix", "edge.treatment", "edge.paint_colour",
+  ];
+  const unconfirmed = part6Ids.filter((id) => tp.answer_status[id] !== "confirmed");
+  check("Every Part 6 answer confirmed (no AI-suggested / EST left)", unconfirmed, unconfirmed.length === 0);
+  check("Header: SENT BY from login, physical-sample banner, ASAP, reference sample", tp.header, tp.header.sent_by === "EMILY" && tp.header.physical_sample_to_follow === true && tp.header.due_date === "ASAP" && tp.header.reference_sample === "BETSY JOHNSON" && tp.header.proto_colorways.join() === "-A,-B");
+
+  writeFileSync(path.join(process.cwd(), ".data", "PINK013.results.json"), JSON.stringify(results, null, 2));
+  for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.item}${r.ok ? "" : `  → got ${JSON.stringify(r.got)}`}`);
+  expect(results.filter((r) => !r.ok).map((r) => r.item)).toEqual([]);
+});
