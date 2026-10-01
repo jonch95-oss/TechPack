@@ -82,9 +82,9 @@ export function RowsEditor({
 function Cell({ c, v, onChange, disabled, unitLabel }: { c: Column; v: unknown; onChange: (v: unknown) => void; disabled?: boolean; unitLabel: (u: string) => string }) {
   switch (c.kind) {
     case "chips":
-      return <ChipRow options={c.options} value={v as string} onChange={onChange} disabled={disabled} />;
+      return <ChipRow options={c.options} value={v as string} onChange={onChange} disabled={disabled} allowOther={!c.noOther} />;
     case "multi":
-      return <MultiChips options={c.options} value={v as string[]} onChange={onChange} disabled={disabled} />;
+      return <MultiChips options={c.options} value={v as string[]} onChange={onChange} disabled={disabled} allowOther={!c.noOther} />;
     case "stepper":
       return <Stepper value={v as number} onChange={onChange} unit={unitLabel(c.unit)} step={c.unit === "qty" ? 1 : 0.25} disabled={disabled} ariaLabel={c.label} />;
     case "toggle":

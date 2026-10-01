@@ -1,4 +1,5 @@
 import type { Section } from "./types";
+import { PAGE_SECTIONS } from "@/lib/page-names";
 
 export const HARDWARE_TYPES = [
   "LOGO PLATE",
@@ -343,7 +344,45 @@ export const COMMON_SECTIONS: Section[] = [
         label: "Comments (each is a lettered red circle — one instruction each)",
         kind: "rows",
         addLabel: "Add comment",
-        columns: [{ key: "text", label: "Comment", kind: "text", required: true }],
+        columns: [
+          { key: "text", label: "Comment", kind: "text", required: true },
+          { key: "pages", label: "Shown on", kind: "multi", options: PAGE_SECTIONS.filter((p) => p !== "CHANGE LOG"), required: true, noOther: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: "pages",
+    title: "Pages",
+    questions: [
+      {
+        id: "pages.product_features",
+        label: "Product features page",
+        kind: "toggle",
+        help: "Front 3/4 render with overall dimensions in red and a bulleted feature list (Ted Baker style). On unless you turn it off.",
+      },
+      {
+        id: "pages.features",
+        label: "Product features",
+        kind: "rows",
+        addLabel: "Add feature",
+        showIf: { q: "pages.product_features", in: [true, undefined, null] },
+        columns: [{ key: "text", label: "Feature", kind: "text", required: true }],
+      },
+      {
+        id: "pages.lining_artwork",
+        label: "Lining artwork",
+        kind: "chips",
+        options: ["OWN PAGE", "ON INTERIOR PAGE"],
+        noOther: true,
+        help: "Own page (as on PINK013) or alongside the interior walls (as on TB25_ACC0023).",
+      },
+      {
+        id: "pages.swatches",
+        label: "Swatch card pages",
+        kind: "chips",
+        options: ["ONE PAGE PER COLORWAY MATERIAL", "ALL ON ONE PAGE"],
+        noOther: true,
       },
     ],
   },

@@ -6,9 +6,13 @@ Spec: `docs/BRIEF.md`. Build plan and rules: `CLAUDE.md`.
 
 ## Status
 
-**Phase 1 — Foundation: built.** Auth with roles, Postgres schema, uploads, brands, materials / swatch-card library (AI card reading), hardware library (bulk CSV/XLSX + images import, next-code assignment), print artwork library, new-pack setup, the full Part 3 question bank for all 16 categories, AI pre-fill from the render ("AI-suggested — confirm" / "EST — confirm" / "INFERRED — confirm").
+**Phase 1 — Foundation: built.** Auth with roles, Postgres schema, uploads, brands, materials / swatch-card library (AI card reading), hardware library, print artwork library, new-pack setup, the full Part 3 question bank for all 16 categories, AI pre-fill from the render ("AI-suggested — confirm" / "EST — confirm" / "INFERRED — confirm").
 
-Phase 2 (PDF + validation gate + spell-check) is not started.
+**Library uploads:** hardware and swatch cards can be added from the Excel templates (Library → Add in bulk → Download template), any CSV/XLSX (pictures pasted into cells come across), PDFs read by the AI, or a batch/folder of photos — all reviewed in a table with call-outs before saving. Component codes are entered by designers and checked against every component and style number.
+
+**Phase 2 — Tech pack PDF: built.** Icon template pages (Part 4) at 17 × 11 in from `/api/packs/:id/pdf`, the Part 5 validation gate (export blocked until it passes; `?draft=1` gives a watermarked draft any time), and spell-check against the trade dictionary with one-click corrections. Until Phase 3 adds line art, the CAD render stands in for the flats and dimensions are listed rather than drawn.
+
+First sign-in: the deploy seeds `jonc@iconluxurygroup.com` as admin with the password in `SEED_ADMIN_PASSWORD`; it must be changed at first sign-in.
 
 ## Local development
 
@@ -28,10 +32,10 @@ Without `ANTHROPIC_API_KEY`, AI pre-fill and swatch reading show a "not configur
 
 ```bash
 npm test                        # unit tests (question bank, code assignment, AI normalisation, import)
-npm run test:e2e                # Phase 1 acceptance: PINK013 entered end to end
+npm run test:e2e                # library uploads; PINK013 entered end to end (Phase 1); PDFs page for page + gate + spell-check (Phase 2)
 ```
 
-The e2e test needs a Postgres database (`TEST_DATABASE_URL`, default `postgres://postgres@localhost:5433/techpack_test`; it is wiped each run) and the confidential reference pack at `reference/PINK013-A_B_JODIE_SATCHEL.pdf` (ask Jon; `pdfimages` from poppler extracts the render and swatch cards). Set `CHROME` to a Chromium binary if Playwright's own isn't installed.
+The e2e test needs a Postgres database (`TEST_DATABASE_URL`, default `postgres://postgres@localhost:5433/techpack_test`; it is wiped each run) and the confidential reference pack at `reference/PINK013-A_B_JODIE_SATCHEL.pdf` (ask Jon; `pdfimages` from poppler extracts the render and swatch cards). Set `CHROME` (and `CHROME_PATH` for PDF export) to a Chromium binary if Playwright's own isn't installed. The TB25 assets also need ImageMagick (`convert`).
 
 ## Deploying (Vercel project `techpack`)
 

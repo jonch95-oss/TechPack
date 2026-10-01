@@ -122,6 +122,20 @@ export function FilesPanel({ packId, files, colorways, canEdit }: { packId: stri
                         </button>
                       )}
                     </div>
+                    {(g.kind === "reference" || g.kind === "construction") && (
+                      <input
+                        defaultValue={f.note}
+                        disabled={!canEdit}
+                        placeholder="Caption…"
+                        aria-label={`Caption for ${f.name}`}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim().toUpperCase();
+                          if (v !== f.note) start(async () => { await updatePackFile(packId, f.id, { note: v }); router.refresh(); });
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+                        className="mt-1 w-full h-7 bg-transparent border-0 border-b border-hairline-strong text-[10.5px] uppercase focus:outline-none focus:border-ink placeholder:normal-case placeholder:text-mist"
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

@@ -26,6 +26,7 @@ import { Toggle } from "@/components/chips";
 import { LibraryProvider } from "./library-picker";
 import { QuestionField } from "./question-field";
 import { FilesPanel } from "./files-panel";
+import { ExportPanel } from "./export-panel";
 
 export type WorkspaceProps = {
   pack: {
@@ -61,6 +62,8 @@ export function PackWorkspace(props: WorkspaceProps) {
   const [statuses, setStatuses] = useState<Record<string, AnswerStatus>>(props.statuses);
   const [meta, setMeta] = useState(props.meta);
   const [save, setSave] = useState<SaveState>({ state: "idle" });
+  /** Bumped after every saved change so the validation gate re-checks. */
+  const [version, setVersion] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<{ running: boolean; message?: string; error?: string }>({ running: false });
   const [colorways, setColorways] = useState(pack.colorways);
@@ -71,6 +74,7 @@ export function PackWorkspace(props: WorkspaceProps) {
   const [seen, setSeen] = useState(props.answers);
   if (seen !== props.answers) {
     setSeen(props.answers);
+    setVersion((v) => v + 1);
     setAnswers(props.answers);
     setStatuses(props.statuses);
     setMeta(props.meta);
@@ -101,6 +105,7 @@ export function PackWorkspace(props: WorkspaceProps) {
           setSave({ state: "error", error: res.error });
           return;
         }
+        setVersion((v) => v + 1);
         if (inflight.current === 0) setSave({ state: "saved", at: res.updatedAt });
       });
     },
@@ -112,7 +117,10 @@ export function PackWorkspace(props: WorkspaceProps) {
     start(async () => {
       const res = await confirmAnswer(pack.id, questionId);
       if (!res.ok) setSave({ state: "error", error: res.error });
-      else setSave({ state: "saved", at: new Date().toISOString() });
+      else {
+        setSave({ state: "saved", at: new Date().toISOString() });
+        setVersion((v) => v + 1);
+      }
     });
   };
 
@@ -419,7 +427,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                 </button>
               )}
             </div>
-            <div className="max-h-[52vh] overflow-y-auto">
+            <div className="max-h-[28vh] overflow-y-auto">
               {issues.length === 0 ? (
                 <div className="p-6 text-[12px] text-ok">Every ★ field is confirmed. Ready for the PDF stage.</div>
               ) : (
@@ -435,14 +443,10 @@ export function PackWorkspace(props: WorkspaceProps) {
                 </ul>
               )}
             </div>
-            <div className="p-6 border-t border-hairline">
-              <Button className="w-full" disabled title="PDF export arrives in Phase 2">
-                Export — {issues.length ? `${issues.length} open` : "Phase 2"}
-              </Button>
-              <a href={`/api/packs/${pack.id}/techpack`} target="_blank" className="block mt-3 text-center text-[10px] tracking-[0.2em] uppercase text-taupe hover:text-ink">
-                View TechPack JSON
-              </a>
-            </div>
+            <ExportPanel packId={pack.id} version={version} onJump={jump} canEdit={canEdit} />
+            <a href={`/api/packs/${pack.id}/techpack`} target="_blank" className="block pb-5 text-center text-[9.5px] tracking-[0.2em] uppercase text-mist hover:text-ink">
+              TechPack JSON
+            </a>
           </div>
         </aside>
       </div>
@@ -454,6 +458,7 @@ export function PackWorkspace(props: WorkspaceProps) {
             <span className="display text-xl normal-case tracking-normal mr-2">{Math.max(0, requiredTotal - requiredOpen)}</span>/ {requiredTotal} ★ complete
             {issues.length > 0 && <span className="text-signal ml-4">{issues.length} open</span>}
           </span>
+          <a href={`/api/packs/${pack.id}/pdf?draft=1`} target="_blank" className="text-[10.5px] tracking-[0.2em] uppercase text-taupe hover:text-ink">Draft PDF</a>
           {(toConfirm > 0 || issues.length > 0) && (
             <button type="button" onClick={nextUnconfirmed} className="text-[10.5px] tracking-[0.2em] uppercase text-gold hover:text-ink">
               {toConfirm > 0 ? `${toConfirm} to confirm` : "Next open item"} →

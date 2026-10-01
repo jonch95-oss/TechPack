@@ -63,7 +63,7 @@ export type CommentQ = Base & { kind: "comment" };
 export type DateQ = Base & { kind: "date_asap" };
 export type DerivedQ = Base & { kind: "derived"; from: string; unit: StepUnit };
 
-type ColBase = { key: string; label: string; required?: boolean; showIf?: { key: string; in: string[] } };
+type ColBase = { key: string; label: string; required?: boolean; showIf?: { key: string; in: string[] }; noOther?: boolean };
 export type Column = ColBase &
   (
     | { kind: "chips"; options: string[] }

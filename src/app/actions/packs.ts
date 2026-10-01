@@ -293,3 +293,36 @@ async function nextLetter(packId: string) {
   }
   return "";
 }
+
+/** One-click spelling correction: replaces the whole word everywhere it appears in the pack's answers. */
+export async function applySpelling(packId: string, word: string, replacement: string): Promise<ActionResult & { changed?: number }> {
+  const user = await requireRole("designer");
+  const loaded = await loadPack(packId);
+  if (!loaded) return { ok: false, error: "Pack not found." };
+  const re = new RegExp(`(^|[^A-Z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Z0-9])`, "gi");
+  let changed = 0;
+  const fix = (v: unknown, key = ""): unknown => {
+    if (typeof v === "string") {
+      if (key === "id" || key === "label") return v;
+      const next = v.replace(re, (_m, pre) => `${pre}${replacement.toUpperCase()}`);
+      if (next !== v) changed++;
+      return next;
+    }
+    if (Array.isArray(v)) return v.map((x) => fix(x));
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fix(x, k)]));
+    return v;
+  };
+  const now = new Date();
+  for (const [qid, value] of Object.entries(loaded.answers)) {
+    const before = changed;
+    const next = fix(value);
+    if (changed === before) continue;
+    await db
+      .update(packAnswers)
+      .set({ value: next, updatedBy: user.id, updatedAt: now })
+      .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, qid)));
+    await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: qid, before: value, after: next });
+  }
+  revalidatePath(`/packs/${packId}`);
+  return { ok: true, changed };
+}

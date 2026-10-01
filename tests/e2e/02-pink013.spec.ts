@@ -325,8 +325,8 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   ]) {
     await page.getByTestId("comments.list-add").click();
     const row = page.locator('[data-testid^="comments.list-row-"]').last();
-    await row.getByRole("textbox").fill(c);
-    await row.getByRole("textbox").press("Enter");
+    await row.locator("textarea").fill(c);
+    await row.locator("textarea").press("Enter");
     await settled(page);
   }
 
