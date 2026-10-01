@@ -15,7 +15,14 @@ export default async function MaterialsPage() {
       <PageHeader
         eyebrow="Library"
         title="Materials & swatch cards"
-        actions={can(user, "designer") && <ButtonLink href="/library/materials/new">Add swatch card</ButtonLink>}
+        actions={
+          can(user, "designer") && (
+            <>
+              <ButtonLink href="/library/materials/import" variant="secondary">Add in bulk</ButtonLink>
+              <ButtonLink href="/library/materials/new">Add swatch card</ButtonLink>
+            </>
+          )
+        }
       >
         Upload a card photo and the Technical Designer reads the printed spec — Chinese included. Draw the red box on the chip.
       </PageHeader>

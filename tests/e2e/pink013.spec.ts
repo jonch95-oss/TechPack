@@ -10,6 +10,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { referenceAssets } from "./assets";
+import { login } from "./helpers";
+import ExcelJS from "exceljs";
 
 const SHOTS = process.env.SHOTS_DIR;
 const shot = async (page: Page, name: string, fullPage = false) => {
@@ -82,23 +84,18 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   const a = assets!;
   if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-  // Sign in (EMILY is the admin seeded for the test; she becomes SENT BY).
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("emily@iconluxury.test");
-  await page.getByLabel("Password").fill("Atelier-2026!");
-  await page.getByRole("button", { name: "Enter the studio" }).click();
-  await expect(page.getByRole("heading", { name: "Tech Packs" })).toBeVisible();
+  // Sign in (EMILY is the admin seeded for the test; she becomes SENT BY). First sign-in changes the temporary password.
+  await login(page);
 
   /* ---- Brand: Pink London uses PINK + 3 digits ---- */
   await page.goto("/admin/brands");
   await expect(page.getByTestId("brand-PINK")).toContainText("PINK001");
 
-  /* ---- Hardware: bulk import CSV + images folder; a row without a code gets the next free code ---- */
+  /* ---- Hardware: a CSV + photos + an Excel sheet with a pasted picture, reviewed before saving ---- */
   const tmp = path.join(process.cwd(), ".data", "e2e-import");
-  const imgDir = path.join(tmp, "images");
-  mkdirSync(imgDir, { recursive: true });
-  writeFileSync(path.join(imgDir, "PINK003.jpg"), a.keychain);
-  writeFileSync(path.join(imgDir, "pink-logo-plate.jpg"), a.logoPlate);
+  mkdirSync(tmp, { recursive: true });
+  writeFileSync(path.join(tmp, "PINK003.jpg"), a.keychain);
+  writeFileSync(path.join(tmp, "pink-logo-plate.jpg"), a.logoPlate);
   writeFileSync(
     path.join(tmp, "pink-hardware.csv"),
     [
@@ -106,42 +103,65 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
       "PINK003,Pink London,Keychain,HEART PADLOCK KEYCHAIN W/ LOBSTER CLASP,,ZINC ALLOY,SHINY CHAMPAGNE GOLD,ENAMEL INLAY,PINK UNION JACK,SOLID,",
       "PINK004,Pink London,Woven label,PINK LONDON WOVEN LABEL,40 X 20,,,,,,",
       "PINK005,Pink London,Logo plate,PINK LONDON LOGO,,,SHINY CHAMPAGNE GOLD,ENGRAVED,,,pink-logo-plate.jpg",
-      ",Pink London,Magnetic snap,MAGNETIC SNAP 14MM,14,IRON,SHINY CHAMPAGNE GOLD,,,,",
     ].join("\n"),
   );
+  // An Excel sheet where the designer pasted the photo straight into the row and left the code blank.
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Hardware");
+  ws.addRow(["Code", "Brand", "Type", "Name", "Dims (mm)", "Material", "Finish", "Photo"]);
+  ws.addRow(["", "Pink London", "Magnetic snap", "MAGNETIC SNAP 14MM", "14", "IRON", "SHINY CHAMPAGNE GOLD", ""]);
+  const imgId = wb.addImage({ buffer: a.logoPlate as unknown as ExcelJS.Buffer, extension: "jpeg" });
+  ws.addImage(imgId, { tl: { col: 7, row: 1 }, ext: { width: 60, height: 20 } });
+  await wb.xlsx.writeFile(path.join(tmp, "snaps.xlsx"));
+
   await page.goto("/library/hardware/import");
-  await page.getByTestId("import-sheet").setInputFiles(path.join(tmp, "pink-hardware.csv"));
-  await page.getByTestId("import-images").setInputFiles(imgDir);
-  await page.getByTestId("run-import").click();
-  const report = page.getByTestId("import-report");
-  await expect(report).toContainText("4 created");
-  await expect(report).toContainText("New codes: PINK006");
-  await expect(report).toContainText("2 images linked");
-  await shot(page, "01-hardware-import");
+  await page.getByTestId("import-files-input").setInputFiles(["pink-hardware.csv", "snaps.xlsx", "PINK003.jpg", "pink-logo-plate.jpg"].map((f) => path.join(tmp, f)));
+  await page.getByTestId("import-review").click();
+  const hwRows = page.getByTestId("import-row");
+  await expect(hwRows).toHaveCount(4);
+  await expect(page.getByTestId("import-summary")).toContainText("1 need fixing");
+  const snap = hwRows.filter({ hasText: "snaps.xlsx" });
+  await expect(snap).toContainText("next free Pink London code is PINK006");
+  await expect(snap.locator('[role="img"], img')).toHaveCount(1); // the pasted picture came across
+  await snap.getByLabel("Code").fill("PINK006");
+  await expect(page.getByTestId("import-summary")).not.toContainText("need fixing");
+  await shot(page, "01-hardware-review");
+  await page.getByTestId("import-save").click();
+  await expect(page.getByTestId("import-report")).toContainText("4 added");
+  await shot(page, "01b-hardware-import");
 
   /* ---- Materials: Junfa swatch cards #2 and #24, read by the agent, each field confirmed ---- */
-  for (const card of [
-    { file: a.swatchBlack, no: "#2", name: "IRIDESCENT BLACK" },
-    { file: a.swatchPink, no: "#24", name: "IRIDESCENT PINK" },
-  ]) {
-    await page.goto("/library/materials/new");
-    await page.getByTestId("card-photo-input").setInputFiles({ name: `junfa-${card.no.slice(1)}.jpg`, mimeType: "image/jpeg", buffer: card.file });
-    await page.locator("#m-supplier").fill("JUNFA LEATHER");
-    await page.locator("#m-colourNo").fill(card.no);
-    await page.getByRole("button", { name: "Read card with AI" }).click();
-    await expect(page.getByRole("status")).toContainText("confirm each");
-    await expect(page.locator("#m-composition")).toHaveValue("50% TPU 50% COTTON");
-    await expect(page.locator("#m-thickness")).toHaveValue("0.85MM ±0.05");
-    await expect(page.locator("#m-width")).toHaveValue("138-140CM");
-    await expect(page.locator("#m-colourName")).toHaveValue(card.name);
-    if (card.no === "#2") await shot(page, "02-swatch-ai-read");
-    // one click per AI-read field
-    const badges = page.getByRole("button", { name: /AI-read — confirm/ });
-    while ((await badges.count()) > 0) await badges.first().click();
-    await page.getByRole("button", { name: "Save material" }).click();
-    await page.waitForURL(/\/library\/materials\/[0-9a-f-]{36}$/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(`${card.no} ${card.name}`);
-  }
+  // -A card: the single-card page.
+  await page.goto("/library/materials/new");
+  await page.getByTestId("card-photo-input").setInputFiles({ name: "junfa-2.jpg", mimeType: "image/jpeg", buffer: a.swatchBlack });
+  await page.locator("#m-supplier").fill("JUNFA LEATHER");
+  await page.locator("#m-colourNo").fill("#2");
+  await page.getByRole("button", { name: "Read card with AI" }).click();
+  await expect(page.getByRole("status")).toContainText("confirm each");
+  await expect(page.locator("#m-composition")).toHaveValue("50% TPU 50% COTTON");
+  await expect(page.locator("#m-thickness")).toHaveValue("0.85MM ±0.05");
+  await expect(page.locator("#m-width")).toHaveValue("138-140CM");
+  await expect(page.locator("#m-colourName")).toHaveValue("IRIDESCENT BLACK");
+  await shot(page, "02-swatch-ai-read");
+  const badges = page.getByRole("button", { name: /AI-read — confirm/ });
+  while ((await badges.count()) > 0) await badges.first().click();
+  await page.getByRole("button", { name: "Save material" }).click();
+  await page.waitForURL(/\/library\/materials\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("#2 IRIDESCENT BLACK");
+
+  // -B card: bulk upload — a one-line sheet plus the card photo, read by the AI in the review table.
+  writeFileSync(path.join(tmp, "junfa-24.jpg"), a.swatchPink);
+  writeFileSync(path.join(tmp, "cards.csv"), "Supplier,Colour no.,Card photo\nJunfa Leather,24,junfa-24.jpg\n");
+  await page.goto("/library/materials/import");
+  await page.getByTestId("import-files-input").setInputFiles([path.join(tmp, "cards.csv"), path.join(tmp, "junfa-24.jpg")]);
+  await page.getByTestId("import-review").click();
+  await expect(page.getByTestId("import-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "Read 1 card with AI" }).click();
+  await expect(page.getByTestId("import-row").getByLabel("Composition")).toHaveValue("50% TPU 50% COTTON");
+  await expect(page.getByTestId("import-row").getByLabel("Colour name")).toHaveValue("IRIDESCENT PINK");
+  await shot(page, "02b-swatch-bulk-review");
+  await page.getByTestId("import-save").click();
+  await expect(page.getByTestId("import-report")).toContainText("1 added");
 
   /* ---- Print artwork: PINK tonal heat-stamp repeat, 10 × 10 cm tile, Pantone 203 C ---- */
   await page.goto("/library/prints/new");

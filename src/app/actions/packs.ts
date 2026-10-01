@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { brands, packAnswers, packFiles, packs, type AnswerStatus } from "@/db/schema";
+import { brands, hardware, packAnswers, packFiles, packs, type AnswerStatus } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { brandHardware, hardwareByCode, loadPack, rebuildLibraryUsage } from "@/lib/data";
@@ -38,6 +38,8 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
   if (!brand) return { error: "Unknown brand." };
   const dup = await db.select({ id: packs.id }).from(packs).where(eq(packs.styleNo, styleNo));
   if (dup.length) return { error: `${styleNo} already exists.` };
+  const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, styleNo));
+  if (clash.length) return { error: `${styleNo} is already a component code — styles and components can't share a number.` };
   const [p] = await db
     .insert(packs)
     .values({

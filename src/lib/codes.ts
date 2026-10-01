@@ -57,3 +57,36 @@ export function nextCode(format: string, usedCodes: string[]): string {
 export function suffixesFor(n: number) {
   return Array.from({ length: Math.max(1, Math.min(26, n)) }, (_, i) => `-${String.fromCharCode(65 + i)}`);
 }
+
+export type CodeCheck = { errors: string[]; warnings: string[]; suggestion: string };
+
+/**
+ * Checks a designer-entered component code. Errors block saving (blank, already used by another
+ * component, same as a style number); warnings are called out but allowed (format, skipped numbers).
+ */
+export function checkCode(opts: {
+  code: string;
+  format: string;
+  brandName: string;
+  /** Codes of other components (exclude the one being edited). */
+  componentCodes: string[];
+  styleNos: string[];
+}): CodeCheck {
+  const code = opts.code.trim().toUpperCase();
+  const suggestion = nextCode(opts.format, [...opts.componentCodes, ...opts.styleNos]);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!code) {
+    errors.push(`Enter a code — the next free ${opts.brandName} code is ${suggestion}.`);
+    return { errors, warnings, suggestion };
+  }
+  if (opts.componentCodes.some((c) => c.toUpperCase() === code)) errors.push(`${code} is already used by another component. Next free: ${suggestion}.`);
+  if (opts.styleNos.some((s) => stripColorwaySuffix(s).toUpperCase() === code)) errors.push(`${code} is a style number — components and styles can't share a code. Next free: ${suggestion}.`);
+  const n = codeNumber(opts.format, code);
+  if (n === null) warnings.push(`${code} doesn't follow the ${opts.brandName} format (${opts.format.replace(/#/g, "0")}). Check it's right.`);
+  else if (!errors.length) {
+    const next = codeNumber(opts.format, suggestion)!;
+    if (n > next) warnings.push(`${code} skips ahead — the next free number is ${suggestion}.`);
+  }
+  return { errors, warnings, suggestion };
+}

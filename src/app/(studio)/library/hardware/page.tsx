@@ -26,13 +26,13 @@ export default async function HardwarePage(props: PageProps<"/library/hardware">
         actions={
           can(user, "designer") && (
             <>
-              <ButtonLink href="/library/hardware/import" variant="secondary">Bulk import</ButtonLink>
+              <ButtonLink href="/library/hardware/import" variant="secondary">Add in bulk</ButtonLink>
               <ButtonLink href="/library/hardware/new">New component</ButtonLink>
             </>
           )
         }
       >
-        New components take the next free number in the brand&apos;s format — checked against style numbers too, so the two never collide.
+        Designers enter each code; the studio calls out duplicates, style-number clashes and codes outside the brand&apos;s format.
       </PageHeader>
       <div className="flex flex-wrap gap-6 mb-10 border-b border-hairline">
         <FilterLink href="/library/hardware" active={!brandFilter}>All</FilterLink>
@@ -43,7 +43,7 @@ export default async function HardwarePage(props: PageProps<"/library/hardware">
         ))}
       </div>
       {list.length === 0 ? (
-        <Empty title="No components yet" action={can(user, "designer") && <ButtonLink href="/library/hardware/import">Import your hardware list</ButtonLink>}>
+        <Empty title="No components yet" action={can(user, "designer") && <ButtonLink href="/library/hardware/import">Add your hardware list</ButtonLink>}>
           Import a CSV or XLSX with an images folder, or create components one by one.
         </Empty>
       ) : (

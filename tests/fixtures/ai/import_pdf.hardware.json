@@ -1,0 +1,8 @@
+{
+  "_comment": "TEST FIXTURE for reading a hardware PDF (not recorded model output). Components from the TB25_ACC0023 Ted Baker Dopp kit pack; the PDF prints no component codes, so codes are left blank for the designer to enter.",
+  "rows": [
+    { "code": "", "brand": "Ted Baker", "type": "ZIPPER PULL", "name": "TED BAKER ZIPPER PULL", "dimsMm": "16 X 42", "material": "ZINC ALLOY", "finish": "GUNMETAL", "logoTreatment": "INKED METALLIC LOGO", "enamelPantone": "DTM TO TRIM", "construction": "HOLLOW", "notes": "EMBOSSED ENAMEL INLAY, BEVELLED, ETCHED SIDES, SIZE 100%", "page": 5 },
+    { "code": "", "brand": "Ted Baker", "type": "DEBOSS/EMBOSS PATCH", "name": "PU DEBOSSED LOGO PATCH", "dimsMm": "55 X 21.8", "material": "", "finish": "GUNMETAL", "logoTreatment": "DEBOSSED GROOVE", "enamelPantone": "", "construction": "", "notes": "GUNMETAL FILLING", "page": 5 }
+  ],
+  "agent_notes": "NO COMPONENT CODES PRINTED IN THE PACK."
+}

@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireUser, can } from "@/lib/auth/dal";
 import { logout } from "@/app/actions/auth";
 import { NavLinks } from "@/components/nav";
 
 export default async function StudioLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  if (user.mustChangePassword) redirect("/account");
   const items = [
     { href: "/", label: "Tech Packs" },
     { href: "/library/materials", label: "Materials" },
@@ -23,7 +25,7 @@ export default async function StudioLayout({ children }: LayoutProps<"/">) {
           <NavLinks items={items} />
           <div className="flex items-center gap-5">
             <div className="text-right leading-tight">
-              <div className="text-[11px] tracking-[0.14em] text-ink">{user.name}</div>
+              <Link href="/account" className="text-[11px] tracking-[0.14em] text-ink hover:text-gold">{user.name}</Link>
               <div className="text-[9.5px] tracking-[0.22em] uppercase text-taupe">{user.role}</div>
             </div>
             <form action={logout}>

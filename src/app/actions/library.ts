@@ -3,10 +3,10 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { brands, hardware, materials, packs, prints, type ChipBox, type FieldStatusMap, type PantoneColour } from "@/db/schema";
+import { hardware, materials, prints, type ChipBox, type FieldStatusMap, type PantoneColour } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
-import { nextCodeForBrand } from "@/lib/data";
+import { checkComponentCode } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
 import { callTechnicalDesigner, AIUnavailableError } from "@/lib/ai/client";
 import {
@@ -16,8 +16,6 @@ import {
   normaliseChipBox,
   type ReadSwatchOutput,
 } from "@/lib/ai/read-swatch";
-import { matchImage, parseCsv, parseXlsx, type ImportRow } from "@/lib/hardware-import";
-import { codeNumber, nextCode } from "@/lib/codes";
 import type { ActionResult } from "./admin";
 
 const up = (s: unknown) => String(s ?? "").trim().toUpperCase();
@@ -155,22 +153,19 @@ export type HardwareInput = {
   notes: string;
 };
 
-export async function getNextCode(brandId: string): Promise<string> {
+/** Live check while a designer types a code: errors block saving, warnings are called out. */
+export async function checkHardwareCode(brandId: string | null, code: string, excludeId?: string) {
   await requireRole("viewer");
-  return nextCodeForBrand(brandId);
+  return checkComponentCode(brandId, code, excludeId);
 }
 
 export async function saveHardware(input: HardwareInput): Promise<ActionResult & { id?: string; code?: string }> {
   const user = await requireRole("designer");
   if (!input.type.trim()) return { ok: false, error: "Type is required." };
-  let code = up(input.code);
-  if (!input.id && !code) {
-    if (!input.brandId) return { ok: false, error: "Pick a brand so a code can be assigned." };
-    code = await nextCodeForBrand(input.brandId);
-  }
-  if (!code) return { ok: false, error: "Code is required." };
-  const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, code));
-  if (clash.length && clash[0].id !== input.id) return { ok: false, error: `${code} is already used by another component.` };
+  if (!input.brandId) return { ok: false, error: "Pick a brand." };
+  const code = up(input.code);
+  const check = await checkComponentCode(input.brandId, code, input.id);
+  if (check.errors.length) return { ok: false, error: check.errors[0] };
   const values = {
     code,
     brandId: input.brandId,
@@ -199,129 +194,6 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
   await audit({ userId: user.id, entity: "hardware", entityId: h.id, action: "create", after: values });
   revalidatePath("/library/hardware");
   return { ok: true, id: h.id, code, message: `${code} created.` };
-}
-
-export type ImportReport = {
-  ok: boolean;
-  created: string[];
-  updated: string[];
-  assigned: string[];
-  images: number;
-  errors: string[];
-};
-
-/**
- * Bulk import from CSV/XLSX + an images folder. Existing codes are updated; rows without a
- * code get the next free code in their brand's format (checked against styles too).
- */
-export async function importHardware(form: FormData): Promise<ImportReport> {
-  const user = await requireRole("designer");
-  const report: ImportReport = { ok: false, created: [], updated: [], assigned: [], images: 0, errors: [] };
-  const file = form.get("sheet");
-  const defaultBrandId = String(form.get("brandId") ?? "") || null;
-  if (!(file instanceof File) || !file.size) {
-    report.errors.push("Choose a CSV or XLSX file.");
-    return report;
-  }
-  // Images are uploaded by the browser first (keeps each request small); we get { relativePath: url }.
-  let imageMap: Record<string, string> = {};
-  try {
-    imageMap = JSON.parse(String(form.get("imageMap") ?? "{}"));
-  } catch {
-    report.errors.push("Image list was unreadable; importing without images.");
-  }
-  const name = file.name.toLowerCase();
-  const parsed = name.endsWith(".xlsx") ? await parseXlsx(await file.arrayBuffer()) : parseCsv(await file.text());
-  report.errors.push(...parsed.errors);
-  if (!parsed.rows.length) return report;
-
-  const allBrands = await db.select().from(brands);
-  const brandFor = (r: ImportRow) => {
-    if (r.brand) {
-      const b = allBrands.find((x) => x.name.toUpperCase() === r.brand.toUpperCase() || x.codePrefix === r.brand.toUpperCase());
-      if (b) return b;
-    }
-    const byPrefix = allBrands
-      .filter((b) => r.code && codeNumber(b.codeFormat, r.code) !== null)
-      .sort((a, b) => b.codePrefix.length - a.codePrefix.length)[0];
-    return byPrefix ?? allBrands.find((b) => b.id === defaultBrandId) ?? null;
-  };
-
-  const imageNames = Object.keys(imageMap);
-  const linked = new Set<string>();
-  const imageUrl = async (wanted: string, code: string) => {
-    const hit = matchImage(imageNames, wanted, code);
-    if (!hit) return null;
-    if (!linked.has(hit)) {
-      linked.add(hit);
-      report.images++;
-    }
-    return imageMap[hit];
-  };
-
-  // Codes used so far, including ones assigned earlier in this same import.
-  const used = new Set((await db.select({ code: hardware.code }).from(hardware)).map((h) => h.code));
-  const styleRows = await db.select({ styleNo: packs.styleNo }).from(packs);
-  for (const s of styleRows) used.add(s.styleNo);
-
-  for (const r of parsed.rows) {
-    if (!r.type) continue;
-    const brand = brandFor(r);
-    let code = r.code;
-    if (!code) {
-      if (!brand) {
-        report.errors.push(`Line ${r.line}: no code and no brand — can't assign a code.`);
-        continue;
-      }
-      code = nextCode(brand.codeFormat, [...used]);
-      report.assigned.push(code);
-    }
-    used.add(code);
-    const photoUrl = await imageUrl(r.photo, code);
-    const views: Record<string, string> = {};
-    for (const v of ["front", "side", "rear"] as const) {
-      if (!r[v]) continue;
-      const u = await imageUrl(r[v], "");
-      if (u) views[v] = u;
-      else report.errors.push(`Line ${r.line}: ${v} image "${r[v]}" not found in the images folder.`);
-    }
-    if (r.photo && !photoUrl) report.errors.push(`Line ${r.line}: photo "${r.photo}" not found in the images folder.`);
-    const values = {
-      code,
-      brandId: brand?.id ?? null,
-      name: r.name,
-      type: r.type,
-      dimsMm: r.dimsMm,
-      views,
-      material: r.material,
-      finish: r.finish,
-      logoTreatment: r.logoTreatment,
-      enamelPantone: r.enamelPantone,
-      construction: r.construction,
-      notes: r.notes,
-      updatedBy: user.id,
-      updatedAt: new Date(),
-      ...(photoUrl ? { photoUrl } : {}),
-    };
-    const [existing] = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, code));
-    if (existing) {
-      await db.update(hardware).set(values).where(eq(hardware.id, existing.id));
-      report.updated.push(code);
-    } else {
-      await db.insert(hardware).values({ ...values, createdBy: user.id });
-      report.created.push(code);
-    }
-  }
-  await audit({
-    userId: user.id,
-    entity: "hardware",
-    entityId: "import",
-    action: "create",
-    after: { file: file.name, created: report.created, updated: report.updated, assigned: report.assigned },
-  });
-  report.ok = true;
-  revalidatePath("/library/hardware");
-  return report;
 }
 
 export async function deleteHardware(id: string): Promise<ActionResult> {

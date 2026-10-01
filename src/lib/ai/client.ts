@@ -27,9 +27,11 @@ export type AICallResult<T> = { output: T; model: string; fixture: boolean };
  * Never set it in Vercel.
  */
 export async function callTechnicalDesigner<T>(opts: {
-  task: "analyse_render" | "read_swatch_card" | "build_pack" | "validate" | "diff_revision" | "translate";
+  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "build_pack" | "validate" | "diff_revision" | "translate";
   instructions: string;
   images: AIImage[];
+  /** PDFs sent as document blocks (spec sheets, catalogues, scanned swatch cards). */
+  pdfs?: Buffer[];
   schema: Record<string, unknown>;
   fixtureName?: string;
 }): Promise<AICallResult<T>> {
@@ -43,6 +45,12 @@ export async function callTechnicalDesigner<T>(opts: {
   const client = new Anthropic();
   const model = aiModel();
   const content: Anthropic.Beta.BetaContentBlockParam[] = [
+    ...(opts.pdfs ?? []).map(
+      (pdf): Anthropic.Beta.BetaRequestDocumentBlock => ({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") },
+      }),
+    ),
     ...opts.images.map(
       (img): Anthropic.Beta.BetaImageBlockParam => ({
         type: "image",

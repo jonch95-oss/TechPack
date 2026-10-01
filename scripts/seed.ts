@@ -28,19 +28,23 @@ async function main() {
     const existing = await db.select({ id: brands.id }).from(brands).where(eq(brands.name, b.name));
     if (!existing.length) await db.insert(brands).values({ ...b, codeFormat: `${b.codePrefix}###` });
   }
-  const email = process.env.SEED_ADMIN_EMAIL?.toLowerCase();
+  // The first admin is Jon; the password comes from SEED_ADMIN_PASSWORD (set in Vercel) and must be changed at first sign-in.
+  const email = (process.env.SEED_ADMIN_EMAIL || "jonc@iconluxurygroup.com").toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD;
   if (email && password) {
     const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
     if (!existing.length) {
       await db.insert(users).values({
         email,
-        name: (process.env.SEED_ADMIN_NAME ?? "ADMIN").toUpperCase(),
+        name: (process.env.SEED_ADMIN_NAME || "JON").toUpperCase(),
         role: "admin",
+        mustChangePassword: true,
         passwordHash: await bcrypt.hash(password, 10),
       });
       console.log(`Admin ${email} created.`);
     }
+  } else if (email) {
+    console.log("SEED_ADMIN_PASSWORD not set — first admin not created.");
   }
   await sql.end();
   console.log("Seed complete.");

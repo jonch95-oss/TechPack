@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import type { Hardware } from "@/db/schema";
-import { getNextCode, saveHardware, type HardwareInput } from "@/app/actions/library";
+import { checkHardwareCode, saveHardware, type HardwareInput } from "@/app/actions/library";
+import type { CodeCheck } from "@/lib/codes";
 import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "@/lib/questions/common";
 import { uploadFile } from "@/lib/client/upload";
 import { Button, Label, TextInput, Thumb, cx } from "@/components/ui";
@@ -43,19 +44,23 @@ export function HardwareForm({
     photoUrl: item?.photoUrl ?? null,
     notes: item?.notes ?? "",
   });
-  const [next, setNext] = useState<string>("");
+  const [check, setCheck] = useState<CodeCheck | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const set = <K extends keyof HardwareInput>(k: K, val: HardwareInput[K]) => setV((x) => ({ ...x, [k]: val }));
 
+  // Live code check (debounced): errors block saving, warnings are called out.
   useEffect(() => {
-    if (item || !v.brandId) return;
+    if (!v.brandId) return;
     let live = true;
-    getNextCode(v.brandId).then((c) => live && setNext(c));
+    const t = setTimeout(() => {
+      checkHardwareCode(v.brandId, v.code ?? "", v.id).then((c) => live && setCheck(c));
+    }, 250);
     return () => {
       live = false;
+      clearTimeout(t);
     };
-  }, [item, v.brandId]);
+  }, [v.brandId, v.code, v.id]);
 
   const upload = async (f: File, apply: (url: string) => void) => {
     try {
@@ -84,15 +89,28 @@ export function HardwareForm({
             </select>
           </div>
           <div>
-            <Label>Code</Label>
-            {item ? (
-              <TextInput value={v.code} disabled={!canEdit} onChange={(e) => set("code", e.target.value.toUpperCase())} />
-            ) : (
-              <div className="h-10 flex items-center gap-3 border-b border-hairline-strong">
-                <span className="display text-[22px]" data-testid="next-code">{v.code || next || "—"}</span>
-                <span className="eyebrow">{v.code ? "manual" : "next free code"}</span>
-              </div>
-            )}
+            <Label htmlFor="hw-code" required>Code</Label>
+            <TextInput
+              id="hw-code"
+              value={v.code}
+              disabled={!canEdit}
+              placeholder={check?.suggestion ?? ""}
+              className="display !text-[22px]"
+              onChange={(e) => set("code", e.target.value.toUpperCase().replace(/\s+/g, ""))}
+            />
+            <div className="mt-2 space-y-1 text-[11px] leading-relaxed" data-testid="code-check" aria-live="polite">
+              {check?.errors.map((m) => (
+                <p key={m} className="text-signal">{m}</p>
+              ))}
+              {check?.warnings.map((m) => (
+                <p key={m} className="text-gold">{m}</p>
+              ))}
+              {canEdit && check?.suggestion && v.code !== check.suggestion && !item && (
+                <button type="button" className="eyebrow hover:text-ink" onClick={() => set("code", check.suggestion)}>
+                  Use next free · {check.suggestion}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -168,7 +186,7 @@ export function HardwareForm({
           <div className="flex items-center gap-4 pt-2">
             <Button
               type="button"
-              disabled={pending || !v.type || !v.brandId}
+              disabled={pending || !v.type || !v.brandId || !v.code || !!check?.errors.length}
               onClick={() =>
                 start(async () => {
                   const res = await saveHardware(v);
@@ -181,7 +199,7 @@ export function HardwareForm({
                 })
               }
             >
-              {pending ? "Saving…" : item || v.id ? "Save component" : `Create ${next || "component"}`}
+              {pending ? "Saving…" : item || v.id ? "Save component" : `Create ${v.code || "component"}`}
             </Button>
             {msg && <span className={cx("text-[12px]", msg.ok ? "text-ok" : "text-signal")} role="status">{msg.text}</span>}
           </div>

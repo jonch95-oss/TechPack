@@ -170,3 +170,18 @@ export async function brandHardware(brandId: string) {
     .from(hardware)
     .where(and(eq(hardware.brandId, brandId)));
 }
+
+/** Checks a designer-entered component code against the brand format, other components and style numbers. */
+export async function checkComponentCode(brandId: string | null, code: string, excludeId?: string) {
+  const { checkCode } = await import("@/lib/codes");
+  const [brand] = brandId ? await db.select().from(brands).where(eq(brands.id, brandId)) : [];
+  const hw = await db.select({ id: hardware.id, code: hardware.code }).from(hardware);
+  const styles = await db.select({ styleNo: packs.styleNo }).from(packs);
+  return checkCode({
+    code,
+    format: brand?.codeFormat ?? "###",
+    brandName: brand?.name ?? "this brand",
+    componentCodes: hw.filter((h) => h.id !== excludeId).map((h) => h.code),
+    styleNos: styles.map((s) => s.styleNo),
+  });
+}

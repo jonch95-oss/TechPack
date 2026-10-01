@@ -28,3 +28,22 @@ describe("code assignment", () => {
     expect(suffixesFor(2)).toEqual(["-A", "-B"]);
   });
 });
+
+import { checkCode } from "@/lib/codes";
+
+describe("designer-entered codes", () => {
+  const base = { format: "PINK###", brandName: "Pink London", componentCodes: ["PINK003", "PINK004", "PINK005"], styleNos: ["PINK013"] };
+  it("accepts the next free code", () => {
+    expect(checkCode({ ...base, code: "pink014" })).toEqual({ errors: [], warnings: [], suggestion: "PINK014" });
+  });
+  it("blocks duplicates and style-number clashes", () => {
+    expect(checkCode({ ...base, code: "PINK005" }).errors[0]).toMatch(/already used/);
+    expect(checkCode({ ...base, code: "PINK013" }).errors[0]).toMatch(/style number/);
+    expect(checkCode({ ...base, code: "" }).errors[0]).toMatch(/PINK014/);
+  });
+  it("calls out wrong formats and skipped numbers without blocking", () => {
+    expect(checkCode({ ...base, code: "PNK014" })).toMatchObject({ errors: [], warnings: [expect.stringMatching(/format/)] });
+    expect(checkCode({ ...base, code: "PINK090" })).toMatchObject({ errors: [], warnings: [expect.stringMatching(/skips ahead/)] });
+    expect(checkCode({ ...base, code: "PINK006" })).toMatchObject({ errors: [], warnings: [] });
+  });
+});

@@ -22,7 +22,7 @@ export default async function HardwareItemPage(props: PageProps<"/library/hardwa
     <>
       <Link href="/library/hardware" className="eyebrow hover:text-ink inline-block mb-8">← Hardware</Link>
       <PageHeader eyebrow={item ? item.type : "New component"} title={item ? item.code : "New component"}>
-        {isNew && "Type, dimensions, views, material, logo treatment, enamel and hollow/solid. The code is assigned automatically."}
+        {isNew && "Type, dimensions, views, material, logo treatment, enamel and hollow/solid. Enter the code — it is checked against every component and style number."}
       </PageHeader>
       {isNew ? <HardwareCreated brands={all} /> : <HardwareForm item={item!} brands={all} canEdit={can(user, "designer")} usedIn={used} />}
     </>

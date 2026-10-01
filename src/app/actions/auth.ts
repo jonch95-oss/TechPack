@@ -30,3 +30,23 @@ export async function logout() {
   await clearSessionCookie();
   redirect("/login");
 }
+
+export type PasswordState = { error?: string; ok?: boolean } | undefined;
+
+/** Change your own password. Required at first sign-in after an admin sets a temporary one. */
+export async function changePassword(_prev: PasswordState, form: FormData): Promise<PasswordState> {
+  const { getCurrentUser } = await import("@/lib/auth/dal");
+  const user = await getCurrentUser();
+  if (!user) return { error: "Please sign in again." };
+  const current = String(form.get("current") ?? "");
+  const next = String(form.get("next") ?? "");
+  const confirm = String(form.get("confirm") ?? "");
+  if (!(await bcrypt.compare(current, user.passwordHash))) return { error: "Your current password is not right." };
+  if (next.length < 10) return { error: "Use at least 10 characters." };
+  if (next !== confirm) return { error: "The two new passwords don't match." };
+  if (next === current) return { error: "Choose a password different from the temporary one." };
+  await db.update(users).set({ passwordHash: await bcrypt.hash(next, 10), mustChangePassword: false }).where(eq(users.id, user.id));
+  const { audit } = await import("@/lib/audit");
+  await audit({ userId: user.id, entity: "user", entityId: user.id, action: "update", field: "password", after: "(changed)" });
+  redirect("/");
+}

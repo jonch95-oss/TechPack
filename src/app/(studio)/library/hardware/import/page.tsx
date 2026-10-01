@@ -1,21 +1,18 @@
 import Link from "next/link";
-import { asc } from "drizzle-orm";
-import { db } from "@/db";
-import { brands } from "@/db/schema";
 import { requirePageRole } from "@/lib/auth/dal";
+import { importContext } from "@/app/actions/imports";
 import { PageHeader } from "@/components/ui";
-import { ImportForm } from "./import-form";
+import { ImportStudio } from "@/components/library/import-studio";
 
-export default async function ImportPage() {
+export default async function HardwareImportPage() {
   await requirePageRole("designer");
-  const all = await db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name));
   return (
     <>
       <Link href="/library/hardware" className="eyebrow hover:text-ink inline-block mb-8">← Hardware</Link>
-      <PageHeader eyebrow="Library" title="Bulk import hardware">
-        A CSV or XLSX plus a folder of images. Existing codes are updated; rows without a code get the next free code for their brand.
+      <PageHeader eyebrow="Library" title="Add hardware in bulk">
+        Four ways in. Everything lands in a review table first — duplicates, style-number clashes and codes outside a brand&apos;s format are called out before anything is saved.
       </PageHeader>
-      <ImportForm brands={all} />
+      <ImportStudio kind="hardware" context={await importContext()} />
     </>
   );
 }

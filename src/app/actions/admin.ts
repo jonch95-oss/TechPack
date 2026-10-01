@@ -27,7 +27,7 @@ export async function createUser(form: FormData): Promise<ActionResult> {
   if (existing.length) return { ok: false, error: "A user with that email already exists." };
   const [u] = await db
     .insert(users)
-    .values({ email, name: name.toUpperCase(), role, passwordHash: await bcrypt.hash(password, 10) })
+    .values({ email, name: name.toUpperCase(), role, passwordHash: await bcrypt.hash(password, 10), mustChangePassword: true })
     .returning({ id: users.id });
   await audit({ userId: admin.id, entity: "user", entityId: u.id, action: "create", after: { email, name, role } });
   revalidatePath("/admin/users");
@@ -47,6 +47,7 @@ export async function updateUser(id: string, patch: { role?: Role; active?: bool
   if (patch.password) {
     if (patch.password.length < 10) return { ok: false, error: "Password must be at least 10 characters." };
     set.passwordHash = await bcrypt.hash(patch.password, 10);
+    set.mustChangePassword = true;
   }
   await db.update(users).set(set).where(eq(users.id, id));
   if (set.active === false || set.passwordHash) await db.delete(sessions).where(eq(sessions.userId, id));

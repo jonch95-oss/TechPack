@@ -29,6 +29,8 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("designer"),
   passwordHash: text("password_hash").notNull(),
   active: boolean("active").notNull().default(true),
+  /** Temporary passwords set by an admin must be changed at first sign-in. */
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
