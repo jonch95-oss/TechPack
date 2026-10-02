@@ -45,7 +45,9 @@ export async function callTechnicalDesigner<T>(opts: {
   }
   if (!process.env.ANTHROPIC_API_KEY) throw new AIUnavailableError("ANTHROPIC_API_KEY is not set");
 
-  const client = new Anthropic();
+  // An org-level key must name its workspace on every request (ANTHROPIC_WORKSPACE_ID).
+  const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
+  const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
   const model = aiModel();
   const content: Anthropic.Beta.BetaContentBlockParam[] = [
     ...(opts.pdfs ?? []).map(
