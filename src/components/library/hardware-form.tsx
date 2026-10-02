@@ -7,7 +7,8 @@ import type { CodeCheck } from "@/lib/codes";
 import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "@/lib/questions/common";
 import { uploadFile } from "@/lib/client/upload";
 import { Button, Label, TextInput, Thumb, cx } from "@/components/ui";
-import { ChipRow } from "@/components/chips";
+import { ChipRow, Toggle } from "@/components/chips";
+import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
 
 const LOGO_TREATMENTS = ["ENGRAVED", "DEBOSSED GROOVE", "EMBOSSED", "ENAMEL INLAY", "LASER", "INKED METALLIC LOGO", "NONE"];
 
@@ -43,6 +44,8 @@ export function HardwareForm({
     construction: item?.construction ?? "",
     photoUrl: item?.photoUrl ?? null,
     notes: item?.notes ?? "",
+    finishSpec: item?.finishSpec ?? {},
+    approval: item?.approval ?? EMPTY_APPROVAL,
   });
   const [check, setCheck] = useState<CodeCheck | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -150,6 +153,36 @@ export function HardwareForm({
             <ChipRow options={["HOLLOW", "SOLID"]} value={v.construction} onChange={(x) => set("construction", x)} disabled={!canEdit} />
           </div>
         </div>
+        <div className="border border-hairline bg-paper p-5 space-y-5">
+          <div className="eyebrow">Finish spec</div>
+          <div>
+            <div className="eyebrow mb-2 text-ink-soft">Plating</div>
+            <ChipRow options={["ELECTROPLATE", "PVD", "ION PLATING", "POWDER COAT", "PAINT", "RAW"]} value={v.finishSpec?.plating} onChange={(x) => set("finishSpec", { ...v.finishSpec, plating: x })} disabled={!canEdit} />
+          </div>
+          <div>
+            <div className="eyebrow mb-2 text-ink-soft">Coating</div>
+            <ChipRow options={["LACQUER", "E-COAT", "NONE"]} value={v.finishSpec?.coating} onChange={(x) => set("finishSpec", { ...v.finishSpec, coating: x })} disabled={!canEdit} />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
+            <div>
+              <Label>Plating thickness</Label>
+              <TextInput value={v.finishSpec?.platingThickness ?? ""} disabled={!canEdit} placeholder="0.5 MICRON" onChange={(e) => set("finishSpec", { ...v.finishSpec, platingThickness: e.target.value.toUpperCase() })} />
+            </div>
+            <div>
+              <Label>Mould no.</Label>
+              <TextInput value={v.finishSpec?.mouldNo ?? ""} disabled={!canEdit} onChange={(e) => set("finishSpec", { ...v.finishSpec, mouldNo: e.target.value.toUpperCase() })} />
+            </div>
+            <div>
+              <Label>Nickel-free (EU)</Label>
+              <Toggle value={v.finishSpec?.nickelFree ?? null} onChange={(x) => set("finishSpec", { ...v.finishSpec, nickelFree: x })} disabled={!canEdit} />
+            </div>
+            <div>
+              <Label>New mould needed</Label>
+              <Toggle value={v.finishSpec?.newMould ?? null} onChange={(x) => set("finishSpec", { ...v.finishSpec, newMould: x })} disabled={!canEdit} />
+            </div>
+          </div>
+        </div>
+        <ApprovalBlock value={v.approval ?? EMPTY_APPROVAL} onChange={(a) => set("approval", a)} types={["PLATING SAMPLE", "MOULD", "SAMPLE", "BULK"]} disabled={!canEdit} />
         <div>
           <Label>Notes</Label>
           <TextInput value={v.notes} disabled={!canEdit} onChange={(e) => set("notes", e.target.value.toUpperCase())} />

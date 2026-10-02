@@ -6,6 +6,7 @@ import { buildPackDoc } from "@/lib/pdf/doc";
 import { renderPackHtml } from "@/lib/pdf/html";
 import { htmlToPdf } from "@/lib/pdf/render";
 import { gatePasses } from "@/lib/validation";
+import { SIGNED_OFF } from "@/lib/status";
 
 export const maxDuration = 60;
 
@@ -28,6 +29,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/packs/[id]/pdf">
       { error: "Export is blocked until every rule passes.", failing: doc.validation.filter((r) => r.status === "fail") },
       { status: 409 },
     );
+  }
+  if (!draft && !SIGNED_OFF.includes(p.pack.status)) {
+    return NextResponse.json({ error: "A second designer has to sign the pack off before the final PDF.", failing: [] }, { status: 409 });
   }
   const html = renderPackHtml(doc, { draft });
   if (url.searchParams.get("format") === "html") return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });

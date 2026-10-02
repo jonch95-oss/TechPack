@@ -4,6 +4,7 @@ import {
   uuid,
   timestamp,
   boolean,
+  integer,
   jsonb,
   primaryKey,
   uniqueIndex,
@@ -82,6 +83,8 @@ export const materials = pgTable(
     /** Per-field "AI-read — confirm" state from read_swatch_card. */
     fieldStatus: jsonb("field_status").$type<FieldStatusMap>().notNull().default({}),
     aiNotes: text("ai_notes").notNull().default(""),
+    /** Lab dip / strike-off / swatch approval. Packs using an unapproved material get a gate warning. */
+    approval: jsonb("approval").$type<Approval>().notNull().default({ status: "PENDING", type: "", date: "", note: "" }),
     createdBy: uuid("created_by").references(() => users.id),
     updatedBy: uuid("updated_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -89,6 +92,9 @@ export const materials = pgTable(
   },
   (t) => [index("materials_supplier_idx").on(t.supplier)],
 );
+
+export type Approval = { status: "PENDING" | "APPROVED" | "REJECTED"; type: string; date: string; note: string };
+export type FinishSpec = { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
 
 export type HardwareViews = { front?: string; side?: string; rear?: string; top?: string };
 
@@ -111,6 +117,10 @@ export const hardware = pgTable(
     construction: text("construction").notNull().default(""),
     photoUrl: text("photo_url"),
     notes: text("notes").notNull().default(""),
+    /** Plating / coating spec, nickel-free, mould number, new mould needed. */
+    finishSpec: jsonb("finish_spec").$type<FinishSpec>().notNull().default({}),
+    /** Plating sample / mould / sample approval. */
+    approval: jsonb("approval").$type<Approval>().notNull().default({ status: "PENDING", type: "", date: "", note: "" }),
     createdBy: uuid("created_by").references(() => users.id),
     updatedBy: uuid("updated_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -142,6 +152,8 @@ export const prints = pgTable("prints", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const packStatusEnum = pgEnum("pack_status", ["DRAFT", "IN_REVIEW", "APPROVED", "SENT", "PROTO_RECEIVED", "CLOSED"]);
+
 export const packs = pgTable(
   "packs",
   {
@@ -154,6 +166,15 @@ export const packs = pgTable(
     styleName: text("style_name").notNull(),
     colorways: jsonb("colorways").$type<string[]>().notNull().default(["-A"]),
     chineseOn: boolean("chinese_on").notNull().default(false),
+    status: packStatusEnum("status").notNull().default("DRAFT"),
+    factory: text("factory").notNull().default(""),
+    factoryStyleNo: text("factory_style_no").notNull().default(""),
+    /** Who asked for review, and the second designer who signed it off for export. */
+    reviewRequestedBy: uuid("review_requested_by").references(() => users.id),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** Pack the style was duplicated from (carry-over). */
+    copiedFrom: uuid("copied_from"),
     /** Last analyse_render output: visible features / not visible / notes. */
     aiAnalysis: jsonb("ai_analysis").$type<{
       visible_features: string[];
@@ -254,3 +275,60 @@ export type PackFile = typeof packFiles.$inferSelect;
 export type PackAnswer = typeof packAnswers.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];
 export type AnswerStatus = (typeof answerStatusEnum.enumValues)[number];
+
+/** Factory questions and our answers, so the next designer can see why something changed. */
+export const factoryQuestions = pgTable("factory_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  packId: uuid("pack_id")
+    .notNull()
+    .references(() => packs.id, { onDelete: "cascade" }),
+  askedBy: text("asked_by").notNull().default(""),
+  question: text("question").notNull(),
+  answer: text("answer").notNull().default(""),
+  answeredBy: uuid("answered_by").references(() => users.id),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sampleStageEnum = pgEnum("sample_stage", ["PROTO", "SMS", "PP", "TOP"]);
+
+/** A sample round (proto, salesman sample, pre-production, top of production). */
+export const sampleRounds = pgTable("sample_rounds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  packId: uuid("pack_id")
+    .notNull()
+    .references(() => packs.id, { onDelete: "cascade" }),
+  stage: sampleStageEnum("stage").notNull(),
+  number: integer("number").notNull().default(1),
+  receivedAt: text("received_at").notNull().default(""),
+  factory: text("factory").notNull().default(""),
+  verdict: text("verdict").notNull().default("PENDING"), // PENDING | APPROVED | APPROVED W/ COMMENTS | REJECTED
+  notes: text("notes").notNull().default(""),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Markup = { x: number; y: number; r: number; letter: string }[];
+
+export const sampleComments = pgTable("sample_comments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  roundId: uuid("round_id")
+    .notNull()
+    .references(() => sampleRounds.id, { onDelete: "cascade" }),
+  letter: text("letter").notNull(),
+  text: text("text").notNull(),
+  photoUrl: text("photo_url"),
+  markup: jsonb("markup").$type<Markup>().notNull().default([]),
+  status: text("status").notNull().default("OPEN"), // OPEN | ACCEPTED | REVISE
+  /** Comment this one was carried over from (previous round). */
+  carriedFrom: uuid("carried_from"),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PackStatus = (typeof packStatusEnum.enumValues)[number];
+export type SampleRound = typeof sampleRounds.$inferSelect;
+export type SampleComment = typeof sampleComments.$inferSelect;
+export type FactoryQuestion = typeof factoryQuestions.$inferSelect;

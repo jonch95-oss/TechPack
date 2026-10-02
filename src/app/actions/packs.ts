@@ -130,7 +130,12 @@ export async function saveAnswer(packId: string, questionId: string, value: unkn
         },
       });
   }
-  await db.update(packs).set({ updatedBy: user.id, updatedAt: now }).where(eq(packs.id, packId));
+  // Any change after review / sign-off sends the pack back to draft — the approval no longer covers it.
+  const reopen = p.status === "IN_REVIEW" || p.status === "APPROVED";
+  await db
+    .update(packs)
+    .set({ updatedBy: user.id, updatedAt: now, ...(reopen ? { status: "DRAFT" as const, reviewedBy: null, reviewedAt: null } : {}) })
+    .where(eq(packs.id, packId));
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, before: prev?.value ?? null, after: v });
   const loaded = await loadPack(packId);
   if (loaded) await rebuildLibraryUsage(packId, loaded.answers);
@@ -323,6 +328,8 @@ export async function applySpelling(packId: string, word: string, replacement: s
       .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, qid)));
     await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: qid, before: value, after: next });
   }
+  if (changed && (loaded.pack.status === "IN_REVIEW" || loaded.pack.status === "APPROVED"))
+    await db.update(packs).set({ status: "DRAFT", reviewedBy: null, reviewedAt: null }).where(eq(packs.id, packId));
   revalidatePath(`/packs/${packId}`);
   return { ok: true, changed };
 }

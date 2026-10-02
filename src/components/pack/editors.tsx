@@ -100,6 +100,8 @@ function Cell({ c, v, onChange, disabled, unitLabel }: { c: Column; v: unknown; 
 /* Materials list — each distinct material gets a yellow callout number */
 /* ------------------------------------------------------------------ */
 
+const DIRECTIONS = ["VERTICAL", "HORIZONTAL", "ONE-WAY (NAP / PRINT UP)", "ANY"];
+const MATCHING = ["NONE", "MATCH CHECKS AT SEAMS", "MATCH STRIPES AT SEAMS", "CENTRE MOTIF ON PANEL", "MIRROR ACROSS CENTRE"];
 const LOCATIONS = ["FRONT", "BACK", "FLAP", "GUSSET", "STRAP", "HANDLE", "BASE", "TRIM", "PIPING", "TAB", "LINING"];
 
 export function MaterialsEditor({ value, onChange, disabled }: { value: unknown; onChange: (v: MaterialEntry[]) => void; disabled?: boolean }) {
@@ -113,6 +115,16 @@ export function MaterialsEditor({ value, onChange, disabled }: { value: unknown;
           <div className="flex-1 min-w-0 space-y-4">
             <CommitText value={m.name} onCommit={(t) => onChange(list.map((x, j) => (j === i ? { ...x, name: t } : x)))} disabled={disabled} placeholder="MAIN BODY MTL" />
             <MultiChips options={LOCATIONS} value={m.locations} onChange={(locs) => onChange(list.map((x, j) => (j === i ? { ...x, locations: locs } : x)))} disabled={disabled} />
+            <div className="grid md:grid-cols-2 gap-x-6 gap-y-3">
+              <div>
+                <div className="eyebrow mb-1.5">Direction on the panels</div>
+                <ChipRow options={DIRECTIONS} value={m.direction} onChange={(v) => onChange(list.map((x, j) => (j === i ? { ...x, direction: v } : x)))} disabled={disabled} />
+              </div>
+              <div>
+                <div className="eyebrow mb-1.5">Pattern matching</div>
+                <ChipRow options={MATCHING} value={m.matching} onChange={(v) => onChange(list.map((x, j) => (j === i ? { ...x, matching: v } : x)))} disabled={disabled} />
+              </div>
+            </div>
           </div>
           {!disabled && (
             <button type="button" aria-label={`Remove material ${m.callout}`} onClick={() => onChange(renumber(list.filter((_, j) => j !== i)))} className="self-start w-8 h-8 text-taupe hover:text-signal">

@@ -13,6 +13,7 @@ import type {
 } from "./types";
 
 export * from "./types";
+export * from "./helpers";
 
 export type EvalContext = {
   category: Category;
@@ -24,8 +25,9 @@ export type EvalContext = {
 export function sectionsFor(category: Category): Section[] {
   const common = COMMON_SECTIONS;
   const head = common.filter((s) => ["header", "dims", "colorways"].includes(s.id));
-  const body = common.filter((s) => ["materials", "branding", "edge", "hardware", "interior"].includes(s.id));
-  const tail = common.filter((s) => !["header", "dims", "colorways", "materials", "branding", "edge", "hardware", "interior"].includes(s.id));
+  const BODY = ["materials", "branding", "edge", "construction", "hardware", "placements", "zippers", "interior", "pom", "bom"];
+  const body = BODY.map((id) => common.find((s) => s.id === id)!).filter(Boolean);
+  const tail = common.filter((s) => !["header", "dims", "colorways", ...BODY].includes(s.id));
   return [...head, ...CATEGORY_SECTIONS[category], ...body, ...tail];
 }
 
@@ -50,6 +52,7 @@ export function isEmpty(v: unknown): boolean {
 
 function answerOf(ctx: EvalContext, q: string): unknown {
   if (q === "$brand.licensorRequired") return ctx.brand?.licensorRequired ?? false;
+  if (q === "$hasZipper") return hasZipper(ctx);
   return ctx.answers[q];
 }
 
@@ -113,6 +116,7 @@ export type MatrixColumn = { key: string; label: string; lib?: "material" | "pri
 
 export function hasZipper(ctx: EvalContext): boolean {
   const a = ctx.answers;
+  if (!isEmpty(a["zippers.list"])) return true;
   if (a["hb.closure"] === "TOP ZIP") return true;
   if (!isEmpty(a["cos.zip_size"])) return true;
   if (!isEmpty(a["duf.zip_size"]) || !isEmpty(a["rduf.zip_size"])) return true;

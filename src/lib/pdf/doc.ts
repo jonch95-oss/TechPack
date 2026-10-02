@@ -1,12 +1,12 @@
 import "server-only";
-import { inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { hardware, materials, prints, users, type Hardware, type Material, type Print } from "@/db/schema";
+import { hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type Print } from "@/db/schema";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
 import { spellcheck } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
-import { isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue } from "@/lib/questions";
+import { contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, type Plan } from "./plan";
 
 export type Img = { src: string } | null;
@@ -130,12 +130,45 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   }
   if (typeof a["branding.offset"] === "number") measures.push({ label: `LOGO ${a["branding.offset_edge"] ? `ABOVE ${a["branding.offset_edge"]}` : "OFFSET"}`, value: `${trim(Number(a["branding.offset"]) / (unit === "in" ? 25.4 : 10))}${U}` });
 
+  /* ---------- points of measure, placements, zippers, construction, BOM ---------- */
+  const pom = ((a["pom.list"] as PomRow[] | undefined) ?? []).filter((r) => r.point);
+  const placements = ((a["placements.list"] as { item?: LibValue; qty?: number; from?: string; distance?: number; spacing?: number; note?: string }[] | undefined) ?? []).map((r) => {
+    const h = r.item ? hwById.get(r.item.id) : undefined;
+    return { code: h?.code ?? r.item?.label ?? "", type: h?.type ?? "", qty: r.qty, from: r.from ?? "", distance: r.distance, spacing: r.spacing, note: r.note ?? "" };
+  });
+  const zippers = ((a["zippers.list"] as Record<string, unknown>[] | undefined) ?? []).map((z) => ({
+    position: String(z.position ?? ""),
+    size: String(z.size ?? ""),
+    type: String(z.type ?? ""),
+    length: typeof z.length === "number" ? `${trim(z.length)}${U}` : "",
+    ends: String(z.ends ?? ""),
+    slider: String(z.slider ?? ""),
+    puller: (z.puller as LibValue | undefined)?.label ?? "",
+    attachment: String(z.attachment ?? ""),
+    tape: String(z.tape ?? ""),
+    teeth: String(z.teeth ?? ""),
+  }));
+  const construction = ((a["construction.list"] as Record<string, unknown>[] | undefined) ?? []).map((c) => ({
+    area: String(c.area ?? ""),
+    edge: String(c.edge ?? ""),
+    stitch: String(c.stitch ?? ""),
+    spi: typeof c.spi === "number" ? String(c.spi) : "",
+    thread: String(c.thread ?? ""),
+    allowance: typeof c.allowance === "number" ? `${c.allowance} MM` : "",
+  }));
+  const bom = ((a["bom.list"] as BomRow[] | undefined) ?? []).filter((r) => r.component || r.description);
+  const labels = contentLabel(a, p.pack.colorways, (id) => matById.get(id)?.composition || undefined);
+
+  /* ---------- latest sample round ---------- */
+  const [round] = await db.select().from(sampleRounds).where(eq(sampleRounds.packId, p.pack.id)).orderBy(desc(sampleRounds.createdAt)).limit(1);
+  const roundComments = round ? await db.select().from(sampleComments).where(eq(sampleComments.roundId, round.id)).orderBy(asc(sampleComments.letter)) : [];
+
   const features = ((a["pages.features"] as { text?: string }[] | undefined) ?? []).map((f) => f.text ?? "").filter(Boolean);
   const plan: Plan = planPages({
     hasInterior,
     productFeaturesOn: a["pages.product_features"] !== false,
     hasFeaturesOrRender: features.length > 0,
-    hasExtraMeasurements: measures.length > 0,
+    hasExtraMeasurements: measures.length > 0 || pom.length > 0 || placements.length > 0,
     colorwayRenderCount: cwRenders.length,
     referencePhotoCount: refs.filter((r) => !refOnMeasurements(r.tag, comments)).length,
     hasLiningArtwork: !!liningPrint,
@@ -144,6 +177,9 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     swatches: swatches.map((s) => ({ colorway: s.colorway, materialCallout: s.materialCallout })),
     swatchesOnOnePage: a["pages.swatches"] === "ALL ON ONE PAGE",
     revisionCount: 0,
+    hasConstruction: construction.length > 0,
+    hasBom: bom.length > 0 || zippers.length > 0,
+    hasSampleComments: roundComments.length > 0,
   });
 
   /* ---------- validation ---------- */
@@ -156,7 +192,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     statuses: p.statuses,
     colorways: p.pack.colorways,
     chineseOn: p.pack.chineseOn,
-    hardware: [...hwById.values()].map((h) => ({ id: h.id, code: h.code, type: h.type, dimsMm: h.dimsMm, finish: h.finish })),
+    hardware: [...hwById.values()].map((h) => ({ id: h.id, code: h.code, type: h.type, dimsMm: h.dimsMm, finish: h.finish, approval: h.approval?.status })),
+    materials: [...matById.values()].map((m) => ({ id: m.id, label: materialLabel(m), approval: m.approval?.status ?? "PENDING", composition: m.composition })),
     spelling,
   });
 
@@ -257,6 +294,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
         enamel: h.enamelPantone,
         construction: h.construction,
         notes: h.notes,
+        finishSpec: h.finishSpec ?? {},
+        approval: h.approval?.status ?? "PENDING",
         views: { front: await img(h.views.front), side: await img(h.views.side), rear: await img(h.views.rear) },
         photo: await img(h.photoUrl),
       })),
@@ -274,6 +313,29 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
         chipBox: s.material.chipBox,
       })),
     ),
+    pom,
+    placements,
+    zippers,
+    construction,
+    threadColour: (a["construction.thread_colour"] as string) ?? "",
+    materialLayout: matList.filter((m) => m.direction || m.matching).map((m) => ({ callout: m.callout, name: m.name, direction: m.direction ?? "", matching: m.matching ?? "" })),
+    bom,
+    contentLabels: labels,
+    tooling: {
+      artwork: (a["branding.artwork"] as { name?: string } | undefined)?.name ?? "",
+      depth: typeof a["branding.tool_depth"] === "number" ? `${a["branding.tool_depth"]} MM` : "",
+      newTooling: a["branding.new_tooling"] === true,
+    },
+    baseBoard: a["interior.base_board"] === true ? [a["interior.base_board_material"], a["interior.base_board_mm"] && `${a["interior.base_board_mm"]}MM`].filter(Boolean).join(" ") || "BASE BOARD" : "",
+    sampleRound: round
+      ? {
+          stage: round.stage,
+          number: round.number,
+          receivedAt: round.receivedAt,
+          verdict: round.verdict,
+          comments: await Promise.all(roundComments.map(async (c) => ({ letter: c.letter, text: c.text, status: c.status, markup: c.markup, carried: !!c.carriedFrom, img: await img(c.photoUrl) }))),
+        }
+      : null,
     plan,
     validation,
     spelling,

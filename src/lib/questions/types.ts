@@ -60,6 +60,8 @@ export type DimsQ = Base & { kind: "dims2"; unit: StepUnit };
 export type LibQ = Base & { kind: "lib"; lib: LibKind; hardwareTypes?: string[]; multi?: false };
 export type TextQ = Base & { kind: "text"; placeholder?: string };
 export type CommentQ = Base & { kind: "comment" };
+/** A file upload (e.g. vector logo artwork for the deboss die). Value: { url, name }. */
+export type FileQ = Base & { kind: "file"; accept?: string };
 export type DateQ = Base & { kind: "date_asap" };
 export type DerivedQ = Base & { kind: "derived"; from: string; unit: StepUnit };
 
@@ -93,6 +95,7 @@ export type Question =
   | LibQ
   | TextQ
   | CommentQ
+  | FileQ
   | DateQ
   | DerivedQ
   | RowsQ
@@ -111,7 +114,15 @@ export type Section = {
 
 /** Values stored for each kind. */
 export type LibValue = { id: string; label: string };
-export type MaterialEntry = { callout: number; name: string; locations: string[] };
+export type MaterialEntry = {
+  callout: number;
+  name: string;
+  locations: string[];
+  /** Grain / nap / print direction on the cut panels. */
+  direction?: string;
+  /** Pattern matching at seams (checks, stripes, placed prints). */
+  matching?: string;
+};
 export type MatrixCell = { lib?: LibValue; text?: string };
 export type MatrixValue = Record<string, Record<string, MatrixCell>>;
 export type Dims2Value = { w: number | null; h: number | null };

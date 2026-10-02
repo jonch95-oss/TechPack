@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { brands, hardware } from "@/db/schema";
 import { requireUser, can } from "@/lib/auth/dal";
 import { usedIn } from "@/lib/data";
-import { ButtonLink, Empty, PageHeader, Thumb } from "@/components/ui";
+import { Badge, ButtonLink, Empty, PageHeader, Thumb } from "@/components/ui";
 
 export default async function HardwarePage(props: PageProps<"/library/hardware">) {
   const user = await requireUser();
@@ -50,7 +50,7 @@ export default async function HardwarePage(props: PageProps<"/library/hardware">
         <table className="w-full text-[12.5px]">
           <thead>
             <tr className="text-left border-b border-ink">
-              {["", "Code", "Type", "Name", "Dims (mm)", "Finish", "Brand", "Used in"].map((h) => (
+              {["", "Code", "Type", "Name", "Dims (mm)", "Finish", "Approval", "Brand", "Used in"].map((h) => (
                 <th key={h} className="eyebrow py-3 pr-4 font-medium">{h}</th>
               ))}
             </tr>
@@ -68,6 +68,9 @@ export default async function HardwarePage(props: PageProps<"/library/hardware">
                 <td className="py-2 pr-4 text-ink-soft">{h.name}</td>
                 <td className="py-2 pr-4">{h.dimsMm}</td>
                 <td className="py-2 pr-4">{h.finish}</td>
+                <td className="py-2 pr-4">
+                  <Badge tone={h.approval?.status === "APPROVED" ? "ok" : h.approval?.status === "REJECTED" ? "signal" : "neutral"}>{h.approval?.status ?? "PENDING"}</Badge>
+                </td>
                 <td className="py-2 pr-4 text-taupe">{brand}</td>
                 <td className="py-2 pr-4 text-taupe">{(used.get(h.id) ?? []).join(", ")}</td>
               </tr>

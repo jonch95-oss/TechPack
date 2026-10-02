@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { hardware, materials, prints, type ChipBox, type FieldStatusMap, type PantoneColour } from "@/db/schema";
+import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type PantoneColour } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { checkComponentCode } from "@/lib/data";
@@ -35,6 +35,7 @@ export type MaterialInput = {
   finish: string;
   cardPhotoUrl: string | null;
   chipBox: ChipBox | null;
+  approval?: Approval;
   /** Fields the designer has confirmed (removes "AI-read — confirm"). */
   confirmFields?: string[];
 };
@@ -55,6 +56,7 @@ export async function saveMaterial(input: MaterialInput): Promise<ActionResult &
     finish: up(input.finish),
     cardPhotoUrl: input.cardPhotoUrl,
     chipBox: input.chipBox,
+    ...(input.approval ? { approval: cleanApproval(input.approval) } : {}),
     updatedBy: user.id,
     updatedAt: new Date(),
   };
@@ -151,6 +153,8 @@ export type HardwareInput = {
   construction: string;
   photoUrl: string | null;
   notes: string;
+  finishSpec?: FinishSpec;
+  approval?: Approval;
 };
 
 /** Live check while a designer types a code: errors block saving, warnings are called out. */
@@ -180,6 +184,8 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
     construction: up(input.construction),
     photoUrl: input.photoUrl,
     notes: up(input.notes),
+    ...(input.finishSpec ? { finishSpec: { ...input.finishSpec, plating: up(input.finishSpec.plating), coating: up(input.finishSpec.coating), mouldNo: up(input.finishSpec.mouldNo), platingThickness: up(input.finishSpec.platingThickness) } } : {}),
+    ...(input.approval ? { approval: cleanApproval(input.approval) } : {}),
     updatedBy: user.id,
     updatedAt: new Date(),
   };
@@ -263,4 +269,9 @@ export async function getMaterial(id: string) {
   await requireRole("viewer");
   const [m] = await db.select().from(materials).where(eq(materials.id, id));
   return m ?? null;
+}
+
+function cleanApproval(a: Approval): Approval {
+  const status = (["PENDING", "APPROVED", "REJECTED"] as const).includes(a.status) ? a.status : "PENDING";
+  return { status, type: up(a.type), date: a.date ?? "", note: up(a.note) };
 }

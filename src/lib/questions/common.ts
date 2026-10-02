@@ -68,6 +68,53 @@ export const POCKET_TYPES = [
 ];
 export const WALLS = ["BACK WALL", "FRONT WALL", "SIDE 1", "SIDE 2", "BASE", "DIVIDER"];
 
+export const POM_POINTS = [
+  "TOTAL HEIGHT",
+  "TOTAL WIDTH",
+  "TOTAL DEPTH",
+  "TOP WIDTH",
+  "BASE WIDTH",
+  "HANDLE DROP",
+  "HANDLE LENGTH",
+  "HANDLE WIDTH",
+  "STRAP TOTAL LENGTH",
+  "STRAP DROP",
+  "STRAP WIDTH",
+  "FLAP HEIGHT",
+  "FLAP OVERHANG",
+  "GUSSET WIDTH",
+  "ZIP OPENING",
+  "POCKET WIDTH",
+  "POCKET HEIGHT",
+  "LOGO OFFSET",
+];
+
+export const PLACEMENT_FROM = ["FROM TOP EDGE", "FROM SIDE SEAM", "FROM FLAP EDGE", "FROM BASE", "FROM CENTRE", "FROM HANDLE BASE"];
+
+export const ZIP_SIZES = ["#3", "#5", "#8", "#10"];
+export const ZIP_TYPES_ALL = ["COIL", "METAL", "MOLDED", "PLASTIC W/ METAL FINISH"];
+
+export const EDGE_CONSTRUCTIONS = ["TURNED EDGE", "RAW EDGE PAINTED", "PIPED", "BOUND", "FOLDED & STITCHED", "BONDED & PAINTED"];
+export const CONSTRUCTION_AREAS = ["BODY SEAMS", "FLAP EDGE", "TOP EDGE", "GUSSET SEAMS", "HANDLE", "STRAP", "POCKET EDGE", "BASE SEAM", "LINING SEAMS"];
+
+export const BOM_COMPONENTS = [
+  "MAIN MATERIAL",
+  "TRIM",
+  "LINING",
+  "INTERLINING",
+  "BOARD",
+  "FOAM / PADDING",
+  "THREAD",
+  "PIPING CORD",
+  "EDGE PAINT",
+  "ZIPPER",
+  "ZIPPER PULL",
+  "WEBBING",
+  "HARDWARE",
+  "LABEL",
+  "PACKAGING",
+];
+
 /** Categories whose common block includes an interior. */
 const INTERIOR_CATEGORIES = [
   "Handbags",
@@ -210,6 +257,22 @@ export const COMMON_SECTIONS: Section[] = [
       },
       { id: "branding.finish", label: "Logo finish", kind: "chips", options: [...HARDWARE_FINISHES, "DTM", "TONAL"] },
       { id: "branding.fill", label: "Fill / inlay colour (Pantone)", kind: "text", placeholder: "e.g. PANTONE 203 C / GUNMETAL" },
+      {
+        id: "branding.artwork",
+        label: "Logo artwork (vector, for the die / mould)",
+        kind: "file",
+        accept: ".ai,.eps,.svg,.pdf",
+        help: "The vector file the factory cuts the deboss die, emboss plate or mould from.",
+      },
+      {
+        id: "branding.tool_depth",
+        label: "Deboss depth / emboss height",
+        kind: "stepper",
+        unit: "mm",
+        step: 0.1,
+        showIf: { q: "branding.logo_type", in: ["DEBOSS PATCH", "EMBOSS", "TONAL HEAT STAMP", "FOIL HEAT STAMP", "ENGRAVED HARDWARE", "METAL LOGO PLATE"] },
+      },
+      { id: "branding.new_tooling", label: "New die / mould needed", kind: "toggle" },
     ],
   },
   {
@@ -315,6 +378,7 @@ export const COMMON_SECTIONS: Section[] = [
           { key: "h", label: "H (blank = remaining height)", kind: "stepper", unit: "dim" },
           { key: "top_offset", label: "From top", kind: "stepper", unit: "dim", required: true },
           { key: "centered", label: "Centered", kind: "toggle" },
+          { key: "construction", label: "Pocket construction", kind: "chips", options: ["FLAT", "GUSSETED", "BELLOWS", "PLEATED"] },
           { key: "zip_size", label: "Zip size", kind: "chips", options: ["#3", "#5", "#8"], showIf: { key: "type", in: ["ZIP POCKET"] } },
           { key: "qty", label: "Qty", kind: "stepper", unit: "qty", showIf: { key: "type", in: ["CARD SLOTS", "ELASTIC LOOPS"] } },
         ],
@@ -333,6 +397,125 @@ export const COMMON_SECTIONS: Section[] = [
       { id: "interior.label_centered", label: "Label centered", kind: "toggle" },
       { id: "interior.seam_binding", label: "Interior binding on seams", kind: "toggle", visibility: "inferred" },
       { id: "interior.compartments", label: "Compartments", kind: "stepper", unit: "qty", visibility: "inferred" },
+      { id: "interior.base_board", label: "Base board / insert", kind: "toggle", visibility: "inferred" },
+      { id: "interior.base_board_mm", label: "Base board thickness", kind: "stepper", unit: "mm", step: 0.5, showIf: { q: "interior.base_board", eq: true } },
+      { id: "interior.base_board_material", label: "Base board material", kind: "chips", options: ["EVA", "PE BOARD", "LEATHERBOARD", "CARDBOARD", "PLASTIC"], showIf: { q: "interior.base_board", eq: true } },
+    ],
+  },
+  {
+    id: "construction",
+    title: "Construction",
+    showIf: { category: [...BODY_CATEGORIES] },
+    questions: [
+      {
+        id: "construction.list",
+        label: "Edges and seams — cross-section per area",
+        kind: "rows",
+        required: true,
+        addLabel: "Add area",
+        help: "Each area prints as a cross-section on the construction page.",
+        columns: [
+          { key: "area", label: "Area", kind: "chips", options: CONSTRUCTION_AREAS, required: true },
+          { key: "edge", label: "Edge / seam", kind: "chips", options: EDGE_CONSTRUCTIONS, required: true },
+          { key: "stitch", label: "Stitch", kind: "chips", options: ["LOCKSTITCH 301", "CHAINSTITCH 401", "SADDLE STITCH", "NO STITCH"], required: true },
+          { key: "spi", label: "SPI", kind: "stepper", unit: "spi" },
+          { key: "thread", label: "Thread", kind: "chips", options: ["BONDED NYLON TEX 40", "BONDED NYLON TEX 70", "BONDED NYLON TEX 90", "BONDED NYLON TEX 135", "POLYESTER TEX 70"] },
+          { key: "allowance", label: "Seam allowance", kind: "stepper", unit: "mm" },
+        ],
+      },
+      { id: "construction.thread_colour", label: "Thread colour", kind: "chips", options: ["DTM", "CONTRAST", "BLACK", "WHITE", "TONAL"], required: true },
+    ],
+  },
+  {
+    id: "placements",
+    title: "Hardware placement",
+    showIf: { category: [...BODY_CATEGORIES] },
+    questions: [
+      {
+        id: "placements.list",
+        label: "Placement in mm — every snap, ring, rivet, foot and lock",
+        kind: "rows",
+        addLabel: "Add placement",
+        help: "“Spaced evenly” isn't measurable — give the distance from an edge and the spacing centre to centre.",
+        columns: [
+          { key: "item", label: "Component", kind: "lib", lib: "hardware", required: true },
+          { key: "qty", label: "Qty", kind: "stepper", unit: "qty", required: true },
+          { key: "from", label: "Measured", kind: "chips", options: PLACEMENT_FROM, required: true },
+          { key: "distance", label: "Distance", kind: "stepper", unit: "mm", required: true },
+          { key: "spacing", label: "Spacing c/c", kind: "stepper", unit: "mm" },
+          { key: "note", label: "Note", kind: "text" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "zippers",
+    title: "Zippers",
+    showIf: { q: "$hasZipper", eq: true },
+    questions: [
+      {
+        id: "zippers.list",
+        label: "Zipper spec — one row per zipper",
+        kind: "rows",
+        required: true,
+        addLabel: "Add zipper",
+        columns: [
+          { key: "position", label: "Position", kind: "chips", options: ["MAIN", "FRONT POCKET", "BACK POCKET", "INTERIOR POCKET", "EXPANSION", "SIDE"], required: true },
+          { key: "size", label: "Size", kind: "chips", options: ZIP_SIZES, required: true, noOther: true },
+          { key: "type", label: "Type", kind: "chips", options: ZIP_TYPES_ALL, required: true },
+          { key: "length", label: "Opening length", kind: "stepper", unit: "dim", required: true },
+          { key: "ends", label: "Ends", kind: "chips", options: ["CLOSED END", "OPEN END", "TWO-WAY"], required: true },
+          { key: "slider", label: "Slider", kind: "chips", options: ["AUTO-LOCK", "NON-LOCK", "PIN-LOCK", "REVERSIBLE", "DOUBLE SLIDER"], required: true },
+          { key: "puller", label: "Puller", kind: "lib", lib: "hardware", hardwareTypes: ["ZIPPER PULL"] },
+          { key: "attachment", label: "Puller attachment", kind: "chips", options: ["DIRECT", "CORD LOOP", "JUMP RING", "LEATHER TAB"] },
+          { key: "tape", label: "Tape colour", kind: "chips", options: ["DTM", "BLACK", "CONTRAST", "PER COLOURWAY"], required: true },
+          { key: "teeth", label: "Teeth colour", kind: "chips", options: ["DTM", ...HARDWARE_FINISHES], required: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: "pom",
+    title: "Points of measure",
+    showIf: { category: [...BODY_CATEGORIES] },
+    questions: [
+      {
+        id: "pom.list",
+        label: "Points of measure — value, tolerance and how to measure",
+        kind: "rows",
+        required: true,
+        addLabel: "Add point of measure",
+        help: "Load the template for this silhouette, then fill values. Values already answered above are copied in; nothing is guessed.",
+        columns: [
+          { key: "point", label: "Point", kind: "chips", options: POM_POINTS, required: true },
+          { key: "value", label: "Value", kind: "stepper", unit: "dim", required: true },
+          { key: "tol", label: "Tolerance ±", kind: "stepper", unit: "dim", required: true },
+          { key: "how", label: "How to measure", kind: "text", required: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: "bom",
+    title: "Bill of materials",
+    showIf: { category: [...BODY_CATEGORIES] },
+    questions: [
+      {
+        id: "bom.list",
+        label: "Every component, including what you can't see — quantities only, no prices",
+        kind: "rows",
+        required: true,
+        addLabel: "Add component",
+        help: "Build it from your answers, then add the hidden parts (interlining, board, foam, thread, glue).",
+        columns: [
+          { key: "component", label: "Component", kind: "chips", options: BOM_COMPONENTS, required: true },
+          { key: "description", label: "Description / code", kind: "text", required: true },
+          { key: "qty", label: "Qty per bag", kind: "stepper", unit: "qty" },
+          { key: "unit", label: "Unit", kind: "chips", options: ["PC", "PAIR", "SET", "CM", "M", "YD", "FTY TO CONFIRM"], required: true, noOther: true },
+          { key: "placement", label: "Placement", kind: "text" },
+          { key: "colour", label: "Colour", kind: "text" },
+        ],
+      },
     ],
   },
   {

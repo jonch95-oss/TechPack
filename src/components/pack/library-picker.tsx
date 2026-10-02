@@ -9,7 +9,7 @@ import { HardwareForm } from "@/components/library/hardware-form";
 import { PrintForm } from "@/components/library/print-form";
 import { Button, SwatchThumb, cx } from "@/components/ui";
 
-type Opt = { id: string; label: string; sub: string; photo: string | null; type?: string; brandId?: string | null; chipBox?: { x: number; y: number; w: number; h: number } | null };
+type Opt = { id: string; label: string; sub: string; photo: string | null; type?: string; brandId?: string | null; chipBox?: { x: number; y: number; w: number; h: number } | null; composition?: string; approval?: string };
 
 type Ctx = {
   options: Record<LibKind, Opt[]>;

@@ -64,6 +64,10 @@ table { border-collapse: collapse; }
 .big-label { font-size: 18pt; }
 .dim { color: #e2231a; font-size: 13pt; }
 .box { border: 1.5px solid #111; padding: 10px 14px; }
+table.spec { width: 100%; border: 1.5px solid #111; font-size: 8.5pt; }
+table.spec th, table.spec td { border: 1px solid #111; padding: 3px 5px; text-align: center; vertical-align: middle; }
+table.spec th { background: #111; color: #fff; font-size: 8pt; }
+table.spec td.code { font-size: 9pt; white-space: nowrap; }
 ul.feat { margin: 0; padding-left: 0; list-style: none; font-size: 11pt; line-height: 1.6; }
 ul.feat li::before { content: "-  "; }
 `;
@@ -183,6 +187,41 @@ function measurementsPage(doc: PackDoc, n: number) {
     typeof d.d === "number" ? `${d.d}${doc.U} TOTAL DEPTH` : "",
   ].filter(Boolean);
   const detailRef = doc.references.find((r) => r.onMeasurements);
+  const tables = doc.pom.length > 0 || doc.placements.length > 0;
+  const pomTable = doc.pom.length
+    ? `<table class="spec"><tr><th>POM</th><th style="text-align:left">POINT OF MEASURE</th><th>VALUE</th><th>TOL ±</th><th style="text-align:left">HOW TO MEASURE</th></tr>${doc.pom
+        .map((r, i) => `<tr><td class="code">M${String(i + 1).padStart(2, "0")}</td><td style="text-align:left">${up(r.point)}</td><td class="red">${r.value != null ? `${r.value}${esc(doc.U)}` : ""}</td><td>${r.tol != null ? `${r.tol}${esc(doc.U)}` : ""}</td><td style="text-align:left;font-size:7.5pt">${up(r.how)}</td></tr>`)
+        .join("")}</table>`
+    : "";
+  const placementTable = doc.placements.length
+    ? `<div class="small" style="margin:10px 0 3px">HARDWARE PLACEMENT (MM)</div><table class="spec"><tr><th>CODE</th><th style="text-align:left">COMPONENT</th><th>QTY</th><th style="text-align:left">MEASURED</th><th>DISTANCE</th><th>SPACING C/C</th><th style="text-align:left">NOTE</th></tr>${doc.placements
+        .map((r) => `<tr><td class="code">${up(r.code)}</td><td style="text-align:left">${up(r.type)}</td><td>${r.qty ?? ""}</td><td style="text-align:left">${up(r.from)}</td><td class="red">${r.distance != null ? `${r.distance} MM` : ""}</td><td class="red">${r.spacing != null ? `${r.spacing} MM` : ""}</td><td style="text-align:left">${up(r.note)}</td></tr>`)
+        .join("")}</table>`
+    : "";
+  if (tables)
+    return `<section class="page">
+    ${head(doc, n, "MEASUREMENTS SHEET")}
+    <div style="position:absolute;left:0.4in;top:1.45in;width:5.6in">${commentsFor(doc, "MEASUREMENTS SHEET")}</div>
+    <div style="position:absolute;left:0.4in;top:2.6in;width:6.2in;height:4.6in">${doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;height:100%"/>` : ""}</div>
+    <div style="position:absolute;left:0.4in;top:7.35in;width:6.2in;columns:2;column-gap:0.3in;font-size:10pt;line-height:1.5">
+      ${overall.map((o) => `<div class="red">${esc(o)}</div>`).join("")}
+      ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}</div>`).join("")}
+      ${doc.logo.type ? `<div>LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)})</div>` : ""}
+      ${doc.gussetNote ? `<div>${up(doc.gussetNote)}</div>` : ""}
+      ${doc.strapNote ? `<div>${up(doc.strapNote)}</div>` : ""}
+    </div>
+    <div style="position:absolute;left:6.9in;top:2.6in;width:6.3in">${pomTable}${placementTable}</div>
+    ${
+      detailRef || doc.closure
+        ? `<div style="position:absolute;right:0.4in;top:1.45in;width:3.1in;text-align:center">
+        <div class="label">${up(doc.closure.split(" — ")[0] || detailRef?.note || "")}</div>
+        ${detailRef?.img ? `<img class="img" src="${detailRef.img.src}" style="width:3in;height:3in;margin:6px auto"/>` : ""}
+        ${detailRef ? `<span class="bubble" style="width:30px;height:30px;font-size:15pt">${esc(detailRef.letter)}</span>` : ""}
+        ${doc.closure.includes(" — ") ? `<div class="small" style="margin-top:6px">${up(doc.closure.split(" — ")[1])}</div>` : ""}
+      </div>`
+        : ""
+    }
+  </section>`;
   return `<section class="page">
     ${head(doc, n, "MEASUREMENTS SHEET")}
     <div style="position:absolute;left:0.4in;top:1.45in;width:5.6in">${commentsFor(doc, "MEASUREMENTS SHEET")}</div>
@@ -313,8 +352,45 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
       <div style="text-align:center"><div class="label">${wallTitle}<br/>W/ LINING</div>${wallSvg(doc, "lining", dw, dw * ratio)}</div>
       ${withArtwork ? `<div style="width:3.2in">${artworkBlock(doc, 3)}</div>` : ""}
     </div>
-    <div style="position:absolute;left:0.4in;bottom:0.4in;font-size:10pt;line-height:1.5">${pocketList}${i.pocketEdge ? `<br/>POCKET EDGE: ${up(i.pocketEdge)}` : ""}${i.seamBinding ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}</div>
+    <div style="position:absolute;left:0.4in;top:7.75in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>
+    <div style="position:absolute;right:0.4in;bottom:0.4in;width:5.4in;font-size:10pt;line-height:1.5">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${pocketList}${i.pocketEdge ? `<br/>POCKET EDGE: ${up(i.pocketEdge)}` : ""}${i.seamBinding ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}</div>
   </section>`;
+}
+
+/** Every inside wall — front, back, both sides and the base — with its pockets (or NO POCKET). */
+function allWalls(doc: PackDoc) {
+  const W = doc.dims.w,
+    H = doc.dims.h,
+    D = doc.dims.d;
+  if (W == null || H == null || D == null) return "";
+  const walls: { name: string; w: number; h: number }[] = [
+    { name: "FRONT WALL", w: W, h: H },
+    { name: "BACK WALL", w: W, h: H },
+    { name: "SIDE 1", w: D, h: H },
+    { name: "SIDE 2", w: D, h: H },
+    { name: "BASE", w: W, h: D },
+  ];
+  const maxH = 1.6 * 72,
+    maxW = 2.0 * 72;
+  const scale = Math.min(...walls.map((x) => Math.min(maxH / x.h, maxW / x.w)));
+  return walls
+    .map((wall) => {
+      const ws = wall.w * scale,
+        hs = wall.h * scale;
+      const pk = doc.interior.pockets.filter((p) => p.wall === wall.name);
+      const rects = pk
+        .map((p, i) => {
+          const pw = (p.w ?? wall.w * 0.7) * scale,
+            top = (p.top_offset ?? wall.h * 0.12) * scale,
+            ph = (p.h ?? wall.h * 0.55) * scale;
+          return `<rect x="${(ws - pw) / 2}" y="${top + i * 4}" width="${pw}" height="${Math.min(ph, hs - top - 2)}" fill="#fff" stroke="#111" stroke-dasharray="3 2"/>`;
+        })
+        .join("");
+      const board = wall.name === "BASE" && doc.baseBoard ? `<rect x="3" y="3" width="${ws - 6}" height="${hs - 6}" fill="none" stroke="#e2231a" stroke-dasharray="5 3"/>` : "";
+      const caption = pk.length ? pk.map((p) => up(p.type)).join(", ") : wall.name === "BASE" && doc.baseBoard ? "BASE BOARD" : "NO POCKET";
+      return `<div style="text-align:center;font-size:8pt"><svg width="${ws}" height="${hs}" xmlns="http://www.w3.org/2000/svg"><rect width="${ws}" height="${hs}" fill="#f2f2f2" stroke="#111"/>${rects}${board}</svg><div style="margin-top:3px">${wall.name}</div><div class="muted" style="font-size:7pt">${caption}</div></div>`;
+    })
+    .join("");
 }
 
 /* ------------------------------ 7. LINING / PRINT ARTWORK ------------------------------ */
@@ -354,7 +430,21 @@ function detailPage(doc: PackDoc, n: number) {
       const size = (v?: number) => (v ? `${v}mm` : "auto");
       const view = (k: "front" | "side" | "rear", label: string) =>
         h.views[k] ? `<div style="text-align:center"><img src="${h.views[k]!.src}" style="width:${size(k === "side" ? undefined : wmm)};height:${size(hmm)};object-fit:contain"/><div class="small">${label}</div></div>` : "";
-      const notes = [h.material, h.finish, h.logoTreatment, h.enamel && `ENAMEL ${h.enamel}`, h.construction, h.notes].filter(Boolean);
+      const fs = h.finishSpec as { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
+      const notes = [
+        h.material,
+        h.finish,
+        fs.plating && `PLATING: ${fs.plating}${fs.platingThickness ? ` ${fs.platingThickness}` : ""}`,
+        fs.coating && `COATING: ${fs.coating}`,
+        fs.nickelFree && "NICKEL-FREE",
+        fs.mouldNo && `MOULD NO. ${fs.mouldNo}`,
+        fs.newMould && "NEW MOULD REQUIRED",
+        h.logoTreatment,
+        h.enamel && `ENAMEL ${h.enamel}`,
+        h.construction,
+        h.notes,
+        h.approval !== "APPROVED" && `SAMPLE APPROVAL: ${h.approval}`,
+      ].filter(Boolean);
       return `<div class="box" style="display:flex;gap:0.3in;align-items:flex-start;margin-bottom:0.2in">
         <div style="width:2in"><div class="label">${up(h.type)}<br/>${up(h.code)}</div><div style="font-size:11pt;margin-top:4px">${esc(h.dimsMm)} MM</div>
           <div style="display:inline-block;margin-top:8px;padding:3px 12px;border-radius:12px;background:#5ab4e6;color:#fff;font-size:11pt">SIZE 100%</div></div>
@@ -372,13 +462,115 @@ function detailPage(doc: PackDoc, n: number) {
           <div class="dim" style="position:absolute;left:0;top:0.3in;height:${lp.h}mm;display:flex;align-items:center;font-size:11pt;writing-mode:vertical-rl;transform:rotate(180deg)">${lp.h}MM</div>
           <div style="width:${lp.w}mm;height:${lp.h}mm;border:1.5px solid #111;display:flex;align-items:center;justify-content:center;font-size:8pt;outline:1px dashed #111;outline-offset:-4px">${up(doc.brand.name)}</div>
         </div>
-        <div style="text-align:center"><div class="label">LOGO ${up(doc.logo.type.replace(" PATCH", ""))}${doc.logo.fill ? ` WITH ${up(doc.logo.fill)}` : ""}</div>${lp.photo ? `<img class="img" src="${lp.photo.src}" style="width:2.4in;height:1in;margin-top:6px"/>` : ""}</div>
+        <div style="text-align:center"><div class="label">LOGO ${up(doc.logo.type.replace(" PATCH", ""))}${doc.logo.fill ? ` WITH ${up(doc.logo.fill)}` : ""}</div>${toolingNote(doc)}${lp.photo ? `<img class="img" src="${lp.photo.src}" style="width:2.4in;height:1in;margin-top:6px"/>` : ""}</div>
       </div>`
     : "";
   return `<section class="page">
     ${head(doc, n, "HARDWARE / BRANDING DETAIL")}
     <div style="margin-top:0.35in">${panels}${logo}</div>
     <div style="position:absolute;right:0.4in;top:1.45in;width:4in">${commentsFor(doc, "HARDWARE / BRANDING DETAIL")}</div>
+  </section>`;
+}
+
+function toolingNote(doc: PackDoc) {
+  const t = doc.tooling;
+  const lines = [t.depth && `DEPTH / HEIGHT: ${t.depth}`, t.newTooling && "NEW DIE / MOULD REQUIRED", t.artwork && `ARTWORK FILE: ${t.artwork}`].filter(Boolean);
+  return lines.length ? `<div style="font-size:9.5pt;color:#1a8bd0;margin-top:4px;line-height:1.4">${lines.map((l) => up(l)).join("<br/>")}</div>` : "";
+}
+
+/* ------------------------------ CONSTRUCTION DETAILS ------------------------------ */
+function crossSection(edge: string) {
+  const L = (y: number) => `<rect x="10" y="${y}" width="120" height="8" fill="#ddd" stroke="#111"/>`;
+  const stitch = (x: number) => `<line x1="${x}" y1="10" x2="${x}" y2="58" stroke="#e2231a" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+  const svg = (inner: string) => `<svg width="150" height="70" viewBox="0 0 150 70" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  switch (edge) {
+    case "TURNED EDGE":
+      return svg(`${L(20)}${L(40)}<path d="M130 20 q14 14 0 28" fill="none" stroke="#111" stroke-width="8"/>${stitch(110)}`);
+    case "RAW EDGE PAINTED":
+      return svg(`${L(22)}${L(32)}<rect x="128" y="20" width="6" height="22" fill="#e2231a"/>${stitch(115)}`);
+    case "PIPED":
+      return svg(`${L(16)}${L(46)}<circle cx="132" cy="35" r="9" fill="#fff" stroke="#111" stroke-width="2"/><path d="M110 24 q22 0 22 11 q0 11 -22 11" fill="none" stroke="#111" stroke-width="3"/>${stitch(112)}`);
+    case "BOUND":
+      return svg(`${L(26)}${L(36)}<path d="M100 20 h32 q8 0 8 8 v14 q0 8 -8 8 h-32" fill="none" stroke="#111" stroke-width="5"/>${stitch(112)}`);
+    case "FOLDED & STITCHED":
+      return svg(`${L(24)}<path d="M10 40 h118 q8 -8 0 -16" fill="none" stroke="#111" stroke-width="8"/>${stitch(105)}`);
+    case "BONDED & PAINTED":
+      return svg(`${L(24)}<rect x="10" y="32" width="120" height="3" fill="#c79a3b"/>${L(35)}<rect x="128" y="22" width="6" height="23" fill="#e2231a"/>`);
+    default:
+      return svg(`${L(26)}${L(36)}${stitch(110)}`);
+  }
+}
+
+function constructionPage(doc: PackDoc, n: number) {
+  const rows = doc.construction;
+  return `<section class="page">
+    ${head(doc, n, "CONSTRUCTION DETAILS")}
+    <div style="position:absolute;left:5in;top:0.5in;width:7.8in">${commentsFor(doc, "CONSTRUCTION DETAILS")}</div>
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:0.25in;margin-top:0.55in">
+      ${rows
+        .map(
+          (r) => `<div class="box" style="display:flex;gap:12px;align-items:center">${crossSection(r.edge)}<div style="font-size:9.5pt;line-height:1.4"><div style="font-size:11pt">${up(r.area)}</div>${up(r.edge)}<br/>${up(r.stitch)}${r.spi ? ` · ${esc(r.spi)} SPI` : ""}${r.thread ? `<br/>${up(r.thread)}` : ""}${r.allowance ? `<br/>SEAM ALLOWANCE ${up(r.allowance)}` : ""}</div></div>`,
+        )
+        .join("")}
+    </div>
+    <div style="display:flex;gap:0.5in;margin-top:0.35in;font-size:10.5pt;line-height:1.6">
+      ${doc.threadColour ? `<div>THREAD COLOUR: ${up(doc.threadColour)}</div>` : ""}
+      ${
+        doc.materialLayout.length
+          ? `<div>${doc.materialLayout.map((m) => `<div style="display:flex;gap:8px;align-items:center"><span class="callout" style="width:20px;height:20px;font-size:10pt">${m.callout}</span>${up(m.name)}${m.direction ? ` — DIRECTION: ${up(m.direction)}` : ""}${m.matching && m.matching !== "NONE" ? ` — <span class="red">${up(m.matching)}</span>` : ""}</div>`).join("")}</div>`
+          : ""
+      }
+    </div>
+  </section>`;
+}
+
+/* ------------------------------ BILL OF MATERIALS ------------------------------ */
+function bomPage(doc: PackDoc, n: number) {
+  const zip = doc.zippers.length
+    ? `<div class="small" style="margin:14px 0 3px">ZIPPERS</div><table class="spec"><tr><th>POSITION</th><th>SIZE</th><th>TYPE</th><th>OPENING</th><th>ENDS</th><th>SLIDER</th><th>PULLER</th><th>ATTACHMENT</th><th>TAPE</th><th>TEETH</th></tr>${doc.zippers
+        .map((z) => `<tr><td>${up(z.position)}</td><td>${up(z.size)}</td><td>${up(z.type)}</td><td class="red">${esc(z.length)}</td><td>${up(z.ends)}</td><td>${up(z.slider)}</td><td>${up(z.puller)}</td><td>${up(z.attachment)}</td><td>${up(z.tape)}</td><td>${up(z.teeth)}</td></tr>`)
+        .join("")}</table>`
+    : "";
+  const labels = Object.entries(doc.contentLabels).filter(([, v]) => v.text);
+  const content = labels.length
+    ? `<div class="small" style="margin:14px 0 3px">CONTENT LABEL (FROM THE MATERIAL LIBRARY)</div><table class="spec">${labels.map(([cw, v]) => `<tr><td class="code" style="width:1.6in">${up(doc.pack.styleNo)}${esc(cw)}</td><td style="text-align:left">${up(v.text)}${v.missing.length ? ` <span class="red">— COMPOSITION MISSING: ${up(v.missing.join(", "))}</span>` : ""}</td></tr>`).join("")}</table>`
+    : "";
+  return `<section class="page">
+    ${head(doc, n, "BILL OF MATERIALS")}
+    <div class="small muted" style="position:absolute;left:5in;top:0.55in">QUANTITIES PER FINISHED BAG. NO PRICES — COSTING BY FACTORY. “FTY TO CONFIRM” = FACTORY TO CONFIRM CONSUMPTION.</div>
+    <div style="margin-top:0.45in">
+      ${
+        doc.bom.length
+          ? `<table class="spec"><tr><th>#</th><th>COMPONENT</th><th style="text-align:left">DESCRIPTION / CODE</th><th>QTY</th><th>UNIT</th><th style="text-align:left">PLACEMENT</th><th style="text-align:left">COLOUR</th></tr>${doc.bom
+              .map((r, i) => `<tr><td>${i + 1}</td><td>${up(r.component)}</td><td style="text-align:left">${up(r.description)}</td><td>${r.qty ?? ""}</td><td>${up(r.unit)}</td><td style="text-align:left">${up(r.placement)}</td><td style="text-align:left">${up(r.colour)}</td></tr>`)
+              .join("")}</table>`
+          : ""
+      }
+      ${zip}${content}
+    </div>
+  </section>`;
+}
+
+/* ------------------------------ SAMPLE COMMENTS ------------------------------ */
+function samplePage(doc: PackDoc, n: number) {
+  const r = doc.sampleRound!;
+  const stage = { PROTO: "PROTO", SMS: "SALESMAN SAMPLE", PP: "PRE-PRODUCTION", TOP: "TOP OF PRODUCTION" }[r.stage] ?? r.stage;
+  return `<section class="page">
+    ${head(doc, n, "SAMPLE COMMENTS")}
+    <div style="position:absolute;left:5in;top:0.5in;font-size:15pt">${esc(stage)} ${r.number > 1 ? `#${r.number}` : ""} — ${up(r.verdict)}${r.receivedAt ? ` <span class="small muted">RECEIVED ${esc(r.receivedAt)}</span>` : ""}</div>
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:0.3in;margin-top:0.6in">
+      ${r.comments
+        .map(
+          (c) => `<div>
+        <div style="position:relative;width:100%;height:3.2in;background:#f4f4f4">
+          ${c.img ? `<img src="${c.img.src}" style="width:100%;height:100%;object-fit:contain"/>` : ""}
+          ${c.markup.map((m) => `<div style="position:absolute;left:${m.x * 100}%;top:${m.y * 100}%;width:${m.r * 200}%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #e2231a;border-radius:50%"></div><span class="bubble" style="position:absolute;left:${m.x * 100}%;top:${m.y * 100}%;transform:translate(60%,-160%)">${esc(m.letter || c.letter)}</span>`).join("")}
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:10.5pt;line-height:1.3"><span class="bubble">${esc(c.letter)}</span><span>${up(c.text)}<br/><span class="${c.status === "OPEN" || c.status === "REVISE" ? "red" : "muted"}" style="font-size:8.5pt">${up(c.status)}${c.carried ? " · CARRIED FROM LAST ROUND" : ""}</span></span></div>
+      </div>`,
+        )
+        .join("")}
+    </div>
   </section>`;
 }
 
@@ -448,6 +640,12 @@ export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
           return detailPage(doc, p.n);
         case "SWATCH CARDS":
           return swatchPage(doc, p.n, p.swatches);
+        case "CONSTRUCTION DETAILS":
+          return constructionPage(doc, p.n);
+        case "BILL OF MATERIALS":
+          return bomPage(doc, p.n);
+        case "SAMPLE COMMENTS":
+          return samplePage(doc, p.n);
         case "CHANGE LOG":
           return "";
       }

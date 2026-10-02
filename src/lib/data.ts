@@ -130,6 +130,8 @@ export async function libraryOptions() {
       sub: [m.composition, m.thickness].filter(Boolean).join(" · "),
       photo: m.cardPhotoUrl,
       chipBox: m.chipBox,
+      composition: m.composition,
+      approval: m.approval?.status ?? "PENDING",
     })),
     hardware: hws.map((h) => ({
       id: h.id,

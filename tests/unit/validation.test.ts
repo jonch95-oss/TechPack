@@ -97,3 +97,34 @@ describe("validation gate (Part 5)", () => {
     expect(find(r, "Comment A isn't on any page")).toBeUndefined();
   });
 });
+
+describe("technical-designer rules", () => {
+  const hw = [{ id: "s1", code: "PL-HW001", type: "MAGNETIC SNAP", dimsMm: "14", finish: "GOLD", approval: "PENDING" }];
+  const withSnap = { ...base, hardware: hw, answers: { "hardware.items": [{ item: { id: "s1", label: "PL-HW001" }, qty: 1 }], "hb.closure.snap_spacing": "SPACED EVENLY" } };
+
+  it("needs hardware placement in mm, and rejects “spaced evenly” without it", () => {
+    const r = validatePack(withSnap);
+    expect(find(r, /Placement of PL-HW001/)?.status).toBe("fail");
+    expect(find(r, "Snaps “spaced evenly”")?.status).toBe("fail");
+    const ok = validatePack({ ...withSnap, answers: { ...withSnap.answers, "placements.list": [{ item: { id: "s1", label: "PL-HW001" }, distance: 25 }] } });
+    expect(find(ok, "Hardware placement given in mm")?.status).toBe("pass");
+    expect(find(ok, "Snaps “spaced evenly”")).toBeUndefined();
+  });
+
+  it("warns on pending approvals and missing pattern matching", () => {
+    const r = validatePack({
+      ...withSnap,
+      materials: [{ id: "m1", label: "GINGHAM", approval: "PENDING", composition: "" }],
+      answers: { ...withSnap.answers, "materials.list": [{ callout: 1, name: "GINGHAM CHECK", locations: ["BODY"] }], "optional.opt.labels": true },
+    });
+    expect(find(r, "Hardware PL-HW001")?.status).toBe("warn");
+    expect(find(r, "Material GINGHAM")?.status).toBe("warn");
+    expect(find(r, /Pattern matching/)?.status).toBe("warn");
+    expect(find(r, "Content label composition")?.status).toBe("warn");
+  });
+
+  it("POM must agree with the dimensions", () => {
+    const r = validatePack({ ...base, answers: { "dims.unit": "CM", "dims.h": 16, "pom.list": [{ point: "TOTAL HEIGHT", value: 17 }] } });
+    expect(find(r, "Point of measure TOTAL HEIGHT")?.status).toBe("fail");
+  });
+});

@@ -8,7 +8,10 @@ export const PAGE_SECTIONS = [
   "INTERIOR & LINING",
   "LINING / PRINT ARTWORK",
   "HARDWARE / BRANDING DETAIL",
+  "CONSTRUCTION DETAILS",
+  "BILL OF MATERIALS",
   "SWATCH CARDS",
   "CHANGE LOG",
+  "SAMPLE COMMENTS",
 ] as const;
 export type PageSection = (typeof PAGE_SECTIONS)[number];

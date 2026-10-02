@@ -6,6 +6,7 @@ import { getMaterial, readSwatchCard, saveMaterial, type MaterialInput } from "@
 import { uploadFile } from "@/lib/client/upload";
 import { ChipBoxEditor } from "@/components/chip-box";
 import { Badge, Button, Label, TextInput, cx } from "@/components/ui";
+import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
 
 const FIELDS: { key: keyof MaterialInput & string; label: string; placeholder: string; required?: boolean }[] = [
   { key: "supplier", label: "Supplier", placeholder: "JUNFA LEATHER", required: true },
@@ -33,6 +34,7 @@ function toInput(m: Material | null): MaterialInput {
     finish: m?.finish ?? "",
     cardPhotoUrl: m?.cardPhotoUrl ?? null,
     chipBox: m?.chipBox ?? null,
+    approval: m?.approval ?? EMPTY_APPROVAL,
   };
 }
 
@@ -189,6 +191,9 @@ export function MaterialForm({
               />
             </div>
           ))}
+        </div>
+        <div className="mt-8">
+          <ApprovalBlock value={v.approval ?? EMPTY_APPROVAL} onChange={(a) => set("approval", a)} types={["LAB DIP", "STRIKE-OFF", "SWATCH", "BULK"]} disabled={!canEdit} />
         </div>
         <p className="mt-6 text-[11px] text-taupe">No prices are stored — costing is left to the factory.</p>
         {usedIn && (

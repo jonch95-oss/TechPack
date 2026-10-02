@@ -18,6 +18,9 @@ export type PlanInput = {
   swatches: { colorway: string; materialCallout: number }[];
   swatchesOnOnePage: boolean;
   revisionCount: number;
+  hasConstruction?: boolean;
+  hasBom?: boolean;
+  hasSampleComments?: boolean;
 };
 
 export type PlannedPage =
@@ -30,7 +33,10 @@ export type PlannedPage =
   | { section: "LINING / PRINT ARTWORK" }
   | { section: "HARDWARE / BRANDING DETAIL" }
   | { section: "SWATCH CARDS"; swatches: { colorway: string; materialCallout: number }[] }
-  | { section: "CHANGE LOG" };
+  | { section: "CONSTRUCTION DETAILS" }
+  | { section: "BILL OF MATERIALS" }
+  | { section: "CHANGE LOG" }
+  | { section: "SAMPLE COMMENTS" };
 
 export type Plan = {
   pages: (PlannedPage & { n: number })[];
@@ -51,11 +57,14 @@ export function planPages(i: PlanInput): Plan {
   if (i.hasInterior) pages.push({ section: "INTERIOR & LINING", withArtwork: i.hasLiningArtwork && i.liningArtworkOnInterior });
   if (i.hasLiningArtwork && !(i.hasInterior && i.liningArtworkOnInterior)) pages.push({ section: "LINING / PRINT ARTWORK" });
   if (i.detailPanelCount > 0) pages.push({ section: "HARDWARE / BRANDING DETAIL" });
+  if (i.hasConstruction) pages.push({ section: "CONSTRUCTION DETAILS" });
+  if (i.hasBom) pages.push({ section: "BILL OF MATERIALS" });
   if (i.swatches.length) {
     if (i.swatchesOnOnePage) pages.push({ section: "SWATCH CARDS", swatches: i.swatches });
     else for (const s of i.swatches) pages.push({ section: "SWATCH CARDS", swatches: [s] });
   }
   if (i.revisionCount > 0) pages.push({ section: "CHANGE LOG" });
+  if (i.hasSampleComments) pages.push({ section: "SAMPLE COMMENTS" });
 
   const numbered = pages.map((p, k) => ({ ...p, n: k + 1 }));
   const total = numbered.length;

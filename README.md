@@ -12,6 +12,8 @@ Spec: `docs/BRIEF.md`. Build plan and rules: `CLAUDE.md`.
 
 **Phase 2 — Tech pack PDF: built.** Icon template pages (Part 4) at 17 × 11 in from `/api/packs/:id/pdf`, the Part 5 validation gate (export blocked until it passes; `?draft=1` gives a watermarked draft any time), and spell-check against the trade dictionary with one-click corrections. Until Phase 3 adds line art, the CAD render stands in for the flats and dimensions are listed rather than drawn.
 
+**Technical-designer additions: built.** Points of measure with tolerances and how-to-measure (templates per silhouette, house tolerances), hardware placement in mm, full zipper spec, construction details with cross-sections / stitch / SPI / thread / allowance, material direction and pattern matching, every interior wall + base board, bill of materials (quantities only — no prices), content-label text from library compositions, hardware finish spec (plating, coating, nickel-free, mould), logo artwork + tool depth + new-tooling flag. Lab-dip / strike-off / plating / mould approvals in the libraries (packs warn on anything not approved). Pack status with second-designer sign-off before the final PDF (editing a signed-off pack sends it back to draft), dashboard filters by status and due date, duplicate pack, factory + factory Q&A log, and a sample review log (PROTO / SMS / PP / TOP) with lettered photo mark-up; open comments carry into the next round and print on a SAMPLE COMMENTS page.
+
 First sign-in: the deploy seeds `jonc@iconluxurygroup.com` as admin with the password in `SEED_ADMIN_PASSWORD`; it must be changed at first sign-in.
 
 ## Local development
@@ -24,7 +26,7 @@ npm run db:seed                 # launch brands + first admin
 npm run dev
 ```
 
-Without `BLOB_READ_WRITE_TOKEN`, uploads are written to `.data/uploads` (development only).
+Without `BLOB_STORE_ID`, uploads are written to `.data/uploads` (development only). Either way files are served only to signed-in users through `/api/files/…`.
 Without `ANTHROPIC_API_KEY`, AI pre-fill and swatch reading show a "not configured" message; everything else works by hand.
 `AI_FIXTURE_DIR=tests/fixtures/ai` serves canned AI responses for tests — never set it in Vercel.
 
@@ -39,4 +41,4 @@ The e2e test needs a Postgres database (`TEST_DATABASE_URL`, default `postgres:/
 
 ## Deploying (Vercel project `techpack`)
 
-Environment variables: `DATABASE_URL` (Neon), `AUTH_SECRET` (32+ chars), `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `BLOB_READ_WRITE_TOKEN`, `IMAGE_API_KEY` (Phase 3). `vercel-build` runs migrations before `next build`. Run `npm run db:seed` once against the production database to create the brands and first admin.
+Environment variables: `DATABASE_URL` (Neon, pooled — runtime) and `DATABASE_URL_UNPOOLED` (migrations + seed), `AUTH_SECRET` (32+ chars), `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `BLOB_STORE_ID` + `BLOB_WEBHOOK_PUBLIC_KEY` (private Blob store, authenticated with Vercel OIDC — no read-write token), `IMAGE_API_KEY` (Phase 3), and `SEED_ADMIN_PASSWORD` (temporary password for the first admin). `vercel-build` runs migrations and the seed before `next build`.

@@ -2,13 +2,20 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { AnswerStatus, PackFile } from "@/db/schema";
+import type { AnswerStatus, PackFile, PackStatus } from "@/db/schema";
 import type { LibraryOptions } from "@/lib/data";
 import {
   completeness,
   derivedValue,
+  applyStandardTolerances,
+  bomFromAnswers,
+  contentLabel,
   draftDescription,
   optionalToggleId,
+  pomFromTemplate,
+  templateKey,
+  type BomRow,
+  type PomRow,
   sectionsFor,
   sectionVisible,
   unitLabel as unitLabelFor,
@@ -23,10 +30,14 @@ import { addPackFile, confirmAnswer, runPrefill, saveAnswer, updatePackSetup } f
 import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, cx, Eyebrow } from "@/components/ui";
 import { Toggle } from "@/components/chips";
-import { LibraryProvider } from "./library-picker";
+import { LibraryProvider, useLibrary } from "./library-picker";
 import { QuestionField } from "./question-field";
 import { FilesPanel } from "./files-panel";
 import { ExportPanel } from "./export-panel";
+import { SignOff } from "./signoff";
+import { SIGNED_OFF } from "@/lib/status";
+import { DuplicatePack } from "./duplicate";
+import { FactoryQA } from "./factory-qa";
 
 export type WorkspaceProps = {
   pack: {
@@ -36,7 +47,15 @@ export type WorkspaceProps = {
     category: Category;
     colorways: string[];
     aiAnalysis: { visible_features: string[]; not_visible: string[]; agent_notes: string; ran_at: string; model: string } | null;
+    status: PackStatus;
+    factory: string;
+    factoryStyleNo: string;
+    copiedFrom: { id: string; styleNo: string } | null;
   };
+  meId: string;
+  review: { requestedBy: { id: string; name: string } | null; reviewedBy: { name: string } | null; reviewedAt: string | null };
+  factoryQuestions: { id: string; askedBy: string; question: string; answer: string; answeredByName: string | null; createdAt: string; answeredAt: string | null }[];
+  sampleSummary: { rounds: number; open: number };
   brand: { id: string; name: string; logoUrl: string | null; licensorRequired: boolean };
   sentBy: string;
   answers: AnswerMap;
@@ -140,6 +159,7 @@ export function PackWorkspace(props: WorkspaceProps) {
 
   const render = props.files.find((f) => f.kind === "render");
 
+
   const doPrefill = () => {
     setPrefill({ running: true });
     start(async () => {
@@ -204,7 +224,13 @@ export function PackWorkspace(props: WorkspaceProps) {
             <Eyebrow>
               {brand.name} · {pack.category}
             </Eyebrow>
-            <SaveIndicator s={save} />
+            <span className="flex items-center gap-5">
+              <a href={`/packs/${pack.id}/samples`} className="eyebrow hover:text-ink" data-testid="samples-link">
+                Samples{props.sampleSummary.rounds ? ` · ${props.sampleSummary.open} open` : ""}
+              </a>
+              {canEdit && <DuplicatePack packId={pack.id} styleNo={pack.styleNo} styleName={pack.styleName} />}
+              <SaveIndicator s={save} />
+            </span>
           </div>
           <h1 className="display text-[56px] leading-[1] mt-4">
             {pack.styleNo}
@@ -253,6 +279,12 @@ export function PackWorkspace(props: WorkspaceProps) {
               </dd>
             </div>
             <Meta k="Description" v={(answers["header.description"] as string) || "—"} />
+            {pack.copiedFrom && (
+              <div>
+                <dt className="eyebrow mb-1">Carried over from</dt>
+                <dd><a href={`/packs/${pack.copiedFrom.id}`} className="underline decoration-hairline-strong underline-offset-4 hover:decoration-ink">{pack.copiedFrom.styleNo}</a></dd>
+              </div>
+            )}
           </dl>
 
           <div className="mt-auto pt-10">
@@ -343,23 +375,18 @@ export function PackWorkspace(props: WorkspaceProps) {
                       ctx={ctx}
                       colorways={colorways}
                       unitLabel={unitLabel}
-                      extra={
-                        q.id === "header.description" && canEdit ? (
-                          <button
-                            type="button"
-                            className="text-[10px] tracking-[0.2em] uppercase text-gold hover:text-ink"
-                            onClick={() => commit(q.id, draftDescription(pack.category, answers))}
-                          >
-                            ✦ Redraft from answers
-                          </button>
-                        ) : null
-                      }
+                      extra={canEdit ? <QuestionHelpers qid={q.id} category={pack.category} answers={answers} colorways={colorways} onCommit={commit} /> : null}
                     />
                   ))}
                 </div>
               </section>
             );
           })}
+
+          <section id="sec-factory" className="scroll-mt-28">
+            <SectionTitle n="—" title="Factory questions" />
+            <FactoryQA packId={pack.id} questions={props.factoryQuestions} canEdit={canEdit} factory={pack.factory} />
+          </section>
 
           <section id="sec-uploads" className="scroll-mt-28">
             <SectionTitle n="—" title="Uploads & references" />
@@ -443,7 +470,18 @@ export function PackWorkspace(props: WorkspaceProps) {
                 </ul>
               )}
             </div>
-            <ExportPanel packId={pack.id} version={version} onJump={jump} canEdit={canEdit} />
+            <SignOff
+              packId={pack.id}
+              status={pack.status}
+              meId={props.meId}
+              requestedBy={props.review.requestedBy}
+              reviewedBy={props.review.reviewedBy}
+              reviewedAt={props.review.reviewedAt}
+              factory={pack.factory}
+              factoryStyleNo={pack.factoryStyleNo}
+              canEdit={canEdit}
+            />
+            <ExportPanel packId={pack.id} version={version} onJump={jump} canEdit={canEdit} signedOff={SIGNED_OFF.includes(pack.status)} />
             <a href={`/api/packs/${pack.id}/techpack`} target="_blank" className="block pb-5 text-center text-[9.5px] tracking-[0.2em] uppercase text-mist hover:text-ink">
               TechPack JSON
             </a>
@@ -610,3 +648,43 @@ function displayAi(v: unknown): string {
 }
 
 
+
+/** One-click helpers beside some questions. They copy answers already given — never invent values. */
+function ContentLabelPreview({ answers, colorways }: { answers: AnswerMap; colorways: string[] }) {
+  const lib = useLibrary();
+  const comp = new Map(lib.options.material.map((m) => [m.id, m.composition]));
+  const labels = contentLabel(answers, colorways, (id) => comp.get(id) || undefined);
+  return (
+    <div className="mt-3 border border-hairline bg-paper p-4 text-[11px] leading-relaxed space-y-1 max-w-sm" data-testid="content-label">
+      <div className="eyebrow mb-1">Content label (from the library)</div>
+      {colorways.map((cw) => (
+        <div key={cw}>
+          <span className="display text-base mr-2">{cw}</span>
+          {labels[cw]?.text || <span className="italic text-taupe">—</span>}
+          {labels[cw]?.missing.length ? <div className="text-signal">Composition missing: {labels[cw].missing.join(", ")}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function QuestionHelpers({ qid, category, answers, colorways, onCommit }: { qid: string; category: Category; answers: AnswerMap; colorways: string[]; onCommit: (qid: string, v: unknown) => void }) {
+  const helper = (label: string, onClick: () => void, testId?: string) => (
+    <button key={label} type="button" data-testid={testId} className="block text-[10px] tracking-[0.2em] uppercase text-gold hover:text-ink mt-1" onClick={onClick}>
+      ✦ {label}
+    </button>
+  );
+  if (qid === "header.description") return helper("Redraft from answers", () => onCommit(qid, draftDescription(category, answers)));
+  if (qid === "pom.list") {
+    const rows = (answers["pom.list"] as PomRow[] | undefined) ?? [];
+    return (
+      <>
+        {helper(`Load ${templateKey(category, answers).toLowerCase()} template`, () => onCommit(qid, pomFromTemplate(category, answers, rows)), "pom-template")}
+        {rows.some((r) => r.tol == null) && helper("Apply standard tolerances to blanks", () => onCommit(qid, applyStandardTolerances(rows, answers["dims.unit"] === "INCHES")), "pom-tolerances")}
+      </>
+    );
+  }
+  if (qid === "opt.labels.types") return <ContentLabelPreview answers={answers} colorways={colorways} />;
+  if (qid === "bom.list") return helper("Build from answers", () => onCommit(qid, bomFromAnswers(answers, (answers["bom.list"] as BomRow[] | undefined) ?? [])), "bom-build");
+  return null;
+}

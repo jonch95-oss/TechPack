@@ -5,7 +5,7 @@
  */
 export const TRADE_TERMS = [
   // abbreviations used on packs
-  "DTM", "PU", "TPU", "PVC", "PEVA", "EVA", "EPE", "PC", "ABS", "PP", "TSA", "SPI", "MTL", "MTLS", "PKT", "PKTS", "CWY", "FTY", "ATTN",
+  "DTM", "PU", "TPU", "PVC", "PEVA", "EVA", "EPE", "PC", "ABS", "PP", "TSA", "SPI", "MTL", "MTLS", "PKT", "PKTS", "CWY", "FTY", "ATTN", "EXCL", "INCL",
   "PG", "PGS", "REF", "QTY", "CM", "MM", "IN", "W", "H", "D", "L", "LBS", "KG", "OZ", "SS", "FW", "AW", "PO", "MOQ", "RN", "CA", "COO",
   "TCX", "TPX", "TPG", "PMS", "PANTONE", "RGB", "CMYK", "AI", "EPS", "SVG", "PSD", "PDF", "ZIP", "YKK", "SBS", "EST", "OEM", "SKU",
   "R1", "R2", "R3", "R4", "W/", "W/O", "N/A", "AH", "HB", "TB", "TBC", "ASAP", "CAD", "CADS", "LAB", "L/AB", "TJX", "UPC",

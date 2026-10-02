@@ -54,6 +54,7 @@ export default async function MaterialsPage() {
                     </div>
                     <div className="text-[11px] text-taupe tracking-wide">{m.colourName}</div>
                     <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge tone={m.approval?.status === "APPROVED" ? "ok" : m.approval?.status === "REJECTED" ? "signal" : "neutral"}>{m.approval?.status === "APPROVED" ? `${m.approval.type || ""} APPROVED`.trim() : m.approval?.status ?? "PENDING"}</Badge>
                       {pending > 0 && <Badge tone="ai">{pending} AI-read</Badge>}
                       {(used.get(m.id) ?? []).map((s) => (
                         <Badge key={s}>{s}</Badge>

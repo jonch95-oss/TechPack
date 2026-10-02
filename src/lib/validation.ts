@@ -31,7 +31,9 @@ export type ValidationInput = {
   colorways: string[];
   chineseOn: boolean;
   /** Library hardware referenced by the pack, resolved. */
-  hardware: { id: string; code: string; type: string; dimsMm: string; finish: string }[];
+  hardware: { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string }[];
+  /** Library materials used by the pack. */
+  materials?: { id: string; label: string; approval: string; composition: string }[];
   spelling: SpellFlag[];
 };
 
@@ -147,6 +149,28 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     push(ok ? { group: "Geometry", rule: "Carry-on within airline limits (22 × 14 × 9 in)", status: "pass", fix: "" } : { group: "Geometry", rule: "Carry-on within airline limits (22 × 14 × 9 in)", status: "warn", fix: `Overall ${dimsIn.map(round).join(" × ")} in (incl. wheels and handles) exceeds 22 × 14 × 9 in.`, questionId: "dims.h" });
   }
 
+  /* Hardware placement must be measurable (mm), not "spaced evenly". */
+  const NEEDS_PLACEMENT = ["MAGNETIC SNAP", "PRESS SNAP", "TURNLOCK", "D-RING", "O-RING", "SQUARE RING", "RIVET", "FEET", "LOCK", "LOGO PLATE"];
+  const placements = (a["placements.list"] as { item?: LibValue; distance?: number }[] | undefined) ?? [];
+  const placed = new Set(placements.filter((p) => p.item && typeof p.distance === "number").map((p) => p.item!.id));
+  const needs = input.hardware.filter((h) => used.has(h.id) && NEEDS_PLACEMENT.includes(h.type));
+  const unplacedHw = needs.filter((h) => !placed.has(h.id));
+  if (needs.length && !unplacedHw.length) push({ group: "Geometry", rule: "Hardware placement given in mm", status: "pass", fix: "" });
+  for (const h of unplacedHw)
+    push({ group: "Geometry", rule: `Placement of ${h.code} (${h.type})`, status: "fail", fix: `Add its position in mm (distance from an edge, and spacing if more than one).`, questionId: "placements.list" });
+  if (a["hb.closure.snap_spacing"] === "SPACED EVENLY" && !placements.some((p) => p.item && needs.some((h) => h.id === p.item!.id && /SNAP/.test(h.type))))
+    push({ group: "Geometry", rule: "Snaps “spaced evenly”", status: "fail", fix: "Give the snap spacing centre to centre in mm under Hardware placement.", questionId: "placements.list" });
+
+  /* Points of measure agree with the answers, and every point has a tolerance. */
+  const pom = (a["pom.list"] as { point?: string; value?: number; tol?: number }[] | undefined) ?? [];
+  const pairs: [string, string][] = [["TOTAL HEIGHT", "dims.h"], ["TOTAL WIDTH", "dims.w"], ["TOTAL DEPTH", "dims.d"], ["HANDLE DROP", "hb.top_handle.drop"], ["FLAP HEIGHT", "hb.flap_height"], ["STRAP TOTAL LENGTH", "hb.strap.length"]];
+  for (const [point, key] of pairs) {
+    const row = pom.find((r) => r.point === point);
+    const v = num(a[key]);
+    if (row?.value != null && v !== null && Math.abs(row.value - v) > 0.001)
+      push({ group: "Consistency", rule: `Point of measure ${point}`, status: "fail", fix: `POM says ${row.value} ${unit} but the pack says ${v} ${unit} — make them agree.`, questionId: "pom.list" });
+  }
+
   /* ------------------------------ Consistency ------------------------------ */
   const mats = (a["materials.list"] as MaterialEntry[] | undefined) ?? [];
   const cols = new Set(matrixColumns(ctx).map((c) => c.key));
@@ -157,6 +181,24 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   const logoFinish = a["branding.finish"] as string | undefined;
   const odd = [...finishes.map((h) => `${h.code} is ${h.finish}`), ...(logoFinish && hwFinish && /PLATE|METAL|ENGRAVED|BADGE/.test(String(a["branding.logo_type"])) && logoFinish !== hwFinish ? [`logo is ${logoFinish}`] : [])];
   push(odd.length ? { group: "Consistency", rule: "Hardware finish matches across rings, snaps, logo and charm", status: "warn", fix: `Pack finish is ${hwFinish}; ${odd.join(", ")}. Fine if deliberate.`, questionId: "hardware.finish" } : { group: "Consistency", rule: "Hardware finish matches across rings, snaps, logo and charm", status: "pass", fix: "" });
+
+  /* Approvals: lab dips, strike-offs, plating samples, moulds. */
+  for (const m of input.materials ?? [])
+    if (m.approval !== "APPROVED") push({ group: "Consistency", rule: `Material ${m.label}`, status: "warn", fix: m.approval === "REJECTED" ? "This material was REJECTED — choose another swatch." : "Not approved yet (lab dip / strike-off pending).", questionId: "materials.matrix" });
+  for (const h of input.hardware.filter((x) => used.has(x.id)))
+    if (h.approval && h.approval !== "APPROVED") push({ group: "Consistency", rule: `Hardware ${h.code}`, status: "warn", fix: h.approval === "REJECTED" ? "This component was REJECTED." : "Plating / mould sample not approved yet.", questionId: "hardware.items" });
+
+  /* Pattern matching for checks, stripes and plaids. */
+  const PATTERN = /GINGHAM|CHECK|STRIPE|PLAID|TARTAN|MONOGRAM/;
+  for (const m of mats)
+    if (PATTERN.test(m.name) && (!m.matching || m.matching === "NONE"))
+      push({ group: "Consistency", rule: `Pattern matching for ${m.name}`, status: "warn", fix: "Patterned material — say how it matches at seams (e.g. MATCH CHECKS AT SEAMS).", questionId: "materials.list" });
+
+  /* Content label needs a composition for every material. */
+  if (a["optional.opt.labels"] === true) {
+    const noComp = (input.materials ?? []).filter((m) => !m.composition);
+    if (noComp.length) push({ group: "Consistency", rule: "Content label composition", status: "warn", fix: `Add composition in the library for: ${noComp.map((m) => m.label).join(", ")}.` });
+  }
 
   const hasDims = visibleQuestions(ctx).some((q) => q.id === "dims.unit");
   push(!hasDims || a["dims.unit"] ? { group: "Consistency", rule: "Units consistent throughout", status: "pass", fix: "" } : { group: "Consistency", rule: "Units consistent throughout", status: "fail", fix: "Choose cm or inches.", questionId: "dims.unit" });

@@ -7,6 +7,8 @@ import { MaterialsEditor, MatrixEditor, RowsEditor } from "./editors";
 import type { EvalContext } from "@/lib/questions";
 import { cx } from "@/components/ui";
 import { CommitText } from "@/components/commit-text";
+import { useState } from "react";
+import { uploadFile } from "@/lib/client/upload";
 
 export type FieldProps = {
   q: Question;
@@ -59,6 +61,8 @@ export function QuestionField({ q, value, onChange, ctx, colorways, disabled, un
       return <CommitText value={(value as string) ?? ""} onCommit={onChange} disabled={disabled} placeholder={q.placeholder} testId={tid} />;
     case "comment":
       return <CommitText value={(value as string) ?? ""} onCommit={onChange} disabled={disabled} multiline testId={tid} />;
+    case "file":
+      return <FileField value={value as { url: string; name: string } | undefined} onChange={onChange} accept={q.accept} disabled={disabled} testId={tid} />;
     case "date_asap": {
       const v = (value as string) ?? "";
       return (
@@ -108,3 +112,45 @@ export function QuestionField({ q, value, onChange, ctx, colorways, disabled, un
   }
 }
 
+
+function FileField({ value, onChange, accept, disabled, testId }: { value?: { url: string; name: string }; onChange: (v: unknown) => void; accept?: string; disabled?: boolean; testId?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      {value ? (
+        <a href={value.url} target="_blank" className="text-[13px] underline decoration-hairline-strong underline-offset-4 hover:decoration-ink">{value.name}</a>
+      ) : (
+        <span className="text-[12px] italic text-taupe">No file yet</span>
+      )}
+      {!disabled && (
+        <label className={cx("cursor-pointer", busy && "opacity-50 pointer-events-none")}>
+          <span className="inline-flex h-8 px-4 items-center border border-ink text-[10px] tracking-[0.18em] uppercase hover:bg-ink hover:text-ivory transition-colors">{busy ? "Uploading…" : value ? "Replace" : "Upload"}</span>
+          <input
+            type="file"
+            accept={accept}
+            className="sr-only"
+            data-testid={testId}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              setBusy(true);
+              setErr("");
+              try {
+                onChange({ url: await uploadFile(f, "misc"), name: f.name });
+              } catch (x) {
+                setErr((x as Error).message);
+              }
+              setBusy(false);
+            }}
+          />
+        </label>
+      )}
+      {value && !disabled && (
+        <button type="button" className="text-taupe hover:text-signal text-[11px]" onClick={() => onChange(null)} aria-label="Remove file">✕</button>
+      )}
+      {err && <span className="text-signal text-[11px]">{err}</span>}
+    </div>
+  );
+}

@@ -12,7 +12,7 @@ type Result = { passes: boolean; rules: RuleResult[]; spelling: { word: string; 
  * The validation gate (Part 5) in the workspace: re-checks after edits, lists exactly what to fix
  * with a jump to the field, offers one-click spelling corrections, and unlocks the PDF when clean.
  */
-export function ExportPanel({ packId, version, onJump, canEdit }: { packId: string; version: number; onJump: (qid: string) => void; canEdit: boolean }) {
+export function ExportPanel({ packId, version, onJump, canEdit, signedOff }: { packId: string; version: number; onJump: (qid: string) => void; canEdit: boolean; signedOff: boolean }) {
   const router = useRouter();
   const [res, setRes] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
@@ -98,7 +98,11 @@ export function ExportPanel({ packId, version, onJump, canEdit }: { packId: stri
         </div>
       )}
       <div className="px-6 pb-6 pt-2 space-y-2">
-        {res?.passes ? (
+        {res?.passes && !signedOff ? (
+          <button className={cx(buttonClass("primary"), "w-full")} disabled title="A second designer signs off above">
+            Export PDF — needs sign-off
+          </button>
+        ) : res?.passes ? (
           <a href={`/api/packs/${packId}/pdf`} target="_blank" className={cx(buttonClass("primary"), "w-full")} data-testid="export-pdf">
             Export PDF · {res.pages.length} pages
           </a>

@@ -1,16 +1,26 @@
 import "server-only";
-import { put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 
 /**
- * File storage. Uses Vercel Blob when BLOB_READ_WRITE_TOKEN is set; otherwise
- * (local development and tests only) writes under .data/uploads and serves it
- * through /api/files.
+ * File storage. On Vercel, files go to the PRIVATE Blob store (`BLOB_STORE_ID`, authenticated with
+ * Vercel OIDC — or `BLOB_READ_WRITE_TOKEN` if one is ever set). Locally (development and tests)
+ * they go under .data/uploads. Either way a file's URL is `/api/files/<pathname>`, served only to
+ * signed-in users — blob URLs are never handed out.
  */
 export function usingBlob() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+export const FILES_PREFIX = "/api/files/";
+
+/** Reads a blob from the private store; null when it doesn't exist. */
+export async function getBlob(pathname: string) {
+  const res = await get(pathname, { access: "private" });
+  if (!res || res.statusCode !== 200 || !res.stream) return null;
+  return { stream: res.stream, contentType: res.blob.contentType ?? contentTypeFor(pathname) };
 }
 
 const LOCAL_ROOT = path.join(process.cwd(), ".data", "uploads");
@@ -23,10 +33,10 @@ export async function storeFile(folder: string, name: string, data: Buffer | Arr
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
   const key = `${folder}/${crypto.randomUUID().slice(0, 8)}-${safeName(name)}`;
   if (usingBlob()) {
-    const blob = await put(key, buf, { access: "public", contentType, addRandomSuffix: false });
-    return blob.url;
+    const blob = await put(key, buf, { access: "private", contentType, addRandomSuffix: false });
+    return FILES_PREFIX + blob.pathname;
   }
-  if (process.env.VERCEL) throw new Error("BLOB_READ_WRITE_TOKEN is not set");
+  if (process.env.VERCEL) throw new Error("Blob storage is not configured (BLOB_STORE_ID)");
   const full = path.join(LOCAL_ROOT, key);
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, buf);
@@ -35,8 +45,14 @@ export async function storeFile(folder: string, name: string, data: Buffer | Arr
 
 /** Reads a stored file back (used to send images to the vision model). */
 export async function readStoredFile(url: string): Promise<{ data: Buffer; contentType: string }> {
-  if (url.startsWith("/api/files/")) {
-    const rel = url.slice("/api/files/".length);
+  if (url.startsWith(FILES_PREFIX) && usingBlob()) {
+    const rel = decodeURI(url.slice(FILES_PREFIX.length));
+    const b = await getBlob(rel);
+    if (!b) throw new Error(`File not found: ${rel}`);
+    return { data: Buffer.from(await new Response(b.stream).arrayBuffer()), contentType: b.contentType };
+  }
+  if (url.startsWith(FILES_PREFIX)) {
+    const rel = url.slice(FILES_PREFIX.length);
     const full = path.resolve(LOCAL_ROOT, rel);
     if (!full.startsWith(LOCAL_ROOT)) throw new Error("Bad path");
     return { data: await readFile(full), contentType: contentTypeFor(full) };
