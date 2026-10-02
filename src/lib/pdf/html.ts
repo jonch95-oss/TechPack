@@ -58,7 +58,7 @@ body { font-family: "IconCond", "Helvetica Neue Condensed", "Arial Narrow", Aria
 .comments { display: flex; flex-direction: column; gap: 10px; font-size: 14pt; }
 .comments .c { display: flex; gap: 10px; align-items: flex-start; line-height: 1.25; }
 table { border-collapse: collapse; }
-.mast { border: 1.5px solid #111; font-size: 11pt; width: 10.2in; }
+.mast { border: 1.5px solid #111; font-size: 11pt; width: 9.1in; }
 .mast td { border: 1px solid #111; padding: 3px 6px; vertical-align: middle; line-height: 1.15; }
 .mast .icon { background: #111; color: #fff; font-size: 10pt; text-align: center; }
 .mast .brand { font-size: 20pt; text-align: center; vertical-align: middle; }
@@ -142,9 +142,10 @@ function fit(img: { w: number; h: number } | null | undefined, box: R): R {
   return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
 }
 const at = (r: R) => `position:absolute;left:${r2(r.x)}in;top:${r2(r.y)}in;width:${r2(r.w)}in;height:${r2(r.h)}in;`;
-function imgIn(img: { src: string; w: number; h: number } | null | undefined, box: R, extra = "") {
+function imgIn(img: { src: string; w: number; h: number } | null | undefined, box: R, extra = "", top = false) {
   if (!img) return "";
-  return `<img src="${img.src}" style="${at(fit(img, box))}${extra}"/>`;
+  const r = fit(img, box);
+  return `<img src="${img.src}" style="${at(top ? { ...r, y: box.y } : r)}${extra}"/>`;
 }
 
 /** Page-sized SVG in inches for leader lines, arrows and rings drawn over the content. */
@@ -185,20 +186,20 @@ function rd(doc: PackDoc, i: number) {
 function materialsPage(doc: PackDoc, n: number) {
   const h = doc.header;
   const mast = `<table class="mast">
-    <tr><td class="icon" style="width:1.35in">ICON LUXURY GROUP</td>
-      <td style="width:3.25in"><b>ATTN:</b> <span class="v">FTY</span></td>
-      <td style="width:2.35in"><b>ORIGINAL DATE SENT :</b> <span class="v">${esc(doc.revision.original)}</span></td>
-      <td style="width:3.25in"><b>SIZE :</b> <span class="red v">${esc(doc.sizeText)}</span>${upd(doc, "dims.")}</td></tr>
-    <tr><td rowspan="4" class="brand">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.25in;max-height:0.75in"/>` : `<span style="font-size:11pt">BRAND :</span><br/>${up(doc.brand.name)}`}</td>
+    <tr><td class="icon" style="width:1.2in">ICON LUXURY GROUP</td>
+      <td style="width:2.95in"><b>ATTN:</b> <span class="v">FTY</span></td>
+      <td style="width:2.05in;font-size:10pt"><b>ORIGINAL DATE SENT :</b> <span class="v">${esc(doc.revision.original)}</span></td>
+      <td style="width:2.9in"><b>SIZE :</b> <span class="red v">${esc(doc.sizeText)}</span>${upd(doc, "dims.")}</td></tr>
+    <tr><td rowspan="4" class="brand">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.1in;max-height:0.75in"/>` : `<span style="font-size:11pt">BRAND :</span><br/>${up(doc.brand.name)}`}</td>
       <td><b>RETAILER :</b> <span class="v">${up(h.retailer)}</span></td><td><b>REVISED DATE(S) SENT :</b> R1${rd(doc, 0)} &nbsp; R2:${rd(doc, 1)}</td><td><b>SENT BY:</b> <span class="v">${up(h.sentBy)}</span></td></tr>
     <tr><td><b>SEASON :</b> <span class="v">${up(h.season)}</span></td><td>R3:${rd(doc, 2)}</td><td><b>DUE DATE:</b> <span class="v red">${up(h.dueDate)}</span></td></tr>
     <tr><td><b>REFERENCE SAMPLE:</b> <span class="v red">${up(h.referenceSample)}</span></td><td>R4:${rd(doc, 3)}${doc.revision.dates.slice(4).map((r) => ` &nbsp; ${esc(r.label)}: ${esc(r.date)}`).join("")}</td><td><b>PROTO :</b> <span class="v">${proto(doc)}</span></td></tr>
-    <tr><td><b>DESCRIPTION:</b> <span class="v">${up(h.description)}</span>${upd(doc, "header.description")}</td><td></td><td><b>BAG CATEGORY:</b> <span class="v">${up(h.category)}</span><br/><b>STYLE NAME:</b> <span class="v">${up(doc.pack.styleName)}</span></td></tr>
+    <tr><td colspan="2"><b>DESCRIPTION:</b> <span class="v">${up(h.description)}</span>${upd(doc, "header.description")}</td><td><b>BAG CATEGORY:</b> <span class="v">${up(h.category)}</span><br/><b>STYLE NAME:</b> <span class="v">${up(doc.pack.styleName)}</span></td></tr>
   </table>`;
 
   const comments = commentsFor(doc, "MATERIALS / HARDWARE", n);
-  const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:1.98in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
-  const top = h.physicalSample ? 2.75 : 2.15;
+  const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.3in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
+  const top = h.physicalSample ? 3.05 : 2.45;
   const callouts = doc.materials
     .map((m) => `<div style="display:flex;gap:10px;align-items:center;font-size:15pt;line-height:1.15"><span class="callout">${m.callout}</span><span>${up(m.name)}${m.locations.length ? `<br/><span style="font-size:11pt" class="muted">${up(m.locations.join(", "))}</span>` : ""}</span></div>`)
     .join("");
@@ -207,7 +208,9 @@ function materialsPage(doc: PackDoc, n: number) {
     : "";
 
   /* drawing: flats (Phase 3) or the render with a red leader line from LOGO to the logo */
-  const box: R = { x: 2.65, y: top + 0.45, w: 7.5, h: 7.05 - top - 0.45 };
+  // The breakdown fills the bottom of the page; more colourways start it higher.
+  const bt = Math.max(5.9, 10.68 - 1.0 - doc.rows.length * 1.15);
+  const box: R = { x: 2.65, y: top + 0.45, w: 7.5, h: bt - 0.37 - top - 0.45 };
   let drawing = "";
   let lines = "";
   if (doc.flats.front) {
@@ -230,7 +233,7 @@ function materialsPage(doc: PackDoc, n: number) {
       ${doc.hardwareFinish ? `<div style="font-size:14pt">HARDWARE: ${up(doc.hardwareFinish)}</div>` : ""}
     </div>`;
   const k = doc.colorwayRenders.length;
-  const th = k ? Math.min(2.2, (7.0 - 2.0 - k * 0.32) / k) : 0;
+  const th = k ? Math.min(2.2, (bt - 0.4 - 2.0 - k * 0.32) / k) : 0;
   const thumbs = k
     ? `<div class="abs" style="left:13.85in;top:1.95in;width:2.75in;display:flex;flex-direction:column;gap:6px">${doc.colorwayRenders
         .map((cr) => `<div style="text-align:center"><div style="font-size:16pt">${up(doc.pack.styleNo)}${esc(cr.colorway)}</div><div style="position:relative;height:${r2(th)}in">${imgIn(cr.img, { x: 0, y: 0, w: 2.75, h: th })}</div></div>`)
@@ -261,15 +264,15 @@ function materialsPage(doc: PackDoc, n: number) {
           .join("")}</tr>`,
     )
     .join("");
-  const table = `<table class="breakdown" style="height:${r2(10.68 - 7.42)}in"><tr><th>CWY</th>${cols.map((c, i) => headCell(c) + (i === lastMat ? spareTh : "")).join("")}</tr>${rows}</table>`;
+  const table = `<table class="breakdown" style="height:${r2(10.68 - bt)}in;${doc.rows.length > 2 ? "font-size:11.5pt" : ""}"><tr><th>CWY</th>${cols.map((c, i) => headCell(c) + (i === lastMat ? spareTh : "")).join("")}</tr>${rows}</table>`;
 
   return `<section class="page">
     ${tag(doc, n, "MATERIALS / HARDWARE")}
     <div class="abs" style="left:0.4in;top:0.32in">${mast}</div>
-    <div class="abs" style="left:10.85in;top:0.32in;width:4.0in"><div class="label" style="background:#111;color:#fff;display:inline-block;padding:1px 8px;margin-bottom:8px">COMMENTS:</div>${comments}</div>
+    <div class="abs" style="left:9.7in;top:0.32in;width:4.35in"><div class="label" style="background:#111;color:#fff;display:inline-block;padding:1px 8px;margin-bottom:8px">COMMENTS:</div>${comments}</div>
     ${banner}${charm}${drawing}${side}${thumbs}
-    <div class="small abs" style="left:0.4in;top:7.12in">MATERIAL / COLOR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish")}</div>
-    <div class="abs" style="left:0.4in;right:0.4in;top:7.42in">${table}</div>
+    <div class="small abs" style="left:0.4in;top:${r2(bt - 0.3)}in">MATERIAL / COLOR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish")}</div>
+    <div class="abs" style="left:0.4in;right:0.4in;top:${r2(bt)}in">${table}</div>
     ${overlay(lines)}
   </section>`;
 }
@@ -315,7 +318,7 @@ function measurementsPage(doc: PackDoc, n: number) {
   const listW = (hasSide ? 11.55 : 12.6) - listX;
 
   const drawing = doc.flats.front ? `<div class="abs" style="${at(box)}">${flatBox(doc.flats.front, "flat-measure")}</div>` : imgIn(doc.render, box);
-  const list = `<div class="abs" style="left:${r2(listX)}in;top:${tables ? 2.35 : 4.6}in;width:${r2(listW)}in;font-size:15pt;line-height:1.45">
+  const list = `<div class="abs" style="left:${r2(listX)}in;top:${closureRef ? 4.6 : tables ? 2.35 : 4.6}in;width:${r2(listW)}in;font-size:15pt;line-height:1.45">
       ${overall.map((o) => `<div class="red">${esc(o.t)}${upd(doc, o.k)}</div>`).join("")}
       ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}${upd(doc, m.key)}</div>`).join("")}
       ${doc.logo.type ? `<div style="margin-top:6px">LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)}) ${up(doc.logo.type)}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
@@ -327,10 +330,11 @@ function measurementsPage(doc: PackDoc, n: number) {
   let lines = "";
   let closure = "";
   if (closureRef || doc.closure) {
-    const pbox: R = { x: 12.75, y: 0.75, w: 3.85, h: 3.7 };
+    // Left of the brand mark and above the side view, as on the Icon sheet.
+    const pbox: R = { x: 9.0, y: 0.75, w: 3.7, h: 3.45 };
     const pr = fit(closureRef?.img, pbox);
-    closure = `<div class="abs" style="left:12.4in;top:0.3in;width:4.2in;text-align:center;font-size:17pt">${up(doc.closure.split(" — ")[0] || closureRef?.note || "")}</div>${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
-      doc.closure.includes(" — ") && !closureRef ? `<div class="abs small" style="left:12.6in;top:1in;width:4in;text-align:center">${up(doc.closure.split(" — ")[1])}</div>` : ""
+    closure = `<div class="abs" style="left:8.75in;top:0.3in;width:4.2in;text-align:center;font-size:17pt">${up(doc.closure.split(" — ")[0] || closureRef?.note || "")}</div>${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
+      doc.closure.includes(" — ") && !closureRef ? `<div class="abs small" style="left:8.85in;top:1in;width:4in;text-align:center">${up(doc.closure.split(" — ")[1])}</div>` : ""
     }`;
     if (closureRef?.img) {
       const dr = fit(doc.flats.front ? null : doc.render, box);
@@ -457,7 +461,7 @@ function referencePage(doc: PackDoc, n: number) {
   return `<section class="page">
     ${head(doc, n, "REFERENCE PHOTOS FOR CONSTRUCTION")}
     <div class="abs" style="left:5in;top:0.4in;width:9.5in">${commentsFor(doc, "REFERENCE PHOTOS FOR CONSTRUCTION", n)}</div>
-    ${photoGrid(ordered, { x: 0.4, y: 1.45, w: 16.2, h: 9.2 })}
+    ${photoGrid(ordered, { x: 0.4, y: 1.2, w: 16.2, h: 9.6 })}
   </section>`;
 }
 
@@ -495,7 +499,7 @@ function wallSvg(doc: PackDoc, mode: "hatched" | "lining", wall: string, s: numb
   const p = i.pockets.find((x) => x.wall === wall);
   const fs = 0.2 / s; // ~14pt in drawing units
   const sw = 0.025 / s;
-  const pad = { l: 2.0 / s, r: 0.9 / s, t: 0.75 / s, b: 0.35 / s };
+  const pad = { l: 1.75 / s, r: 0.6 / s, t: 0.75 / s, b: 0.3 / s };
   const tile = liningTile(doc);
   const id = `${mode}-${wall.replace(/\W/g, "")}-${Math.round(s * 1000)}`;
   const bg =
@@ -525,7 +529,8 @@ function wallSvg(doc: PackDoc, mode: "hatched" | "lining", wall: string, s: numb
       // BINDING label outside the wall, leader line to the binding
       body += `<text x="${W + 0.1 / s}" y="${-0.45 / s}" font-size="${fs}" text-anchor="end" fill="#111" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(i.pocketEdge.toUpperCase())}</text><path d="M${W - 0.3 / s} ${-0.38 / s}L${px + pw - 0.25 / s} ${top - 0.03 / s}" stroke="${RED}" stroke-width="${sw}" fill="none"/><circle cx="${px + pw - 0.25 / s}" cy="${top - 0.03 / s}" r="${0.04 / s}" fill="${RED}"/>`;
     }
-    if (p.type) body += `<text x="${px + pw / 2}" y="${top + ph * 0.75}" font-size="${fs}" text-anchor="middle" fill="#111" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(`${p.type}${p.zip_size ? ` (${p.zip_size} ZIP)` : ""}`.toUpperCase())}</text>`;
+    const pt = `${p.type}${p.zip_size ? ` (${p.zip_size} ZIP)` : ""}`;
+    if (p.type) body += `<rect x="${px + pw * 0.08}" y="${top + ph * 0.75 - Math.min(fs, (pw * 0.84) / (pt.length * 0.55))}" width="${pw * 0.84}" height="${Math.min(fs, (pw * 0.84) / (pt.length * 0.55)) * 1.3}" fill="#fff"/><text x="${px + pw / 2}" y="${top + ph * 0.75}" font-size="${Math.min(fs, (pw * 0.84) / (pt.length * 0.55))}" text-anchor="middle" fill="#111" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(`${p.type}${p.zip_size ? ` (${p.zip_size} ZIP)` : ""}`.toUpperCase())}</text>`;
     if (p.top_offset != null) body += arrow(px + pw * 0.15, 0, px + pw * 0.15, top) + box(px + pw * 0.15 + 0.06 / s, top / 2, `${p.top_offset}${u}`, "start");
     if (p.w != null) body += arrow(px, top + 0.32 / s, px + pw, top + 0.32 / s) + box(px + pw / 2, top + 0.32 / s, `${p.w}${u}`);
     body += arrow(px - 0.18 / s, top, px - 0.18 / s, top + ph) + box(-0.15 / s, top + ph / 2, p.h != null ? `${p.h}${u}` : "REMAINING HEIGHT", "end");
@@ -537,7 +542,7 @@ function wallSvg(doc: PackDoc, mode: "hatched" | "lining", wall: string, s: numb
       lh = Number(L.h);
     const lx = W / 2 - lw / 2,
       ly = top + (i.labelOffset ?? 0);
-    body += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" fill="#c8177a"/><text x="${W / 2}" y="${ly + lh * 0.62}" font-size="${Math.min(fs, lh * 0.45)}" text-anchor="middle" fill="#fff" font-family="Georgia, serif" font-weight="700">${esc(doc.brand.name.toUpperCase())}</text>`;
+    body += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" fill="#c8177a"/><text x="${W / 2}" y="${ly + lh * 0.62}" font-size="${Math.min(fs, lh * 0.45, (lw * 0.9) / (doc.brand.name.length * 0.68))}" text-anchor="middle" fill="#fff" font-family="Georgia, serif" font-weight="700">${esc(doc.brand.name.toUpperCase())}</text>`;
     if (i.labelOffset != null) body += arrow(lx + lw + 0.15 / s, top, lx + lw + 0.15 / s, ly) + box(lx + lw + 0.25 / s, top + (ly - top) / 2 - 0.06 / s, `${i.labelOffset}${u}`, "start");
     body += arrow(lx, ly + lh + 0.15 / s, lx + lw, ly + lh + 0.15 / s) + box(lx + lw / 2, ly + lh + 0.4 / s, `${L.w}${u}`);
     body += arrow(lx - 0.15 / s, ly, lx - 0.15 / s, ly + lh) + box(lx - 0.25 / s, ly + lh / 2, `${L.h}${u}`, "end");
@@ -568,18 +573,19 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
   let panels = "";
   let lines = "";
   if (withArtwork) {
-    const s = Math.min(5.6 / Math.max(...walls.map(widthOf)), 3.0 / H);
+    // Two walls side by side, as large as the column left of the repeat allows.
+    const s = Math.min(2.75 / Math.max(...walls.map(widthOf)), 4.3 / H);
     panels = walls
-      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.4 : 4.1}in;top:${k === 0 ? 1.55 : 5.6}in;text-align:center">${wallTitle(w, "hatched", false)}${wallSvg(doc, modes[k], w, s)}</div>`)
+      .map((w, k) => `<div class="abs" style="left:${r2(0.4 + k * 5.25)}in;top:1.45in;width:5.1in;text-align:center">${wallTitle(w, "hatched", false)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
       .join("");
   } else {
-    const s = Math.min(5.9 / W, 5.4 / H);
+    const s = Math.min(5.6 / W, 5.0 / H);
     panels = walls
-      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.4 : 8.6}in;top:2.4in;text-align:center;width:8in">${wallTitle(w, modes[k], i.pockets.some((p) => p.centered) && k === 0)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
+      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.3 : 8.6}in;top:2.0in;text-align:center;width:8in">${wallTitle(w, modes[k], i.pockets.some((p) => p.centered) && k === 0)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
       .join("");
   }
   // Photos for this page (e.g. PLEASE MAKE SURE TO ADD INTERIOR BINDING) with caption, dot and leader.
-  const pbox: R = withArtwork ? { x: 0.4, y: 7.4, w: 3.4, h: 3.2 } : { x: 12.6, y: 7.6, w: 4.0, h: 3.0 };
+  const pbox: R = withArtwork ? { x: 0.4, y: 7.0, w: 5.0, h: 3.7 } : { x: 12.6, y: 7.6, w: 4.0, h: 3.0 };
   const photo = photos[0];
   let photoHtml = "";
   if (photo?.img) {
@@ -594,9 +600,9 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
     <div class="abs" style="left:${withArtwork ? 5.9 : 9.4}in;top:${withArtwork ? 0.45 : 1.3}in;width:${withArtwork ? 5.4 : 7}in">${commentsFor(doc, "INTERIOR & LINING", n)}</div>
     ${panels}
     ${withArtwork ? `<div class="abs" style="left:11.0in;top:1.3in;width:5.6in">${artworkBlock(doc, 5.6)}</div>` : ""}
-    ${!withArtwork ? `<div class="abs" style="left:0.4in;top:9.0in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>` : ""}
+    ${!withArtwork ? `<div class="abs" style="left:0.4in;top:9.35in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>` : ""}
     ${photoHtml}
-    <div class="abs" style="left:${withArtwork ? 4.1 : 7.4}in;bottom:0.35in;width:${withArtwork ? 6.6 : 5}in;font-size:12pt;line-height:1.45">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets
+    <div class="abs" style="left:${withArtwork ? 5.9 : 7.4}in;bottom:0.35in;width:${withArtwork ? 4.8 : 5}in;font-size:12pt;line-height:1.45">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets
       .map((p) => `${up(p.type)} ON ${up(p.wall)}${p.w ? ` — ${p.w}${doc.U} WIDE` : ""}${p.top_offset != null ? `, ${p.top_offset}${doc.U} FROM TOP` : ""}${p.zip_size ? `, ${up(p.zip_size)} ZIP` : ""}`)
       .join("<br/>")}${i.seamBinding && !photo ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}</div>
     ${overlay(lines)}
@@ -616,8 +622,8 @@ function allWalls(doc: PackDoc) {
     { name: "SIDE 2", w: D, h: H },
     { name: "BASE", w: W, h: D },
   ];
-  const maxH = 1.05 * 72,
-    maxW = 1.4 * 72;
+  const maxH = 0.75 * 72,
+    maxW = 1.2 * 72;
   const scale = Math.min(...walls.map((x) => Math.min(maxH / x.h, maxW / x.w)));
   return walls
     .map((wall) => {
@@ -674,9 +680,9 @@ function artworkPage(doc: PackDoc, n: number) {
   if (app?.img) {
     const cap = up(app.note || `LINING IS ${l.application} REPEAT`);
     const pbox: R = { x: 0.4, y: 2.75, w: 4.4, h: 7.85 };
-    const pr = fit(app.img, pbox);
+    const pr = { ...fit(app.img, pbox), y: pbox.y };
     const dot = app.dot ?? { x: 0.5, y: 0.25 };
-    left = `<div class="abs" style="left:0.4in;top:1.45in;width:4.4in;text-align:center;font-size:17pt;line-height:1.2">${cap}</div>${imgIn(app.img, pbox)}`;
+    left = `<div class="abs" style="left:0.4in;top:1.45in;width:4.4in;text-align:center;font-size:17pt;line-height:1.2">${cap}</div>${imgIn(app.img, pbox, "", true)}`;
     lines += lead(2.6, 2.3, pr.x + dot.x * pr.w, pr.y + dot.y * pr.h, { dot: true, w: 0.03 });
   }
   return `<section class="page">
@@ -876,16 +882,19 @@ function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialC
   const caption = (s: (typeof items)[number]) => [`${up(s.supplier)}`, "SWATCH CARD", up(s.article), up(s.colourName)].filter(Boolean).join("<br/>");
   if (items.length === 1) {
     const s = items[0];
-    const { html, chip, pr } = swatchCard(s, { x: 3.25, y: 0.25, w: 10.4, h: 10.55 }, 6);
-    // Caption sits beside the chip side of the card, its leader runs to the chip box.
-    const cy = chip ? Math.min(Math.max(chip.y + chip.h / 2 - 0.9, 2.3), 8.6) : 2.6;
-    const capRight = Math.min(pr.x - 0.15, 3.1);
-    const lines = chip ? lead(capRight, cy + 1.2, chip.x, chip.y + chip.h / 2, { w: 0.03 }) : "";
+    // The caption goes on the chip's side of the card, its leader running to the chip box.
+    const right = !!s.chipBox && s.chipBox.x + s.chipBox.w / 2 > 0.5;
+    const { html, chip, pr } = swatchCard(s, right ? { x: 2.4, y: 0.25, w: 9.4, h: 10.55 } : { x: 3.6, y: 0.25, w: 10.4, h: 10.55 }, 6);
+    const cy = chip ? Math.min(Math.max(chip.y + chip.h / 2 - 1.2, 2.3), 8.6) : 2.6;
+    const capX = right ? pr.x + pr.w + 0.25 : 0.4,
+      capW = right ? Math.min(3.4, 16.6 - capX) : pr.x - 0.25 - 0.4;
+    const ly = cy + 1.55;
+    const lines = chip ? (right ? lead(capX - 0.05, ly, chip.x + chip.w, chip.y + chip.h * 0.3, { w: 0.03 }) : lead(capX + capW + 0.05, ly, chip.x, chip.y + chip.h * 0.3, { w: 0.03 })) : "";
     return `<section class="page">
       ${head(doc, n, `${s.materialName.replace(/ MTL$/, "")} #${s.callout} MTL`)}
       <div class="abs" style="left:0.4in;top:1.62in;font-size:14pt">FOR REFERENCE <span class="red">${up(doc.pack.styleNo)}${esc(s.colorway)} ONLY</span></div>
-      <div class="abs" style="left:0.4in;top:${r2(cy)}in;width:${r2(capRight - 0.4)}in;text-align:right">
-        <div style="text-align:center;padding-left:0.6in"><span class="callout" style="width:52px;height:52px;font-size:26pt;border-width:3px">${s.callout}</span></div>
+      <div class="abs" style="left:${r2(capX)}in;top:${r2(cy)}in;width:${r2(capW)}in;text-align:${right ? "left" : "right"}">
+        <div style="text-align:center;width:2.2in;${right ? "" : "margin-left:auto"}"><span class="callout" style="width:52px;height:52px;font-size:26pt;border-width:3px">${s.callout}</span></div>
         <div style="font-size:14pt;line-height:1.15;margin-top:8px">${caption(s)}</div>
       </div>
       ${html}

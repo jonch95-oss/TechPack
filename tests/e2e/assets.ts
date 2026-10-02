@@ -24,7 +24,7 @@ export function referenceAssets() {
   const side = path.join(OUT, "side-view.png");
   if (!existsSync(side)) {
     execFileSync("pdftoppm", ["-r", "150", "-f", "2", "-l", "2", "-png", "-singlefile", PDF, path.join(OUT, "p2-page")]);
-    execFileSync("convert", [path.join(OUT, "p2-page.png"), "-crop", "600x705+1920+855", "+repage", side]);
+    execFileSync("convert", [path.join(OUT, "p2-page.png"), "-crop", "600x660+1920+900", "+repage", side]);
   }
   return {
     renderPink: f("p3-000.jpg"), // ENLARGED CAD, PINK013-B

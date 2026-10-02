@@ -218,7 +218,7 @@ export async function seedTb25(a: Assets, adminEmail: string) {
   };
   await db.insert(packAnswers).values(Object.entries(answers).map(([questionId, value]) => ({ packId: pack.id, questionId, value, status: "confirmed" as const, updatedBy: user.id })));
   await db.insert(packFiles).values([
-    { packId: pack.id, kind: "render", url: file("render.png", a.render), name: "TB25_ACC0023.png", createdBy: user.id },
+    { packId: pack.id, kind: "render", url: file("render.png", a.render), name: "TB25_ACC0023.png", marks: { dot: { x: 0.69, y: 0.73 } }, createdBy: user.id },
     ...a.refs.map((r, i) => ({ packId: pack.id, kind: "reference" as const, url: file(`ref-${i + 1}.jpg`, r), name: `ref-${i + 1}.jpg`, tag: String.fromCharCode(68 + i), note: "REFERENCE IMAGES", createdBy: user.id })),
     { packId: pack.id, kind: "construction", url: file("binding.jpg", a.binding), name: "binding.jpg", tag: "C", note: "PLEASE MAKE SURE TO ADD INTERIOR BINDING", page: "INTERIOR & LINING", marks: { dot: { x: 0.5, y: 0.5 } }, createdBy: user.id },
     { packId: pack.id, kind: "construction", url: file("teeth.jpg", a.teeth), name: "teeth.jpg", tag: "G", note: "METAL FINISH PLASTIC TEETH REFERENCE", page: "HARDWARE / BRANDING DETAIL", createdBy: user.id },
