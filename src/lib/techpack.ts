@@ -189,7 +189,7 @@ export async function buildTechPackJson(p: LoadedPack) {
   }));
   const refs = p.files.filter((f) => f.kind === "reference" || f.kind === "construction").map((f) => ({ letter: f.tag, name: f.name, note: f.note }));
 
-  const issues = completeness(ctx, p.statuses, p.pack.colorways);
+  const issues = completeness(ctx, p.statuses, p.pack.colorways, p.pack.stage);
 
   return {
     header: {

@@ -14,6 +14,7 @@ import {
   type MaterialEntry,
 } from "@/lib/questions";
 import type { SpellFlag } from "@/lib/spellcheck/core";
+import { productionProblem, refText, splitReferences } from "@/lib/reference-answer";
 
 export type RuleGroup = "Completeness" | "Geometry" | "Consistency" | "Language" | "Licensor" | "Claims";
 export type RuleResult = {
@@ -31,8 +32,10 @@ export type ValidationInput = {
   statuses: Record<string, string>;
   colorways: string[];
   chineseOn: boolean;
-  /** PROTO until a production sample round (SMS / PP / TOP) exists. */
+  /** The pack's stage (one click on the pack). Missing = PROTO. */
   stage?: "PROTO" | "PRODUCTION";
+  /** SAME_AS reference answers must resolve at PRODUCTION: does this style # / library code exist? */
+  resolves?: (styleNoOrCode: string) => boolean;
   /** Library hardware referenced by the pack, resolved. */
   hardware: { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string }[];
   /** Library materials used by the pack. */
@@ -44,9 +47,17 @@ export type ValidationInput = {
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
+/**
+ * Hard fails at both stages (V2 §6): geometry that can't be built. Every other rule fails only at
+ * PRODUCTION and is a warning at PROTO — real proto packs are lean and reference-driven (V2.1 §1).
+ */
+const HARD = [/^Flap height/, /^Pocket \d/, /^Logo size \+ offset/, /^Strap total length/, /^Gusset width/];
+
 export function validatePack(input: ValidationInput): RuleResult[] {
-  const { answers: a, category } = input;
-  const ctx = { category, answers: a, brand: input.brand };
+  const stage = input.stage ?? "PROTO";
+  const { values: a, refs } = splitReferences(input.answers);
+  const { category } = input;
+  const ctx = { category, answers: input.answers, brand: input.brand };
   const out: RuleResult[] = [];
   const push = (r: RuleResult) => out.push(r);
   const inches = a["dims.unit"] === "INCHES";
@@ -57,7 +68,7 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     D = num(a["dims.d"]);
 
   /* ------------------------------ Completeness ------------------------------ */
-  const issues = completeness(ctx, input.statuses, input.colorways);
+  const issues = completeness(ctx, input.statuses, input.colorways, stage);
   const matrixIssues = issues.filter((i) => i.questionId === "materials.matrix");
   const starIssues = issues.filter((i) => i.questionId !== "materials.matrix");
   if (!starIssues.length) push({ group: "Completeness", rule: "All ★ fields confirmed", status: "pass", fix: "" });
@@ -72,7 +83,7 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   for (const h of badHw)
     push({
       group: "Completeness",
-      rule: `Hardware ${h.code || "(no code)"}`,
+      rule: `Hardware ${h.code || "(no code)"} — code, size, finish`,
       status: "fail",
       fix: `Add ${[!h.code && "a code", !h.dimsMm && "dimensions (mm)", !(h.finish || hwFinish) && "a finish"].filter(Boolean).join(" and ")} in the hardware library.`,
       questionId: "hardware.items",
@@ -229,8 +240,16 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   push(lower.length ? { group: "Language", rule: "All callouts in capitals", status: "fail", fix: `Use capitals in: ${lower.slice(0, 5).join(", ")}.`, questionId: lower[0] } : { group: "Language", rule: "All callouts in capitals", status: "pass", fix: "" });
   push({ group: "Language", rule: "Chinese line under every English line", status: "pass", fix: input.chineseOn ? "Checked line by line as the PDF is made: glossary first, then translation; any line left without Chinese blocks the export." : "Chinese is off — English only." });
 
-  /* ------------------------------ Licensor ------------------------------ */
-  if (input.brand.licensorRequired || category === "Coolers / insulated") {
+  /* ------------------------------ References ------------------------------ */
+  // V2.1 §1: settled at PROTO; at PRODUCTION "to be provided" / "open to options" block, "same as" must resolve.
+  if (stage === "PRODUCTION")
+    for (const [qid, r] of Object.entries(refs)) {
+      const problem = productionProblem(r, input.resolves ?? (() => false));
+      if (problem) push({ group: "Completeness", rule: `Reference: ${refText(r)}`, status: "fail", fix: problem, questionId: qid });
+    }
+
+  /* ------------------------------ Licensor (production only, V2 §5) ------------------------------ */
+  if (stage === "PRODUCTION" && (input.brand.licensorRequired || category === "Coolers / insulated")) {
     const missing = ["header.licensor", "header.licensor_submission", "header.licensor_status"].filter((k) => !a[k]);
     push(missing.length ? { group: "Licensor", rule: `${input.brand.name} licensor approval fields`, status: "fail", fix: "Fill licensor, submission # and status.", questionId: missing[0] } : { group: "Licensor", rule: `${input.brand.name} licensor approval fields`, status: "pass", fix: "" });
   }
@@ -243,7 +262,10 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   ];
   for (const [on, rule, q] of claims) if (on) push({ group: "Claims", rule, status: "warn", fix: "Claim requires a test report.", questionId: q });
 
-  return out;
+  if (stage === "PRODUCTION") return out;
+  // PROTO: only missing PROTO answers and the hard geometry rules block; the rest are warnings.
+  const blocks = (r: RuleResult) => /^(★ |Cell )/.test(r.rule) || HARD.some((re) => re.test(r.rule));
+  return out.map((r) => (r.status === "fail" && !blocks(r) ? { ...r, status: "warn" as const } : r));
 }
 
 export function gatePasses(results: RuleResult[]) {

@@ -6,6 +6,7 @@ import { saveAnswer, updatePackSetup } from "@/app/actions/packs";
 import { Drawer } from "@/components/drawer";
 import { Button, Label, TextInput } from "@/components/ui";
 import { CATEGORIES } from "@/lib/questions";
+import { remapAnswers, removeColorway } from "@/lib/colorways";
 
 /**
  * Pack setup stays editable after creation (V2 §3 step 2): style #, name, brand, category and the
@@ -122,6 +123,9 @@ export function SetupEditor({
                     className="h-8 px-3 border border-hairline-strong text-[10px] tracking-[0.16em] uppercase hover:border-signal hover:text-signal disabled:opacity-30"
                     onClick={() => {
                       if (!confirm(`Remove ${c}${cwNames[c] ? ` (${cwNames[c]})` : ""}? Its breakdown cells go with it; later colourways move up a letter.`)) return;
+                      // Names move with their colourway, exactly as the server re-letters them.
+                      const { map } = removeColorway(cws, c);
+                      setCwNames(remapAnswers({ n: cwNames }, map).n as Record<string, string> ?? cwNames);
                       run(() => updatePackSetup(pack.id, { removeColorway: c }), `${c} removed.`);
                     }}
                   >

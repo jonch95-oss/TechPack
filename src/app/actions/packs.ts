@@ -68,7 +68,7 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
  */
 export async function updatePackSetup(
   packId: string,
-  patch: { styleNo?: string; styleName?: string; colorways?: string[]; removeColorway?: string; brandId?: string; category?: string; chineseOn?: boolean },
+  patch: { styleNo?: string; styleName?: string; colorways?: string[]; removeColorway?: string; brandId?: string; category?: string; chineseOn?: boolean; stage?: "PROTO" | "PRODUCTION" },
 ): Promise<ActionResult & { colorways?: string[] }> {
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
@@ -123,6 +123,7 @@ export async function updatePackSetup(
     set.brandId = patch.brandId;
   }
   if (typeof patch.chineseOn === "boolean") set.chineseOn = patch.chineseOn;
+  if (patch.stage === "PROTO" || patch.stage === "PRODUCTION") set.stage = patch.stage;
   await db.update(packs).set(set).where(eq(packs.id, packId));
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", before, after: { ...set, removeColorway: patch.removeColorway } });
   revalidatePath(`/packs/${packId}`);

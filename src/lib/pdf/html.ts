@@ -1,4 +1,5 @@
 import "server-only";
+import { numbersOf, trueSize } from "./true-size";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PackDoc } from "./doc";
@@ -219,7 +220,11 @@ function materialsPage(doc: PackDoc, n: number) {
     <tr class="last"><td colspan="2" class="wrap"><b>DESCRIPTION:</b> ${v(h.description, 4.0, "", 2)}${upd(doc, "header.description")}</td><td><b>BAG CATEGORY:</b> ${v(h.category, 1.8)}<br/><b>STYLE NAME:</b> ${v(doc.pack.styleName, 1.95)}</td></tr>
   </table>`;
 
-  const comments = commentsFor(doc, "MATERIALS / HARDWARE", n);
+  // Reference answers print as written ("WEBBING SAME AS <STYLE #>", "PLEASE FOLLOW SAMPLE IMAGES FOR …").
+  const refNotes = doc.refNotes.length
+    ? `<div class="comments" data-ref-notes>${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>`
+    : "";
+  const comments = commentsFor(doc, "MATERIALS / HARDWARE", n) + refNotes;
   const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.12in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
   const top = h.physicalSample ? 2.9 : 2.25; // the masthead is a fixed 1.65in
   const callouts = doc.materials
@@ -732,23 +737,31 @@ function artworkPage(doc: PackDoc, n: number) {
 }
 
 /* ------------------------------ 8. HARDWARE / BRANDING DETAIL ------------------------------ */
+/** Size of a side / rear / top view from "W X H X D": side = D × H, top = W × D, rear = W × H. */
+function sideDims(dims: string, k: "side" | "rear" | "top") {
+  const [w, h, d] = numbersOf(dims);
+  if (k === "rear") return dims;
+  if (d == null) return k === "side" ? String(h ?? w ?? "") : String(w ?? "");
+  return k === "side" ? `${d} X ${h}` : `${w} X ${d}`;
+}
+
 function detailPage(doc: PackDoc, n: number) {
-  const mm = (s: string) => s.split(/\s*X\s*/i).map((x) => parseFloat(x)).filter((x) => Number.isFinite(x));
   const photos = doc.references.filter((r) => r.page === "HARDWARE / BRANDING DETAIL");
   const panelH = doc.detail.length > 1 ? 3.9 : 5.4;
   const panels = doc.detail
     .map((h) => {
-      const [, hmm] = mm(h.dimsMm);
-      // 100% views: drawn at true size (mm on paper).
-      const view = (k: "front" | "side" | "rear", label: string, scale = 1) => {
+      // 100% views: drawn at true size (mm on paper) from the part's own dimensions — never a default.
+      const front = h.views.front ?? h.views.side ?? h.views.rear ?? h.views.top;
+      const exact = front ? trueSize(h.dimsMm, front.w / front.h).exact : numbersOf(h.dimsMm).length > 0;
+      const view = (k: "front" | "side" | "rear" | "top", label: string, scale = 1) => {
         const v = h.views[k];
         if (!v) return "";
-        const hh = (hmm ?? 40) * scale;
-        const ww = hh * (v.w / v.h);
-        return `<div style="text-align:center"><img src="${v.src}" style="width:${r2(ww)}mm;height:${r2(hh)}mm;object-fit:contain;display:block;margin:0 auto"/><div style="font-size:12pt;margin-top:4px">${label}</div></div>`;
+        const t = trueSize(k === "front" ? h.dimsMm : sideDims(h.dimsMm, k), v.w / v.h);
+        return `<div style="text-align:center"><img src="${v.src}" style="width:${r2(t.wMm * scale)}mm;height:${r2(t.hMm * scale)}mm;object-fit:contain;display:block;margin:0 auto"/><div style="font-size:12pt;margin-top:4px">${label}</div></div>`;
       };
       // Enlarged views beside the 100% set, so every detail dimension reads.
-      const enlarge = Math.max(1.5, Math.min(3, ((panelH - 0.9) * 25.4) / (hmm ?? 40)));
+      const tallest = front ? trueSize(h.dimsMm, front.w / front.h).hMm : 30;
+      const enlarge = Math.max(1.5, Math.min(3, ((panelH - 0.9) * 25.4) / tallest));
       const fs = h.finishSpec as { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
       const notes = [
         h.material,
@@ -769,9 +782,9 @@ function detailPage(doc: PackDoc, n: number) {
         : "";
       return `<div class="box" style="display:flex;gap:0.35in;align-items:flex-start;margin-bottom:0.2in;min-height:${panelH}in;padding:14px 18px">
         <div style="width:1.9in"><div style="font-size:15pt">${up(h.type)}<br/>${up(h.code)}</div><div style="font-size:14pt;margin-top:4px">${esc(h.dimsMm)} MM</div>
-          <div style="display:inline-block;margin-top:10px;padding:4px 14px;border-radius:14px;background:#5ab4e6;color:#fff;font-size:15pt">SIZE 100%</div>
-          <div style="display:flex;gap:0.2in;align-items:flex-end;margin-top:0.25in">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}</div></div>
-        <div style="display:flex;gap:0.3in;align-items:flex-end">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}</div>
+          <div style="display:inline-block;margin-top:10px;padding:4px 14px;border-radius:14px;background:${exact ? "#5ab4e6" : "#999"};color:#fff;font-size:15pt">${exact ? "SIZE 100%" : "NOT TO SCALE — SIZE NOT GIVEN"}</div>
+          ${exact ? `<div style="display:flex;gap:0.2in;align-items:flex-end;margin-top:0.25in">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}${view("top", "TOP")}</div>` : ""}</div>
+        <div style="display:flex;gap:0.3in;align-items:flex-end">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>
         ${dims}
         <div style="flex:1;font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div>
         ${h.photo ? `<div style="position:relative;width:1.8in;height:2.4in">${imgIn(h.photo, { x: 0, y: 0, w: 1.8, h: 2.4 })}</div>` : ""}

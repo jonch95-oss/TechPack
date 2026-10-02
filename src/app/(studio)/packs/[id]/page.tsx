@@ -37,6 +37,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
           colorways: p.pack.colorways,
           aiAnalysis: p.pack.aiAnalysis,
           status: p.pack.status,
+          stage: p.pack.stage,
           factory: p.pack.factory,
           factoryStyleNo: p.pack.factoryStyleNo,
           copiedFrom: src ?? null,

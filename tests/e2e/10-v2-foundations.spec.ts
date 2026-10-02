@@ -71,6 +71,23 @@ test("Review screen, editable setup and background PDF", async ({ page }) => {
   await page.getByTestId("mode-all").click();
   await expect(page.getByTestId("review-screen")).toHaveCount(0);
 
+  /* ---- V2.1 §1: answer by reference; the stage is one click ---- */
+  await page.getByTestId("ref-open-hb.strap.attachment").click();
+  await page.getByTestId("ref-kind-SAME_AS").click();
+  await page.getByTestId("ref-style-hb.strap.attachment").fill("PINK013");
+  await page.getByTestId("ref-save-hb.strap.attachment").click();
+  await expect(page.getByTestId("ref-value-hb.strap.attachment")).toHaveText("↪ SAME AS PINK013");
+  await expect(page.getByText("Saved ✓")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("ref-value-hb.strap.attachment")).toHaveText("↪ SAME AS PINK013");
+  await expect(page.getByTestId("stage-PROTO")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("stage-PRODUCTION").click();
+  await expect(page.getByTestId("stage-PRODUCTION")).toHaveAttribute("aria-checked", "true");
+  await page.reload();
+  await expect(page.getByTestId("stage-PRODUCTION")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("stage-PROTO").click();
+  await expect(page.getByTestId("stage-PROTO")).toHaveAttribute("aria-checked", "true");
+
   /* ---- Setup stays editable: style #, colourways (their data follows) ---- */
   await page.getByTestId("edit-setup").click();
   await page.getByTestId("setup-style").fill("PINK996B");

@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { flats as flatsTable, hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type FileMarks, type Print } from "@/db/schema";
+import { flats as flatsTable, hardware, materials, packs, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type FileMarks, type Print } from "@/db/schema";
 import sharp from "sharp";
 import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
 import { pantoneHex, repeatTileSvg, svgDataUri } from "./artwork";
@@ -12,8 +12,9 @@ import { readStoredFile } from "@/lib/storage";
 import { intoCrop, readCroppedFile } from "@/lib/crop";
 import { spellcheckParts } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
-import { bodyMaterials, contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
+import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, type Plan } from "./plan";
+import { refText, splitReferences } from "@/lib/reference-answer";
 
 export type Img = { src: string; w: number; h: number } | null;
 
@@ -43,9 +44,15 @@ function stringsOf(v0: unknown): string[] {
   return out;
 }
 
-export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {}) {
+export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean; stage?: "PROTO" | "PRODUCTION" } = {}) {
   const withImages = opts.images !== false;
-  const a = p.answers;
+  // Templates read plain values; reference answers ("SAME AS …", "FOLLOW REFERENCE IMAGE") print as written.
+  const { values: a, refs: refAnswers } = splitReferences(p.answers);
+  const refNotes = Object.entries(refAnswers).map(([qid, r]) => ({ questionId: qid, label: (findQuestion(p.pack.category, qid)?.label ?? qid).toUpperCase(), text: refText(r) }));
+  // Parts identified by a description (no library item yet, V2.1 §1.3) print as written too.
+  for (const r of (p.answers["hardware.items"] as { item?: LibValue; qty?: number; placement?: string }[] | undefined) ?? [])
+    if (r.item && !r.item.id && r.item.label)
+      refNotes.push({ questionId: "hardware.items", label: "HARDWARE", text: `${r.item.label}${(r.qty ?? 1) > 1 ? ` ×${r.qty}` : ""}${r.placement ? ` — ${r.placement}` : ""}`.toUpperCase() });
   const ctx = { category: p.pack.category, answers: a, brand: p.brand };
   const unit = a["dims.unit"] === "INCHES" ? "in" : "cm";
   const U = unit === "in" ? '"' : " CM";
@@ -138,7 +145,31 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   };
   for (const r of (a["hardware.items"] as { item?: LibValue }[] | undefined) ?? []) addHw(r.item);
   ["branding.logo_code", "hb.charm.code", "interior.label", "cos.puller", "belt.buckle", "hb.feet.code"].forEach((k) => addHw(a[k]));
-  const detail = [...usedHw.values()].filter((h) => h.views.front || h.views.side || h.views.rear);
+  let detail = [...usedHw.values()].filter((h) => h.views.front || h.views.side || h.views.rear || h.views.top);
+  // A Hardware-category pack IS the component: its panel comes from the pack's own hw.* answers
+  // (overall size, detail dimensions, material, finish, logo treatment, views), over the library item.
+  if (p.pack.category === "Hardware") {
+    const base = hwById.get(lib(a["hw.component"])?.id ?? "");
+    const n = (k: string) => (typeof a[k] === "number" ? (a[k] as number) : null);
+    const size = [n("hw.overall_w"), n("hw.overall_h"), n("hw.overall_d")].filter((x): x is number => x != null);
+    const wanted = new Set(((a["hw.views"] as string[] | undefined) ?? ["FRONT", "SIDE", "REAR", "TOP"]).map((v) => v.toLowerCase()));
+    const views = Object.fromEntries(Object.entries(base?.views ?? {}).filter(([k]) => wanted.has(k)));
+    const rows = ((a["hw.detail_dims"] as { label?: string; mm?: number }[] | undefined) ?? []).filter((r) => r.label);
+    const extras = [a["hw.hollow"] === true && `HOLLOW${a["hw.hollow_where"] ? `: ${a["hw.hollow_where"]}` : ""}`, a["hw.edge"] && `${a["hw.edge"]} EDGE`, a["hw.etched_sides"] === true && "ETCHED SIDE PATTERN", a["hw.attachment"] && `ATTACHMENT: ${a["hw.attachment"]}`].filter(Boolean);
+    const own = {
+      ...(base ?? ({ id: "pack", code: p.pack.styleNo, name: p.pack.styleName, photoUrl: null, finishSpec: {}, approval: { status: "PENDING" }, construction: "", enamelPantone: "", notes: "" } as unknown as Hardware)),
+      type: String(a["hw.type"] ?? base?.type ?? ""),
+      dimsMm: size.length ? size.join(" X ") : (base?.dimsMm ?? ""),
+      material: String(a["hw.material"] ?? base?.material ?? ""),
+      finish: String(a["hw.finish"] ?? base?.finish ?? ""),
+      logoTreatment: String(a["hw.logo_treatment"] ?? base?.logoTreatment ?? ""),
+      enamelPantone: String(a["hw.enamel_colour"] ?? base?.enamelPantone ?? ""),
+      notes: [base?.notes, ...extras].filter(Boolean).join(" · "),
+      detailDims: rows.length ? rows.map((r) => ({ label: String(r.label), mm: typeof r.mm === "number" ? r.mm : null })) : (base?.detailDims ?? []),
+      views,
+    } as Hardware;
+    detail = [own, ...detail.filter((h) => h.id !== own.id)];
+  }
   const logoSize = a["branding.logo_size"] as Dims2Value | undefined;
   const logoHw = hwById.get(lib(a["branding.logo_code"])?.id ?? "");
   const logoPanel = logoSize?.w != null && logoSize?.h != null && /PATCH|DEBOSS|EMBOSS/.test(String(a["branding.logo_type"] ?? "")) ? { w: logoSize.w, h: logoSize.h, photo: logoHw?.photoUrl ?? null } : null;
@@ -246,16 +277,21 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   });
 
   /* ---------- validation ---------- */
+  // "Same as <style # / code>" resolves when that pack or library item exists in the studio.
+  const knownCodes = Object.keys(refAnswers).length
+    ? new Set([...(await db.select({ c: packs.styleNo }).from(packs)).map((r) => r.c), ...(await db.select({ c: hardware.code }).from(hardware)).map((r) => r.c)].map((c) => c.toUpperCase()))
+    : new Set<string>();
   const team = (await db.select({ name: users.name }).from(users)).flatMap((u) => u.name.split(/\s+/));
   const spelling = spellcheckParts(answerTexts(a), [...team, p.brand.name, p.pack.styleName, ...p.brand.name.split(/\s+/)]);
   const validation: RuleResult[] = validatePack({
     category: p.pack.category,
     brand: p.brand,
-    answers: a,
+    answers: p.answers,
     statuses: p.statuses,
     colorways: p.pack.colorways,
     chineseOn: p.pack.chineseOn,
-    stage: round && round.stage !== "PROTO" ? "PRODUCTION" : "PROTO",
+    stage: opts.stage ?? p.pack.stage,
+    resolves: (code) => knownCodes.has(code.trim().toUpperCase()),
     hardware: [...hwById.values()].map((h) => ({ id: h.id, code: h.code, type: h.type, dimsMm: h.dimsMm, finish: h.finish, approval: h.approval?.status })),
     materials: [...matById.values()].map((m) => ({ id: m.id, label: materialLabel(m), approval: m.approval?.status ?? "PENDING", composition: m.composition })),
     flats: flatRows.map((f) => ({ view: f.view, status: f.status, materialCallouts: [...calloutsOn(f.svg).materials] })),
@@ -285,6 +321,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   }));
 
   return {
+    refNotes,
     pack: p.pack,
     brand: { name: p.brand.name, logo: await img(p.brand.logoUrl) },
     unit,
@@ -379,7 +416,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
         detailDims: h.detailDims ?? [],
         finishSpec: h.finishSpec ?? {},
         approval: h.approval?.status ?? "PENDING",
-        views: { front: await img(h.views.front), side: await img(h.views.side), rear: await img(h.views.rear) },
+        views: { front: await img(h.views.front), side: await img(h.views.side), rear: await img(h.views.rear), top: await img(h.views.top) },
         photo: await img(h.photoUrl),
       })),
     ),

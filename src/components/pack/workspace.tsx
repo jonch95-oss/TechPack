@@ -30,6 +30,9 @@ import {
 import { ReviewScreen } from "./review-screen";
 import { addPackFile, confirmAnswer, confirmAnswers, confirmFromSource, resolveConflict, saveAnswer, updatePackSetup, type ClientOrigin } from "@/app/actions/packs";
 import { ORIGIN_LABEL, type Origin } from "@/lib/answer-source";
+import { requiredAt } from "@/lib/stage-gate";
+import { isReference, refText } from "@/lib/reference-answer";
+import { ReferenceControl } from "./reference-control";
 import { useJob } from "@/components/use-job";
 import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, cx, Eyebrow } from "@/components/ui";
@@ -58,6 +61,7 @@ export type WorkspaceProps = {
     colorways: string[];
     aiAnalysis: { visible_features: string[]; not_visible: string[]; agent_notes: string; ran_at: string; model: string } | null;
     status: PackStatus;
+    stage: "PROTO" | "PRODUCTION";
     factory: string;
     factoryStyleNo: string;
     copiedFrom: { id: string; styleNo: string } | null;
@@ -148,11 +152,12 @@ export function PackWorkspace(props: WorkspaceProps) {
 
   const ctx: EvalContext = useMemo(() => ({ category: pack.category, answers, brand }), [pack.category, answers, brand]);
   const visible = useMemo(() => new Set(visibleQuestions(ctx).map((q) => q.id)), [ctx]);
-  const issues = useMemo(() => completeness(ctx, statuses, colorways), [ctx, statuses, colorways]);
+  const [stage, setStage] = useState(pack.stage);
+  const issues = useMemo(() => completeness(ctx, statuses, colorways, stage), [ctx, statuses, colorways, stage]);
   const sections = useMemo(() => sectionsFor(pack.category), [pack.category]);
   const unitLabel = useCallback((u: string) => unitLabelFor(u, answers).toUpperCase(), [answers]);
   const toConfirm = Object.entries(statuses).filter(([k, s]) => s !== "confirmed" && visible.has(k)).length;
-  const requiredTotal = visibleQuestions(ctx).filter((q) => q.required).length;
+  const requiredTotal = visibleQuestions(ctx).filter((q) => requiredAt(q, stage)).length;
   const requiredOpen = new Set(issues.map((i) => i.questionId)).size;
 
   /** The latest commit, for Retry / Keep mine buttons created by an earlier render. */
@@ -451,6 +456,34 @@ export function PackWorkspace(props: WorkspaceProps) {
             <Meta k="Sent by" v={props.sentBy} />
             <Meta k="Attn" v="FTY" />
             <div>
+              <dt className="eyebrow mb-1">Stage</dt>
+              <dd className="inline-flex border border-hairline-strong" role="radiogroup" aria-label="Stage" data-testid="stage">
+                {(["PROTO", "PRODUCTION"] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    role="radio"
+                    aria-checked={stage === st}
+                    disabled={!canEdit}
+                    data-testid={`stage-${st}`}
+                    title={st === "PROTO" ? "Lean, reference-driven: only what a proto needs blocks export" : "Every ★ answer, licensor fields and resolved references"}
+                    onClick={() => {
+                      if (stage === st) return;
+                      setStage(st);
+                      start(async () => {
+                        const res = await updatePackSetup(pack.id, { stage: st });
+                        if (!res.ok) setSave({ state: "error", error: res.error });
+                        setVersion((v) => v + 1);
+                      });
+                    }}
+                    className={cx("h-7 px-3 text-[10px] tracking-[0.16em] uppercase", stage === st ? "bg-ink text-ivory" : "text-ink-soft hover:text-ink")}
+                  >
+                    {st === "PROTO" ? "Proto" : "Production"}
+                  </button>
+                ))}
+              </dd>
+            </div>
+            <div>
               <dt className="eyebrow mb-1">Proto</dt>
               <dd className="flex flex-wrap items-center gap-2">
                 <span className="tracking-[0.06em]">{pack.styleNo}</span>
@@ -634,8 +667,8 @@ export function PackWorkspace(props: WorkspaceProps) {
           </nav>
         </aside>
 
-        <div className="min-w-0 space-y-16">
-          <div className="flex items-center gap-1 -mb-8" role="tablist" aria-label="View">
+        <div className="min-w-0">
+          <div className="relative z-10 flex items-center gap-1 mb-12" role="tablist" aria-label="View">
             {(
               [
                 ["review", "Review"],
@@ -655,6 +688,7 @@ export function PackWorkspace(props: WorkspaceProps) {
               </button>
             ))}
           </div>
+          <div className="space-y-16">
           {mode === "review" && (
             <ReviewScreen
               questions={visibleQuestions(ctx)}
@@ -756,6 +790,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                 })}
             </div>
           </section>
+          </div>
         </div>
 
         <aside className="hidden xl:block">
@@ -998,8 +1033,12 @@ function QuestionRow({
         )}
         {overridden && <div className="text-[10.5px] text-taupe mt-2 italic">AI suggested {displayAi(meta!.aiValue)}</div>}
         {extra && <div className="mt-2">{extra}</div>}
+        {q.kind !== "derived" && <ReferenceControl qid={q.id} value={value} onChange={onChange} disabled={!canEdit} />}
       </div>
       <div className="min-w-0">
+        {isReference(value) ? (
+          <div className="text-[12px] italic text-taupe pt-2">Answered by reference — clear it to enter a value.</div>
+        ) : (
         <QuestionField
           q={q}
           value={value}
@@ -1010,6 +1049,7 @@ function QuestionRow({
           unitLabel={unitLabel}
           derived={q.kind === "derived" ? derivedValue(q, ctx) : undefined}
         />
+        )}
       </div>
     </div>
   );
@@ -1030,6 +1070,7 @@ function conflictWho(c: { origin: string; source: string }) {
 }
 
 function displayAi(v: unknown): string {
+  if (isReference(v)) return `↪ ${refText(v)}`;
   if (v === true) return "YES";
   if (v === false) return "NO";
   if (Array.isArray(v)) return v.map((x) => (typeof x === "object" ? (x as { name?: string }).name ?? "…" : String(x))).join(", ");

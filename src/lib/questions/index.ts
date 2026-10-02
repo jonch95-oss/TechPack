@@ -1,3 +1,5 @@
+import { isReference } from "@/lib/reference-answer";
+import { requiredAt, type Stage } from "@/lib/stage-gate";
 import { COMMON_SECTIONS } from "./common";
 import { CATEGORY_SECTIONS } from "./categories";
 import type {
@@ -38,6 +40,8 @@ export function allQuestions(category: Category): Question[] {
 export function findQuestion(category: Category, id: string): Question | undefined {
   return allQuestions(category).find((q) => q.id === id);
 }
+
+export { isReference } from "@/lib/reference-answer";
 
 export function isEmpty(v: unknown): boolean {
   if (v === undefined || v === null || v === "") return true;
@@ -156,14 +160,19 @@ export function completeness(
   ctx: EvalContext,
   statuses: Record<string, string>,
   colorways: string[],
+  stage: Stage = "PRODUCTION",
 ): Issue[] {
+  const proto = stage === "PROTO";
   const issues: Issue[] = [];
   for (const q of visibleQuestions(ctx)) {
     const v = ctx.answers[q.id];
     const st = statuses[q.id];
     if (q.kind === "derived") continue;
-    if (!q.required) {
-      if (!isEmpty(v) && st && st !== "confirmed") issues.push({ questionId: q.id, label: q.label, problem: statusProblem(st) });
+    // A reference answer ("same as …", "follow reference image") is settled; production checks it separately.
+    if (isReference(v)) continue;
+    if (!requiredAt(q, stage)) {
+      // V2 §2: an unconfirmed answer that isn't required for the stage doesn't block (it prints TBC).
+      if (!proto && !isEmpty(v) && st && st !== "confirmed") issues.push({ questionId: q.id, label: q.label, problem: statusProblem(st) });
       continue;
     }
     if (q.kind === "toggle") {
@@ -172,6 +181,7 @@ export function completeness(
       continue;
     }
     if (isEmpty(v)) {
+      if (proto && protoSatisfied(q.id, ctx, colorways)) continue;
       issues.push({ questionId: q.id, label: q.label, problem: "MISSING" });
       continue;
     }
@@ -179,7 +189,8 @@ export function completeness(
       issues.push({ questionId: q.id, label: q.label, problem: statusProblem(st) });
       continue;
     }
-    if (q.kind === "dims2") {
+    // V2.1 §5: partial sizes are fine at PROTO (a logo given by width only).
+    if (q.kind === "dims2" && !proto) {
       const d = v as Dims2Value;
       if (d.w == null || d.h == null) issues.push({ questionId: q.id, label: q.label, problem: "W AND H BOTH REQUIRED" });
     }
@@ -188,9 +199,11 @@ export function completeness(
       rows.forEach((r, i) => {
         for (const c of (q as RowsQ).columns) {
           if (!c.required) continue;
+          // At PROTO a row needs only its identity (the library part, a description or a reference).
+          if (proto && c.kind !== "lib") continue;
           if (c.requiredWithSection && ctx.answers[optionalToggleId(c.requiredWithSection)] !== true) continue;
           if (c.showIf && !c.showIf.in.includes(String(r[c.showIf.key] ?? ""))) continue;
-          if (isEmpty(r[c.key])) issues.push({ questionId: q.id, label: `${q.label} — row ${i + 1}`, problem: `${c.label.toUpperCase()} MISSING` });
+          if (isEmpty(r[c.key]) && !isReference(r[c.key])) issues.push({ questionId: q.id, label: `${q.label} — row ${i + 1}`, problem: `${c.label.toUpperCase()} MISSING` });
         }
       });
     }
@@ -198,6 +211,8 @@ export function completeness(
       const m = (v as MatrixValue) ?? {};
       for (const cw of colorways) {
         for (const col of matrixColumns(ctx)) {
+          // At PROTO each colourway needs its colour and material; trims and edges may be blank.
+          if (proto && !col.key.startsWith("mat_")) continue;
           const cell = m[cw]?.[col.key];
           if (!cell || (isEmpty(cell.text) && !cell.lib))
             issues.push({ questionId: q.id, label: `${cw} × ${col.label}`, problem: "CELL BLANK — USE DTM, N/A OR A SWATCH" });
@@ -206,6 +221,20 @@ export function completeness(
     }
   }
   return issues;
+}
+
+/**
+ * PROTO accepts what real proto packs give (V2.1 §1.3, §5): a flat product gives two of H / W / D
+ * (no depth on a flat bag), and a lining stated per colourway in the breakdown is the lining.
+ */
+function protoSatisfied(qid: string, ctx: EvalContext, colorways: string[]) {
+  const a = ctx.answers;
+  if (/^dims\.[hwd]$/.test(qid)) return ["dims.h", "dims.w", "dims.d"].filter((k) => !isEmpty(a[k]) || isReference(a[k])).length >= 2;
+  if (qid === "interior.lining_material") {
+    const m = (a["materials.matrix"] as MatrixValue | undefined) ?? {};
+    return colorways.length > 0 && colorways.every((cw) => !!m[cw]?.lining && (!isEmpty(m[cw]!.lining!.text) || !!m[cw]!.lining!.lib));
+  }
+  return false;
 }
 
 function statusProblem(st: string) {

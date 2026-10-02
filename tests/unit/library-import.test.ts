@@ -57,7 +57,7 @@ describe("library import — call-outs", () => {
     const r = hw({ brand: "Pink London", type: "MAGNETIC SNAP" });
     const iss = rowIssues("hardware", [r], ctx)[r.key];
     expect(hasErrors(iss)).toBe(true);
-    expect(iss.find((i) => i.field === "code")?.message).toMatch(/PINK014/);
+    expect(iss.find((i) => i.field === "code")?.message).toMatch(/PINK005/); // components and styles are separate sequences (V2.1 §7)
   });
 
   it("blocks codes repeated in the upload or clashing with a style number", () => {

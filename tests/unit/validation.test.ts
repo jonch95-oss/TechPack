@@ -11,6 +11,7 @@ const base: ValidationInput = {
   chineseOn: false,
   hardware: [],
   spelling: [],
+  stage: "PRODUCTION", // the full Part 5 gate; PROTO is tested below
 };
 const find = (r: ReturnType<typeof validatePack>, rule: string | RegExp) => r.find((x) => (typeof rule === "string" ? x.rule === rule : rule.test(x.rule)));
 
@@ -143,7 +144,7 @@ describe("round 5 validation fixes", () => {
   });
   it("plating / mould approval is a production check, not a proto one", () => {
     expect(find(validatePack({ ...withHw, stage: "PROTO" }), "Hardware OW002")).toBeUndefined();
-    expect(find(validatePack(withHw), "Hardware OW002")).toBeUndefined(); // no stage = proto
+    expect(find(validatePack({ ...withHw, stage: undefined }), "Hardware OW002")).toBeUndefined(); // no stage = proto
     expect(find(validatePack({ ...withHw, stage: "PRODUCTION" }), "Hardware OW002")).toMatchObject({ status: "warn", fix: "Plating / mould sample not approved yet." });
   });
 });
@@ -154,4 +155,51 @@ describe("round 6: POM tolerance follows the Tolerances section", () => {
     completeness({ category: "Handbags", answers }, {}, ["-A"]).find((i) => i.questionId === "pom.list" && /TOLERANCE/.test(i.problem));
   it("does not block while tolerances are off", () => expect(tolIssue(pom)).toBeUndefined());
   it("is required once the admin turns tolerances on", () => expect(tolIssue({ ...pom, "optional.opt.tolerances": true })).toBeDefined());
+});
+
+describe("V2.1 §1: reference answers and the recalibrated PROTO gate", () => {
+  const proto: ValidationInput = { ...base, stage: "PROTO" };
+  const fails = (i: ValidationInput) => validatePack(i).filter((r) => r.status === "fail").map((r) => r.questionId ?? r.rule);
+
+  it("a lean proto pack (dims, materials per colourway, logo method + location, hardware identity) passes with zero blockers", () => {
+    const answers = {
+      "dims.unit": "CM",
+      "dims.h": 13,
+      "dims.w": 20,
+      "dims.d": 7,
+      "materials.list": [{ callout: 1, name: "BODY", locations: ["FRONT"] }],
+      "materials.matrix": { "-A": { mat_1: { text: "#2 FROM SWATCH CARD" } } },
+      "branding.logo_type": "PRINT",
+      "branding.placement": "BOTTOM-RIGHT",
+      "hardware.items": [{ item: { id: "", label: "CHARM ZIPPER PULL (NEW)" }, qty: 1 }],
+      // Handle construction, interior and lining answered by reference, as the real packs do.
+      "hb.top_handle": true,
+      "hb.top_handle.drop": { ref: "PER_IMAGE", text: "PLEASE FOLLOW SAMPLE IMAGES FOR HANDLE CONSTRUCTION" },
+      "interior.lined": true,
+      "interior.lining_material": { ref: "SAME_AS", styleNo: "XYZ-00065" },
+      "interior.pockets": { ref: "SAME_AS", styleNo: "XYZ-00065", part: "BACK WALL ZIP POCKET" },
+    };
+    expect(fails({ ...proto, answers, statuses: {} })).toEqual([]);
+  });
+
+  it("geometry that can't be built still blocks at PROTO; everything else is a warning", () => {
+    const r = validatePack({ ...proto, answers: { "dims.unit": "CM", "dims.h": 16, "hb.flap_height": 17, "header.reference_sample": "Betsy" } });
+    expect(find(r, "Flap height ≤ body height")?.status).toBe("fail");
+    expect(find(r, "All callouts in capitals")?.status).toBe("warn");
+  });
+
+  it("licensor fields are asked at production only", () => {
+    const tb = { ...base, brand: { name: "Ted Baker", licensorRequired: true } };
+    expect(find(validatePack({ ...tb, stage: "PROTO" }), /licensor approval/)).toBeUndefined();
+    expect(find(validatePack(tb), /licensor approval/)?.status).toBe("fail");
+  });
+
+  it("at PRODUCTION, TO_BE_PROVIDED / OPEN_OPTIONS block and SAME_AS must resolve", () => {
+    const answers = { "interior.label": { ref: "TO_BE_PROVIDED" }, "edge.treatment": { ref: "OPEN_OPTIONS" }, "interior.lining_material": { ref: "SAME_AS", styleNo: "XYZ-00065" } };
+    const prod = validatePack({ ...base, answers, resolves: (s) => s === "XYZ-00065" });
+    expect(prod.filter((r) => r.rule.startsWith("Reference:")).map((r) => r.questionId)).toEqual(["interior.label", "edge.treatment"]);
+    const unresolved = validatePack({ ...base, answers, resolves: () => false });
+    expect(find(unresolved, "Reference: SAME AS XYZ-00065")?.fix).toMatch(/must point at a pack/);
+    expect(validatePack({ ...proto, answers }).filter((r) => r.rule.startsWith("Reference:"))).toEqual([]);
+  });
 });

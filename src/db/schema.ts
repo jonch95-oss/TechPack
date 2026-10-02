@@ -159,6 +159,8 @@ export const prints = pgTable("prints", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** V2 §6: what the pack's export is gated for. One click on the pack. */
+export const packStageEnum = pgEnum("pack_stage", ["PROTO", "PRODUCTION"]);
 export const packStatusEnum = pgEnum("pack_status", ["DRAFT", "IN_REVIEW", "APPROVED", "SENT", "PROTO_RECEIVED", "CLOSED"]);
 
 export const packs = pgTable(
@@ -174,6 +176,7 @@ export const packs = pgTable(
     colorways: jsonb("colorways").$type<string[]>().notNull().default(["-A"]),
     chineseOn: boolean("chinese_on").notNull().default(false),
     status: packStatusEnum("status").notNull().default("DRAFT"),
+    stage: packStageEnum("stage").notNull().default("PROTO"),
     factory: text("factory").notNull().default(""),
     factoryStyleNo: text("factory_style_no").notNull().default(""),
     /** Who asked for review, and the second designer who signed it off for export. */

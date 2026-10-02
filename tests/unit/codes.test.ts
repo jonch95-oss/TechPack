@@ -11,8 +11,15 @@ describe("code assignment", () => {
     expect(nextCode("PINK###", ["PINK003", "PINK004", "PINK005"])).toBe("PINK006");
   });
 
-  it("checks style numbers too, so components and styles never collide", () => {
-    expect(nextCode("PINK###", ["PINK003", "PINK004", "PINK005", "PINK013-A", "PINK013"])).toBe("PINK014");
+  it("components and styles are separate sequences that never collide (V2.1 §7)", () => {
+    expect(nextCode("PINK###", ["PINK003", "PINK004", "PINK005"], ["PINK013-A", "PINK013"])).toBe("PINK006");
+    expect(nextCode("PINK###", ["PINK011", "PINK012"], ["PINK013", "PINK014-A"])).toBe("PINK015"); // skips codes styles use
+  });
+
+  it("a longer style number in the same family is never read as a component (PA_LUG_### → PA_LUG_009)", () => {
+    const components = ["PA_LUG_001", "PA_LUG_002", "PA_LUG_003", "PA_LUG_004", "PA_LUG_005", "PA_LUG_006", "PA_LUG_007", "PA_LUG_008"];
+    expect(nextCode("PA_LUG_###", components, ["PA_LUG_10001"])).toBe("PA_LUG_009");
+    expect(codeNumber("PA_LUG_###", "PA_LUG_10001")).toBeNull();
   });
 
   it("ignores other brands' codes and malformed codes", () => {
@@ -34,16 +41,17 @@ import { checkCode } from "@/lib/codes";
 describe("designer-entered codes", () => {
   const base = { format: "PINK###", brandName: "Pink London", componentCodes: ["PINK003", "PINK004", "PINK005"], styleNos: ["PINK013"] };
   it("accepts the next free code", () => {
-    expect(checkCode({ ...base, code: "pink014" })).toEqual({ errors: [], warnings: [], suggestion: "PINK014" });
+    expect(checkCode({ ...base, code: "pink006" })).toEqual({ errors: [], warnings: [], suggestion: "PINK006" });
   });
   it("blocks duplicates and style-number clashes", () => {
     expect(checkCode({ ...base, code: "PINK005" }).errors[0]).toMatch(/already used/);
     expect(checkCode({ ...base, code: "PINK013" }).errors[0]).toMatch(/style number/);
-    expect(checkCode({ ...base, code: "" }).errors[0]).toMatch(/PINK014/);
+    expect(checkCode({ ...base, code: "" }).errors[0]).toMatch(/PINK006/);
   });
   it("calls out wrong formats and skipped numbers without blocking", () => {
     expect(checkCode({ ...base, code: "PNK014" })).toMatchObject({ errors: [], warnings: [expect.stringMatching(/format/)] });
     expect(checkCode({ ...base, code: "PINK090" })).toMatchObject({ errors: [], warnings: [expect.stringMatching(/skips ahead/)] });
     expect(checkCode({ ...base, code: "PINK006" })).toMatchObject({ errors: [], warnings: [] });
+    expect(checkCode({ ...base, code: "PINK014" }).warnings[0]).toMatch(/skips ahead — the next free number is PINK006/);
   });
 });

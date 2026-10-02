@@ -47,7 +47,8 @@ export function ReviewScreen({
   onConflict: (qid: string, choice: "keep" | "switch") => void;
   display: (v: unknown) => string;
 }) {
-  const [cursor, setCursor] = useState(0);
+  // The cursor follows a row, not a position: confirming re-sorts the group (attention first).
+  const [cursorId, setCursorId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [help, setHelp] = useState(false);
@@ -73,7 +74,12 @@ export function ReviewScreen({
     const shown = t ? all.filter((r) => `${byId.get(r.id)?.label ?? ""} ${display(answers[r.id])}`.toUpperCase().includes(t)) : all;
     return orderRows(shown);
   }, [questions, answers, statuses, meta, query, byId, display]);
-  const current = rows[Math.min(cursor, rows.length - 1)];
+  const cursor = Math.max(0, rows.findIndex((r) => r.id === cursorId));
+  const current = rows[cursor];
+  const move = (d: number) => {
+    const next = rows[Math.min(rows.length - 1, Math.max(0, cursor + d))];
+    if (next) setCursorId(next.id);
+  };
   const sourceOf = (id: string) => meta[id]?.source ?? "";
   const allVisible = bulkConfirmable(rows, { allVisible: true }, sourceOf);
 
@@ -94,8 +100,8 @@ export function ReviewScreen({
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       const q = current ? byId.get(current.id) : undefined;
-      if (e.key === "j" || e.key === "ArrowDown") setCursor((c) => Math.min(rows.length - 1, c + 1));
-      else if (e.key === "k" || e.key === "ArrowUp") setCursor((c) => Math.max(0, c - 1));
+      if (e.key === "j" || e.key === "ArrowDown") move(1);
+      else if (e.key === "k" || e.key === "ArrowUp") move(-1);
       else if (e.key === "Enter" && current && canEdit && statuses[current.id] && statuses[current.id] !== "confirmed") onConfirm([current.id]);
       else if ((e.key === "e" || e.key === "o") && current && canEdit) setEditing(current.id);
       else if (e.key === "/") searchRef.current?.focus();
@@ -110,7 +116,7 @@ export function ReviewScreen({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, rows.length, byId, canEdit, statuses, onConfirm, onCommit]);
+  }, [current, move, byId, canEdit, statuses, onConfirm, onCommit]);
 
   return (
     <div className={cx("grid gap-10", renderUrl && "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]")} data-testid="review-screen">
@@ -131,7 +137,7 @@ export function ReviewScreen({
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
-              setCursor(0);
+              setCursorId(null);
             }}
             placeholder="Search  /"
             aria-label="Search answers"
@@ -192,7 +198,7 @@ export function ReviewScreen({
                         data-row={r.id}
                         data-testid={`review-row-${r.id}`}
                         aria-current={active}
-                        onClick={() => setCursor(rows.indexOf(r))}
+                        onClick={() => setCursorId(r.id)}
                         className={cx(
                           "px-3 py-2 border-l-2 cursor-default",
                           active ? "border-ink bg-ivory" : "border-transparent",

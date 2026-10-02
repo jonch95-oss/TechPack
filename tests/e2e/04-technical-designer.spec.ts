@@ -45,8 +45,8 @@ async function loginAs(browser: Browser, email: string, password: string): Promi
   return page;
 }
 
-const failing = async (page: Page, packId: string) =>
-  ((await (await page.request.get(`/api/packs/${packId}/validation`)).json()).rules as { rule: string; status: string }[]).filter((r) => r.status === "fail").map((r) => r.rule);
+const failing = async (page: Page, packId: string, stage = "") =>
+  ((await (await page.request.get(`/api/packs/${packId}/validation${stage ? `?stage=${stage}` : ""}`)).json()).rules as { rule: string; status: string }[]).filter((r) => r.status === "fail").map((r) => r.rule);
 
 test("technical designer: POM, BOM, approvals, duplicate, sign-off, factory Q&A, samples", async ({ page, browser }) => {
   const ref = referenceAssets();
@@ -81,7 +81,8 @@ test("technical designer: POM, BOM, approvals, duplicate, sign-off, factory Q&A,
   if (SHOTS) await page.locator("#sec-bom").screenshot({ path: path.join(SHOTS, "bom.png") }).catch(() => {});
 
   /* ---------- gate: snaps "spaced evenly" and unplaced hardware are blocked ---------- */
-  const before = await failing(page, pink.id);
+  // Production rules (V2.1: hardware placement in mm is not asked of a proto).
+  const before = await failing(page, pink.id, "PRODUCTION");
   expect(before).toEqual(expect.arrayContaining(["Placement of PINK006 (MAGNETIC SNAP)", "Snaps “spaced evenly”"]));
 
   /* ---------- hardware approval in the library ---------- */

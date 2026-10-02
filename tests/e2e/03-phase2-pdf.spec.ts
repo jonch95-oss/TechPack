@@ -193,7 +193,11 @@ test("Phase 2: PDFs page for page, validation gate, spell-check", async ({ page 
   expect(blocked.status()).toBe(409);
   const failing = (await blocked.json()).failing.map((r: { rule: string }) => r.rule);
   console.log("PINK013 gate — still to fix:", failing.join(" | "));
-  expect(failing).toEqual(expect.arrayContaining(["★ Strap width", "★ Strap total length", "★ Logo size (W × H)", "★ Lining material"]));
+  // V2.1 §1.3: at PROTO only the strap spec still blocks (no reference answer was given for it) …
+  expect(failing).toEqual(["★ Strap width", "★ Strap total length"]);
+  // … while production asks for the rest.
+  const prod = (await (await page.request.get(`/api/packs/${packId}/validation?stage=PRODUCTION`)).json()).rules.filter((r: { status: string }) => r.status === "fail").map((r: { rule: string }) => r.rule);
+  expect(prod).toEqual(expect.arrayContaining(["★ Strap width", "★ Strap total length", "★ Logo size (W × H)", "★ Lining material"]));
   await expect(page.getByTestId("gate-status")).toContainText("to fix");
   if (SHOTS) await page.getByTestId("export-panel").screenshot({ path: path.join(SHOTS, "gate-blocked.png") });
 

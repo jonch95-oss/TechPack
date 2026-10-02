@@ -107,7 +107,7 @@ test("Phase 3: Jodie front flat is editable and its dimension lines read 16 × 2
   await page.getByTestId("view-BACK").click();
   await page.getByTestId("generate-flat").click();
   await expect(page.getByTestId("inferred-tag")).toBeVisible({ timeout: 120_000 });
-  const gate = async () => ((await (await page.request.get(`/api/packs/${pink.id}/validation`)).json()).rules as { rule: string; status: string }[]).filter((r) => r.status === "fail").map((r) => r.rule);
+  const gate = async () => ((await (await page.request.get(`/api/packs/${pink.id}/validation?stage=PRODUCTION`)).json()).rules as { rule: string; status: string }[]).filter((r) => r.status === "fail").map((r) => r.rule);
   expect(await gate()).toContain("BACK view is inferred");
 
   /* ---------- the flats in the PDF: vector, dimensioned, INFERRED tag ---------- */

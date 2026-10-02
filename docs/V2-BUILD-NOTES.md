@@ -61,3 +61,37 @@ Working notes for `docs/V2-SEAMLESS-BRIEF.md`, one section per §12 step: what w
 - **Review hotspots** on the render (numbered, bbox-linked) need the AI's bounding boxes, which come in step 4.
 - **Default view.** All questions stays the default view until Jon has tried Review. Flipping the default is one line.
 - **Client-side batching.** Rapid edits are not yet coalesced in the browser; each committed value is one save.
+
+## V2.1 (docs/V2.1-REAL-PACKS.md) — §13 steps 1–2
+
+### Step 1 — the four bugs
+- **Duffels / Rolling duffels** now show the Dimensions section for its unit. H/W/D stay hidden there, because those categories give L × W × H in their own section. Test: `tests/unit/v21-bugs.test.ts`.
+- **A Hardware-category pack prints its own component.** The panel is built from the pack's `hw.*` answers (overall size, detail dimensions, material, finish, logo treatment, chosen views) over the library item.
+- **No 40 mm fallback.** Views are drawn from the part's own size (`src/lib/pdf/true-size.ts`):
+  - one number ("DIA 8") sets the longer side;
+  - W × H fits at the image's aspect;
+  - with no size, the panel says "NOT TO SCALE — SIZE NOT GIVEN" instead of "SIZE 100%".
+  - The TOP view now renders too.
+- **Component codes and style numbers are separate sequences.** The format's digit count is exact, so `PA_LUG_10001` (a style) is never read as component 10001. The next component code skips any number a style already uses. Tests: `tests/unit/codes.test.ts` (`PA_LUG_009`).
+
+### Step 2 — reference answers and the PROTO gate
+- **Reference answers** (`src/lib/reference-answer.ts`):
+  - Any question can be answered "by reference": follow reference image, same as <style #> [part], from previous development, factory standard, scale to CAD, open to options, to be provided.
+  - At PROTO they are settled. They print as written: on page 1 for now; the standard layout (step 3) places them inline.
+  - At PRODUCTION, "to be provided" and "open to options" block, and "same as" must resolve to a pack or library code in the studio.
+- **Hardware identity.** A part may be identified by a **description** before it has a library code: "Use … as a description" in the library picker. Described parts print on page 1.
+- **Pack stage.** Each pack has a stage, PROTO or PRODUCTION, switched with one click on the pack.
+  - Migration 0015 starts packs that already have an SMS / PP / TOP round at PRODUCTION.
+- **PROTO gate** (`src/lib/stage-gate.ts`). Only these are required at PROTO:
+  - overall size (two of H/W/D for flat products);
+  - materials and the material cells per colourway (a per-colourway lining in the breakdown counts as the lining);
+  - logo method + location;
+  - hardware identity;
+  - strap / handle specs and interior, where a reference answer satisfies them.
+  - Other rows need only their part identity; partial sizes are fine. Unconfirmed answers that aren't required don't block.
+  - In `validatePack`, only those completeness rules and the hard geometry rules (flap > H, pocket too big, logo outside its panel, strap < 2 × drop, gusset ≠ D) fail at PROTO; everything else is a warning. Licensor fields are checked at PRODUCTION only.
+- **Golden set:** `npm run golden` (`scripts/golden.ts`). Inputs:
+  - the seven study files (`reference/real-packs/`, gitignored);
+  - PINK013 / TB25_ACC0023 from the e2e database, snapshotted to `.data/golden/`;
+  - `reference/real-packs/golden-entry.json` (gitignored): the fields each original answers by reference.
+  - It prints counts and question ids only.

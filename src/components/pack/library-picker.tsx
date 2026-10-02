@@ -206,6 +206,17 @@ export function LibraryPicker({
               ))}
               {!list.length && <li className="py-10 text-center text-taupe display italic text-lg">Nothing matches — use + New.</li>}
             </ul>
+            {/* V2.1 §1: at proto a part may be identified by a description ("CHARM ZIPPER PULL (NEW)") before it has a library code. */}
+            {q.trim() && (
+              <button
+                type="button"
+                data-testid="lib-describe"
+                onClick={() => pick({ id: "", label: q.trim().toUpperCase() })}
+                className="mt-4 text-[10.5px] tracking-[0.18em] uppercase text-gold hover:text-ink"
+              >
+                Use “{q.trim().toUpperCase()}” as a description (no library item yet)
+              </button>
+            )}
           </div>
         )}
       </Drawer>

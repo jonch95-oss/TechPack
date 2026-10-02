@@ -78,7 +78,7 @@ export async function nextCodeForBrand(brandId: string) {
   const hw = await db.select({ code: hardware.code }).from(hardware);
   const styles = await db.select({ styleNo: packs.styleNo }).from(packs).where(eq(packs.brandId, brandId));
   // All hardware codes are checked (not only this brand's) so a mis-tagged component still can't collide.
-  return nextCode(brand.codeFormat, [...hw.map((h) => h.code), ...styles.map((s) => s.styleNo)]);
+  return nextCode(brand.codeFormat, hw.map((h) => h.code), styles.map((s) => s.styleNo));
 }
 
 /** Collects library references from a pack's answers ("styles it is used in"). */

@@ -2,9 +2,11 @@
  * Component / style code assignment.
  *
  * A brand's code format is a literal pattern with one run of `#` digit
- * placeholders, e.g. "PINK###" -> PINK003, PINK004 … The next code is one past
- * the highest number already used by EITHER a hardware component or a style
- * number of that brand, so components and styles never collide.
+ * placeholders, e.g. "PINK###" -> PINK003, PINK004 …, "PA_LUG_###" -> PA_LUG_009.
+ * Component codes and style numbers are SEPARATE sequences (V2.1 §7): the next
+ * component code is one past the highest component code, skipping any number a
+ * style already uses — so they still never collide. The format's digit count is
+ * exact, so a style PA_LUG_10001 is never read as component 10001.
  */
 
 export function defaultCodeFormat(prefix: string) {
@@ -26,7 +28,7 @@ function escapeRe(s: string) {
 /** Returns the numeric part if `code` matches the format, else null. Case-insensitive. */
 export function codeNumber(format: string, code: string): number | null {
   const f = parseCodeFormat(format);
-  const re = new RegExp(`^${escapeRe(f.before)}(\\d{${f.digits},})${escapeRe(f.after)}$`, "i");
+  const re = new RegExp(`^${escapeRe(f.before)}(\\d{${f.digits}})${escapeRe(f.after)}$`, "i");
   const m = re.exec(code.trim());
   return m ? Number(m[1]) : null;
 }
@@ -44,13 +46,17 @@ export function stripColorwaySuffix(styleNo: string) {
   return styleNo.trim().replace(/-[A-Z]{1,2}$/i, "");
 }
 
-export function nextCode(format: string, usedCodes: string[]): string {
+/** Next component code: one past the highest component code, skipping codes a style number already uses. */
+export function nextCode(format: string, componentCodes: string[], styleNos: string[] = []): string {
   let max = 0;
-  for (const c of usedCodes) {
+  for (const c of componentCodes) {
     const n = codeNumber(format, stripColorwaySuffix(c));
     if (n !== null && n > max) max = n;
   }
-  return formatCode(format, max + 1);
+  const taken = new Set(styleNos.map((s) => stripColorwaySuffix(s).toUpperCase()));
+  let next = max + 1;
+  while (taken.has(formatCode(format, next).toUpperCase())) next++;
+  return formatCode(format, next);
 }
 
 /** Colorway suffixes: -A, -B, -C … */
@@ -73,7 +79,7 @@ export function checkCode(opts: {
   styleNos: string[];
 }): CodeCheck {
   const code = opts.code.trim().toUpperCase();
-  const suggestion = nextCode(opts.format, [...opts.componentCodes, ...opts.styleNos]);
+  const suggestion = nextCode(opts.format, opts.componentCodes, opts.styleNos);
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!code) {

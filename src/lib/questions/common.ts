@@ -148,7 +148,10 @@ const BODY_CATEGORIES = [
   "Neck pillows",
 ] as const;
 
-const DIMS_CATEGORIES = BODY_CATEGORIES.filter((c) => c !== "Belts" && c !== "Duffels" && c !== "Rolling duffels");
+/** Categories with the Dimensions section (its unit applies to every "dim" answer). */
+const DIMS_CATEGORIES = BODY_CATEGORIES.filter((c) => c !== "Belts");
+/** Duffels give L × W × H in their own section, so only the unit (and secondary unit) shows for them. */
+const HWD_CATEGORIES = DIMS_CATEGORIES.filter((c) => c !== "Duffels" && c !== "Rolling duffels");
 
 /** 3.0 COMMON BLOCK (all categories). Brand / style # / style name / category / colorway suffixes live on the pack itself. */
 export const COMMON_SECTIONS: Section[] = [
@@ -197,9 +200,9 @@ export const COMMON_SECTIONS: Section[] = [
     showIf: { category: [...DIMS_CATEGORIES] },
     questions: [
       { id: "dims.unit", label: "Unit", kind: "chips", options: ["CM", "INCHES"], required: true, noOther: true },
-      { id: "dims.h", label: "Height (H)", kind: "stepper", unit: "dim", required: true, step: 0.25 },
-      { id: "dims.w", label: "Width (W)", kind: "stepper", unit: "dim", required: true, step: 0.25 },
-      { id: "dims.d", label: "Depth (D)", kind: "stepper", unit: "dim", required: true, step: 0.25 },
+      { id: "dims.h", label: "Height (H)", kind: "stepper", unit: "dim", required: true, step: 0.25, showIf: { category: [...HWD_CATEGORIES] } },
+      { id: "dims.w", label: "Width (W)", kind: "stepper", unit: "dim", required: true, step: 0.25, showIf: { category: [...HWD_CATEGORIES] } },
+      { id: "dims.d", label: "Depth (D)", kind: "stepper", unit: "dim", required: true, step: 0.25, showIf: { category: [...HWD_CATEGORIES] } },
       { id: "dims.show_secondary", label: "Show secondary unit in brackets", kind: "toggle" },
     ],
   },
