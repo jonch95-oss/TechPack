@@ -20,7 +20,14 @@ The two finished reference tech packs (PINK013 Jodie satchel, TB25_ACC0023 Ted B
    Test: Part 6 items 4 and 5.
 
 ## Environment variables (set in Vercel, never commit)
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `IMAGE_API_KEY`, `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN`, auth secrets.
+Already configured on the Vercel project (Production + Preview):
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (currently `claude-fable-5-1`; read it from env, never hard-code)
+- `DATABASE_URL` / `DATABASE_URL_UNPOOLED` + `PG*` / `POSTGRES_*` — Neon Postgres, region iad1. Use `DATABASE_URL` (pooled) at runtime, `DATABASE_URL_UNPOOLED` for migrations.
+- `BLOB_STORE_ID` — Vercel Blob store `techpack-files`, **private** access, iad1. There is no `BLOB_READ_WRITE_TOKEN`: the store authenticates via Vercel OIDC (`VERCEL_OIDC_TOKEN`). Check the installed `@vercel/blob` docs for OIDC/store-ID usage. Serve private blobs through an authenticated route, never public URLs.
+- `AUTH_SECRET` — Auth.js session secret. Use Auth.js for login; ignore the `NEON_AUTH_*` / `VITE_NEON_AUTH_URL` vars the Neon integration added.
+- `IMAGE_API_KEY` — not yet set; needed in Phase 3 only.
+
+For local dev run `vercel env pull .env.local` (sensitive vars do not pull; ask Jon or use a local `AUTH_SECRET`).
 
 ## House rules
 - Never invent measurements in generated packs; unconfirmed values block export.
