@@ -146,16 +146,18 @@ test("Phase 2: PDFs page for page, validation gate, spell-check", async ({ page 
   await settled();
 
   // Construction photos: B = strap attachment (reference photos page), D = closure detail (measurements sheet).
-  const files = page.locator("li").filter({ has: page.locator('select[aria-label="Comment letter"]') });
+  // 02-pink013 already added the side view, the strap zoom and the Champion lining photo.
+  const fileItem = (name: string) => page.locator("li").filter({ has: page.getByLabel(`Caption for ${name}`) });
   await page.getByTestId("upload-construction").setInputFiles({ name: "closure.jpg", mimeType: "image/jpeg", buffer: pink!.closureDetail });
-  await expect(files).toHaveCount(2);
-  await files.nth(0).locator('select[aria-label="Comment letter"]').selectOption("B");
-  await files.nth(0).getByRole("textbox").fill("SHOULDER STRAP ATTACHMENT DETAIL REFERENCE");
-  await files.nth(0).getByRole("textbox").press("Enter");
-  await files.nth(1).locator('select[aria-label="Comment letter"]').selectOption("D");
-  await files.nth(1).getByRole("textbox").fill("FRONT FLAP SNAP CLOSURE");
-  await files.nth(1).getByRole("textbox").press("Enter");
-  await expect(files.nth(1).locator('select[aria-label="Comment letter"]')).toHaveValue("D");
+  await expect(page.getByLabel("Caption for closure.jpg")).toBeVisible();
+  for (const [name, letter, caption] of [["strap-attachment.jpg", "B", "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE"], ["closure.jpg", "D", "FRONT FLAP SNAP CLOSURE"]]) {
+    await fileItem(name).getByLabel("Comment letter").selectOption(letter);
+    await settled();
+    await fileItem(name).getByLabel(`Caption for ${name}`).fill(caption);
+    await fileItem(name).getByLabel(`Caption for ${name}`).press("Enter");
+    await settled();
+  }
+  await expect(fileItem("closure.jpg").getByLabel("Comment letter")).toHaveValue("D");
 
   /* ---------- spell-check: the four misspellings from the source packs ---------- */
   await page.getByTestId("comments.list-add").click();
