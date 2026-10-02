@@ -332,3 +332,85 @@ export type PackStatus = (typeof packStatusEnum.enumValues)[number];
 export type SampleRound = typeof sampleRounds.$inferSelect;
 export type SampleComment = typeof sampleComments.$inferSelect;
 export type FactoryQuestion = typeof factoryQuestions.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/* Phase 3 — line art                                                  */
+/* ------------------------------------------------------------------ */
+
+export const flatViewEnum = pgEnum("flat_view", ["FRONT", "BACK", "SIDE", "TOP"]);
+
+/**
+ * One editable technical flat per pack and view. `svg` is the layered drawing (layers: fill,
+ * outline, stitching, hardware, callouts, dimensions) in the traced image's pixel space; its root
+ * carries `data-px-per-unit` once scaled to the entered H × W (× D).
+ * Status: DRAFT (generated, editable) · INFERRED (back view — "INFERRED — CONFIRM" until approved)
+ * · CONFIRMED.
+ */
+export const flats = pgTable(
+  "flats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    packId: uuid("pack_id")
+      .notNull()
+      .references(() => packs.id, { onDelete: "cascade" }),
+    view: flatViewEnum("view").notNull(),
+    status: text("status").notNull().default("DRAFT"),
+    /** AI (image API) · TRACE (traced straight from the render) · UPLOAD (designer's own drawing) */
+    source: text("source").notNull().default("AI"),
+    /** The raster the vectors were traced from (kept for re-tracing regions). */
+    sourceUrl: text("source_url"),
+    svg: text("svg").notNull(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("flats_pack_view_idx").on(t.packId, t.view)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Phase 4 — revisions and Chinese                                     */
+/* ------------------------------------------------------------------ */
+
+export type RevisionChange = { questionId: string; label: string; before: string; after: string; sections: string[] };
+
+/**
+ * Number 0 is the original (its date is the ORIGINAL DATE SENT); 1… are R1, R2, … Each keeps the
+ * answers and flats as sent, the automatic change log against the previous one, and its PDF.
+ */
+export const revisions = pgTable(
+  "revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    packId: uuid("pack_id")
+      .notNull()
+      .references(() => packs.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    snapshot: jsonb("snapshot").$type<{ answers: Record<string, unknown>; flats: Record<string, string> }>().notNull(),
+    changes: jsonb("changes").$type<RevisionChange[]>().notNull().default([]),
+    pdfUrl: text("pdf_url"),
+    pages: integer("pages").notNull().default(0),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("revisions_pack_number_idx").on(t.packId, t.number)],
+);
+
+/** Admin-maintained trade glossary; always wins over machine translation. */
+export const glossary = pgTable("glossary", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  en: text("en").notNull().unique(),
+  zh: text("zh").notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Cache of machine translations of whole lines (glossary terms are applied before the model). */
+export const translations = pgTable("translations", {
+  en: text("en").primaryKey(),
+  zh: text("zh").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Flat = typeof flats.$inferSelect;
+export type FlatView = (typeof flatViewEnum.enumValues)[number];
+export type Revision = typeof revisions.$inferSelect;

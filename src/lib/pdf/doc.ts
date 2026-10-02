@@ -1,7 +1,10 @@
 import "server-only";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type Print } from "@/db/schema";
+import { flats as flatsTable, hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type Print } from "@/db/schema";
+import sharp from "sharp";
+import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
+import { changeLine, revisionState } from "@/lib/revisions";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
 import { spellcheck } from "@/lib/spellcheck";
@@ -114,8 +117,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   const hasInterior = sectionsFor(p.pack.category).some((s) => s.id === "interior" && evalCondition(s.showIf, ctx)) && (a["interior.lined"] === true || !isEmpty(a["interior.pockets"]));
 
   /* ---------- extra measurements (measurement sheet) ---------- */
-  const measures: { label: string; value: string }[] = [];
-  const m = (label: string, key: string) => typeof a[key] === "number" && measures.push({ label, value: fmt(a[key]) });
+  const measures: { label: string; value: string; key: string }[] = [];
+  const m = (label: string, key: string) => typeof a[key] === "number" && measures.push({ label, value: fmt(a[key]), key });
   m("TOP HANDLE DROP HEIGHT", "hb.top_handle.drop");
   m("FLAP HEIGHT", "hb.flap_height");
   m("FLAP OVERHANG", "hb.flap_overhang");
@@ -128,7 +131,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     m("HANDLE DROP", `${pfx}.handle_drop`);
     m("STRAP TOTAL LENGTH", `${pfx}.strap.length`);
   }
-  if (typeof a["branding.offset"] === "number") measures.push({ label: `LOGO ${a["branding.offset_edge"] ? `ABOVE ${a["branding.offset_edge"]}` : "OFFSET"}`, value: `${trim(Number(a["branding.offset"]) / (unit === "in" ? 25.4 : 10))}${U}` });
+  if (typeof a["branding.offset"] === "number") measures.push({ key: "branding.offset", label: `LOGO ${a["branding.offset_edge"] ? `ABOVE ${a["branding.offset_edge"]}` : "OFFSET"}`, value: `${trim(Number(a["branding.offset"]) / (unit === "in" ? 25.4 : 10))}${U}` });
 
   /* ---------- points of measure, placements, zippers, construction, BOM ---------- */
   const pom = ((a["pom.list"] as PomRow[] | undefined) ?? []).filter((r) => r.point);
@@ -163,20 +166,48 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   const [round] = await db.select().from(sampleRounds).where(eq(sampleRounds.packId, p.pack.id)).orderBy(desc(sampleRounds.createdAt)).limit(1);
   const roundComments = round ? await db.select().from(sampleComments).where(eq(sampleComments.roundId, round.id)).orderBy(asc(sampleComments.letter)) : [];
 
+  /* ---------- line art (Phase 3) ---------- */
+  const flatRows = await db.select().from(flatsTable).where(eq(flatsTable.packId, p.pack.id));
+  const flatOf = (v: string) => flatRows.find((f) => f.view === v);
+  const flat = (v: string) => {
+    const f = flatOf(v);
+    return f ? { svg: f.svg, inferred: f.status === "INFERRED", status: f.status } : null;
+  };
+  // COLOUR INDICATIVE: colourways without their own render get the front flat filled with the
+  // colour of their main material (sampled from the swatch card's chip).
+  const indicative: { colorway: string; fill: string }[] = [];
+  if (flatOf("FRONT") && withImages && matList.length) {
+    for (const cw of p.pack.colorways) {
+      if (cwRenders.some((f) => f!.tag === cw)) continue;
+      const id = matrix[cw]?.[`mat_${matList[0].callout}`]?.lib?.id;
+      const mat = id ? matById.get(id) : undefined;
+      const fill = mat ? await chipColour(mat) : null;
+      if (fill) indicative.push({ colorway: cw, fill });
+    }
+  }
+
+  /* ---------- revisions (Phase 4) ---------- */
+  const rev = await revisionState(p);
+  const issued = rev.list.filter((r) => r.number > 0);
+  const changeLog = [
+    ...issued.map((r) => ({ label: r.label, date: r.date, by: r.by, lines: r.changes.map(changeLine), sent: true })),
+    ...(rev.latest && rev.pending.length ? [{ label: rev.flagLabel, date: "", by: "", lines: rev.pending.map(changeLine), sent: false }] : []),
+  ];
+
   const features = ((a["pages.features"] as { text?: string }[] | undefined) ?? []).map((f) => f.text ?? "").filter(Boolean);
   const plan: Plan = planPages({
     hasInterior,
     productFeaturesOn: a["pages.product_features"] !== false,
     hasFeaturesOrRender: features.length > 0,
-    hasExtraMeasurements: measures.length > 0 || pom.length > 0 || placements.length > 0,
-    colorwayRenderCount: cwRenders.length,
+    hasExtraMeasurements: measures.length > 0 || pom.length > 0 || placements.length > 0 || !!flatOf("FRONT"),
+    colorwayRenderCount: cwRenders.length + indicative.length,
     referencePhotoCount: refs.filter((r) => !refOnMeasurements(r.tag, comments)).length,
     hasLiningArtwork: !!liningPrint,
     liningArtworkOnInterior: a["pages.lining_artwork"] === "ON INTERIOR PAGE",
     detailPanelCount: detail.length + (logoPanel ? 1 : 0),
     swatches: swatches.map((s) => ({ colorway: s.colorway, materialCallout: s.materialCallout })),
     swatchesOnOnePage: a["pages.swatches"] === "ALL ON ONE PAGE",
-    revisionCount: 0,
+    revisionCount: changeLog.length,
     hasConstruction: construction.length > 0,
     hasBom: bom.length > 0 || zippers.length > 0,
     hasSampleComments: roundComments.length > 0,
@@ -194,6 +225,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     chineseOn: p.pack.chineseOn,
     hardware: [...hwById.values()].map((h) => ({ id: h.id, code: h.code, type: h.type, dimsMm: h.dimsMm, finish: h.finish, approval: h.approval?.status })),
     materials: [...matById.values()].map((m) => ({ id: m.id, label: materialLabel(m), approval: m.approval?.status ?? "PENDING", composition: m.composition })),
+    flats: flatRows.map((f) => ({ view: f.view, status: f.status, materialCallouts: [...calloutsOn(f.svg).materials] })),
     spelling,
   });
 
@@ -336,10 +368,47 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
           comments: await Promise.all(roundComments.map(async (c) => ({ letter: c.letter, text: c.text, status: c.status, markup: c.markup, carried: !!c.carriedFrom, img: await img(c.photoUrl) }))),
         }
       : null,
+    revision: {
+      original: rev.list[0]?.date ?? "",
+      dates: rev.list.filter((r) => r.number > 0).map((r) => ({ label: r.label, date: r.date })),
+      flags: rev.flags,
+      flagLabel: rev.flagLabel,
+      log: changeLog,
+    },
+    flats: {
+      front: flat("FRONT"),
+      back: flat("BACK"),
+      side: flat("SIDE"),
+      top: flat("TOP"),
+      indicative: indicative.map((x) => ({ colorway: x.colorway, svg: inlineFlat(flatOf("FRONT")!.svg, { className: "flat flat-indicative", fill: x.fill }) })),
+    },
     plan,
     validation,
     spelling,
   };
+}
+
+/** Average colour of a swatch card's chip (the red-boxed area), as #rrggbb. */
+async function chipColour(m: Material): Promise<string | null> {
+  if (!m.cardPhotoUrl || !m.chipBox) return null;
+  try {
+    const f = await readStoredFile(m.cardPhotoUrl);
+    const img = sharp(f.data);
+    const meta = await img.metadata();
+    const W = meta.width ?? 0,
+      H = meta.height ?? 0;
+    const b = m.chipBox;
+    // Sample the middle of the chip so the red box / card edge don't tint it.
+    const left = Math.round((b.x + b.w * 0.25) * W),
+      top = Math.round((b.y + b.h * 0.25) * H);
+    const width = Math.max(1, Math.round(b.w * 0.5 * W)),
+      height = Math.max(1, Math.round(b.h * 0.5 * H));
+    const { channels } = await sharp(f.data).extract({ left, top, width: Math.min(width, W - left), height: Math.min(height, H - top) }).stats();
+    const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
+    return `#${hex(channels[0].mean)}${hex(channels[1]?.mean ?? channels[0].mean)}${hex(channels[2]?.mean ?? channels[0].mean)}`;
+  } catch {
+    return null;
+  }
 }
 
 function trim(n: number) {

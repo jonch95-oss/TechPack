@@ -34,6 +34,8 @@ export type ValidationInput = {
   hardware: { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string }[];
   /** Library materials used by the pack. */
   materials?: { id: string; label: string; approval: string; composition: string }[];
+  /** Line art (Phase 3): each view's status and the material numbers drawn on it. */
+  flats?: { view: string; status: string; materialCallouts: string[] }[];
   spelling: SpellFlag[];
 };
 
@@ -182,6 +184,16 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   const odd = [...finishes.map((h) => `${h.code} is ${h.finish}`), ...(logoFinish && hwFinish && /PLATE|METAL|ENGRAVED|BADGE/.test(String(a["branding.logo_type"])) && logoFinish !== hwFinish ? [`logo is ${logoFinish}`] : [])];
   push(odd.length ? { group: "Consistency", rule: "Hardware finish matches across rings, snaps, logo and charm", status: "warn", fix: `Pack finish is ${hwFinish}; ${odd.join(", ")}. Fine if deliberate.`, questionId: "hardware.finish" } : { group: "Consistency", rule: "Hardware finish matches across rings, snaps, logo and charm", status: "pass", fix: "" });
 
+  /* Line art: inferred views must be approved; every material number is on the flats. */
+  for (const f of input.flats ?? [])
+    if (f.status === "INFERRED") push({ group: "Completeness", rule: `${f.view} view is inferred`, status: "fail", fix: "Check the inferred view against the sample and approve it in Line art.", questionId: "$flats" });
+  const front = input.flats?.find((f) => f.view === "FRONT");
+  if (front && mats.length) {
+    const drawn = new Set((input.flats ?? []).flatMap((f) => f.materialCallouts));
+    const missing = mats.filter((m) => !drawn.has(String(m.callout)));
+    push(missing.length ? { group: "Consistency", rule: "Every material number appears on the flats", status: "fail", fix: `Add callout${missing.length > 1 ? "s" : ""} ${missing.map((m) => m.callout).join(", ")} to the line art (Re-place callouts).`, questionId: "$flats" } : { group: "Consistency", rule: "Every material number appears on the flats", status: "pass", fix: "" });
+  }
+
   /* Approvals: lab dips, strike-offs, plating samples, moulds. */
   for (const m of input.materials ?? [])
     if (m.approval !== "APPROVED") push({ group: "Consistency", rule: `Material ${m.label}`, status: "warn", fix: m.approval === "REJECTED" ? "This material was REJECTED — choose another swatch." : "Not approved yet (lab dip / strike-off pending).", questionId: "materials.matrix" });
@@ -210,7 +222,7 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     push({ group: "Language", rule: `Spelling: ${f.word}`, status: "fail", fix: f.suggestion ? `Change ${f.word} → ${f.suggestion}.` : `Check ${f.word} — not in the trade dictionary.`, questionId: "$spelling" });
   const lower = lowercaseAnswers(a);
   push(lower.length ? { group: "Language", rule: "All callouts in capitals", status: "fail", fix: `Use capitals in: ${lower.slice(0, 5).join(", ")}.`, questionId: lower[0] } : { group: "Language", rule: "All callouts in capitals", status: "pass", fix: "" });
-  push(input.chineseOn ? { group: "Language", rule: "Chinese line under every English line", status: "warn", fix: "Bilingual output arrives in Phase 4." } : { group: "Language", rule: "Chinese line under every English line", status: "na", fix: "Chinese is off." });
+  push(input.chineseOn ? { group: "Language", rule: "Chinese line under every English line", status: "pass", fix: "Checked line by line as the PDF is made: glossary first, then translation; any line left without Chinese blocks the export." } : { group: "Language", rule: "Chinese line under every English line", status: "na", fix: "Chinese is off." });
 
   /* ------------------------------ Licensor ------------------------------ */
   if (input.brand.licensorRequired || category === "Coolers / insulated") {

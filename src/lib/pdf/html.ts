@@ -2,6 +2,7 @@ import "server-only";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PackDoc } from "./doc";
+import { inlineFlat } from "@/lib/lineart/geometry";
 
 /**
  * ICON template pages (BRIEF Part 4) as print HTML: 17 × 11 in landscape, condensed bold type,
@@ -17,8 +18,18 @@ const esc = (s: unknown) =>
     .replace(/"/g, "&quot;");
 const up = (s: unknown) => esc(String(s ?? "").toUpperCase());
 
+/** Red *UPDATED* next to a value changed in the current revision (any question id prefix). */
+function upd(doc: PackDoc, ...prefixes: string[]) {
+  return doc.revision.flags.some((c) => prefixes.some((p) => c.questionId === p || c.questionId.startsWith(p))) ? `<span class="upd">*UPDATED*</span>` : "";
+}
+
+/** Page-level flag under the page tag when something on this page changed. */
+function pageUpd(doc: PackDoc, section: string, inline = false) {
+  return doc.revision.flags.some((c) => c.sections.includes(section as never)) ? `${inline ? " " : "<br/>"}<span class="upd-tag">*UPDATED* ${esc(doc.revision.flagLabel)}</span>` : "";
+}
+
 let fontCss: string | null = null;
-function fonts() {
+export function fonts() {
   if (fontCss) return fontCss;
   const f = readFileSync(path.join(process.cwd(), "src", "assets", "fonts", "RobotoCondensed-latin.woff2")).toString("base64");
   fontCss = `@font-face{font-family:"IconCond";src:url(data:font/woff2;base64,${f}) format("woff2");font-weight:300 900;font-style:normal;}`;
@@ -69,15 +80,27 @@ table.spec th, table.spec td { border: 1px solid #111; padding: 3px 5px; text-al
 table.spec th { background: #111; color: #fff; font-size: 8pt; }
 table.spec td.code { font-size: 9pt; white-space: nowrap; }
 ul.feat { margin: 0; padding-left: 0; list-style: none; font-size: 11pt; line-height: 1.6; }
+svg.flat { width: 100%; height: 100%; display: block; overflow: visible; }
+svg.flat-mat g[id="dimensions"] { display: none; }
+svg.flat-measure g[id="callouts"] > g[data-paper-data*='"kind":"material"'], svg.flat-measure g[id="callouts"] > g[data-paper-data*='"kind":"logo"'] { display: none; }
+svg.flat-indicative g[id="dimensions"], svg.flat-indicative g[id="callouts"], svg.flat-plain g[id="dimensions"], svg.flat-plain g[id="callouts"] { display: none; }
+.inferred { color: #e2231a; font-size: 11pt; }
+[style*="columns:2"] > div { break-inside: avoid; }
+.upd { color: #e2231a; font-size: 0.85em; margin-left: 4px; white-space: nowrap; }
+.upd-tag { color: #e2231a; font-size: 12pt; }
+table.log { width: 100%; border: 1.5px solid #111; font-size: 10pt; }
+table.log th, table.log td { border: 1px solid #111; padding: 6px 8px; vertical-align: top; text-align: left; }
+table.log th { background: #111; color: #fff; }
 ul.feat li::before { content: "-  "; }
 `;
 
 function tag(doc: PackDoc, n: number, section: string) {
-  return `<div class="tag">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}${doc.brand.logo ? `<br/><img class="logo" src="${doc.brand.logo.src}"/>` : ""}</div>`;
+  return `<div class="tag">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}${pageUpd(doc, section)}${doc.brand.logo ? `<br/><img class="logo" src="${doc.brand.logo.src}"/>` : ""}</div>`;
 }
 
 function head(doc: PackDoc, n: number, section: string) {
-  return `<div class="style-head">${up(doc.pack.styleNo)}</div><div class="style-sub">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}</div>${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="position:absolute;top:0.32in;right:0.4in;max-height:0.5in;max-width:2.4in"/>` : `<div style="position:absolute;top:0.32in;right:0.4in;font-size:16pt">${up(doc.brand.name)}</div>`}`;
+  const sec = /^SWATCH|MTL$/.test(section) ? "SWATCH CARDS" : section;
+  return `<div class="style-head">${up(doc.pack.styleNo)}</div><div class="style-sub">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}${pageUpd(doc, sec, true)}</div>${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="position:absolute;top:0.32in;right:0.4in;max-height:0.5in;max-width:2.4in"/>` : `<div style="position:absolute;top:0.32in;right:0.4in;font-size:16pt">${up(doc.brand.name)}</div>`}`;
 }
 
 function commentsFor(doc: PackDoc, section: string) {
@@ -91,19 +114,31 @@ function proto(doc: PackDoc) {
   return `${up(doc.pack.styleNo)}${first ?? ""}${rest.length ? `, ${rest.map((r) => r.replace(/^-/, "")).join(", ")}` : ""}`;
 }
 
+/** A flat, sized by its box; inferred views carry the INFERRED — CONFIRM tag. */
+function flatBox(f: { svg: string; inferred: boolean } | null, cls: string, label?: string) {
+  if (!f) return "";
+  return `<div style="display:flex;flex-direction:column;height:100%;min-height:0;text-align:center">${label ? `<div class="big-label">${esc(label)}</div>` : ""}${f.inferred ? `<div class="inferred">INFERRED — CONFIRM</div>` : ""}<div style="flex:1;min-height:0">${inlineFlat(f.svg, { className: `flat ${cls}` })}</div></div>`;
+}
+
+/** Date of the i-th revision (R1 = 0) for the masthead. */
+function rd(doc: PackDoc, i: number) {
+  const r = doc.revision.dates[i];
+  return r ? ` <span class="red">${esc(r.date)}</span>` : "";
+}
+
 /* ------------------------------ 1. MATERIALS / HARDWARE ------------------------------ */
 function materialsPage(doc: PackDoc, n: number) {
   const h = doc.header;
   const mast = `<table class="mast">
     <tr><td class="icon" style="width:1.4in">ICON LUXURY GROUP</td>
       <td style="width:3.3in"><b>ATTN:</b> FTY</td>
-      <td style="width:2.4in"><b>ORIGINAL DATE SENT :</b></td>
-      <td style="width:3.3in"><b>SIZE :</b> <span class="red">${esc(doc.sizeText)}</span></td></tr>
+      <td style="width:2.4in"><b>ORIGINAL DATE SENT :</b> ${esc(doc.revision.original)}</td>
+      <td style="width:3.3in"><b>SIZE :</b> <span class="red">${esc(doc.sizeText)}</span>${upd(doc, "dims.")}</td></tr>
     <tr><td rowspan="4" class="brand">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.25in;max-height:0.7in"/>` : `<span class="small">BRAND :</span><br/>${up(doc.brand.name)}`}</td>
-      <td><b>RETAILER :</b> ${up(h.retailer)}</td><td><b>REVISED DATE(S) SENT :</b> R1 &nbsp; R2:</td><td><b>SENT BY:</b> <span class="v">${up(h.sentBy)}</span></td></tr>
-    <tr><td><b>SEASON :</b> ${up(h.season)}</td><td>R3:</td><td><b>DUE DATE:</b> <span class="v red">${up(h.dueDate)}</span></td></tr>
-    <tr><td><b>REFERENCE SAMPLE:</b> <span class="v red">${up(h.referenceSample)}</span></td><td>R4:</td><td><b>PROTO :</b> <span class="v">${proto(doc)}</span></td></tr>
-    <tr><td><b>DESCRIPTION:</b> <span class="v">${up(h.description)}</span></td><td></td><td><b>BAG CATEGORY:</b> <span class="v">${up(h.category)}</span><br/><b>STYLE NAME:</b> <span class="v">${up(doc.pack.styleName)}</span></td></tr>
+      <td><b>RETAILER :</b> ${up(h.retailer)}</td><td><b>REVISED DATE(S) SENT :</b> R1${rd(doc, 0)} &nbsp; R2:${rd(doc, 1)}</td><td><b>SENT BY:</b> <span class="v">${up(h.sentBy)}</span></td></tr>
+    <tr><td><b>SEASON :</b> ${up(h.season)}</td><td>R3:${rd(doc, 2)}</td><td><b>DUE DATE:</b> <span class="v red">${up(h.dueDate)}</span></td></tr>
+    <tr><td><b>REFERENCE SAMPLE:</b> <span class="v red">${up(h.referenceSample)}</span></td><td>R4:${rd(doc, 3)}${doc.revision.dates.slice(4).map((r) => ` &nbsp; ${esc(r.label)}: ${esc(r.date)}`).join("")}</td><td><b>PROTO :</b> <span class="v">${proto(doc)}</span></td></tr>
+    <tr><td><b>DESCRIPTION:</b> <span class="v">${up(h.description)}</span>${upd(doc, "header.description")}</td><td></td><td><b>BAG CATEGORY:</b> <span class="v">${up(h.category)}</span><br/><b>STYLE NAME:</b> <span class="v">${up(doc.pack.styleName)}</span></td></tr>
   </table>`;
 
   const comments = commentsFor(doc, "MATERIALS / HARDWARE");
@@ -111,7 +146,7 @@ function materialsPage(doc: PackDoc, n: number) {
   const callouts = doc.materials
     .map((m) => `<div style="display:flex;gap:8px;align-items:center;font-size:10pt"><span class="callout">${m.callout}</span>${up(m.name)}${m.locations.length ? ` <span class="muted">— ${up(m.locations.join(", "))}</span>` : ""}</div>`)
     .join("");
-  const logoNote = doc.logo.type ? `<div class="red label">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement)})` : ""}</div>` : "";
+  const logoNote = doc.logo.type ? `<div class="red label">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>` : "";
   const charm = doc.charm ? `<div style="width:1.6in;text-align:center">${doc.charm.photo ? `<img class="img" src="${doc.charm.photo.src}" style="width:1.5in;height:2.2in"/>` : ""}<div class="label">CUSTOM HARDWARE<br/>KEYCHAIN:<br/>${up(doc.charm.code)} INCLUDED</div></div>` : "";
   const thumbs = doc.colorwayRenders.length
     ? doc.colorwayRenders.map((r) => `<div style="text-align:center"><div class="label">${up(doc.pack.styleNo)}${esc(r.colorway)}</div>${r.img ? `<img class="img" src="${r.img.src}" style="width:2.2in;height:1.6in"/>` : ""}</div>`).join("")
@@ -120,7 +155,7 @@ function materialsPage(doc: PackDoc, n: number) {
   const cols = doc.matrixColumns;
   const headCell = (c: (typeof cols)[number]) => {
     if (c.key.startsWith("mat_")) return `<th style="text-align:left">${c.key === "mat_1" ? "BODY<br/>" : ""}MATERIAL: <span class="callout" style="width:20px;height:20px;font-size:10pt">${c.callout}</span><br/>${up(c.label)}</th>`;
-    if (c.key === "logo") return `<th class="red">LOGO:<br/>${up(doc.logo.type.split(" ")[0] ?? "")}</th>`;
+    if (c.key === "logo") return `<th class="red">LOGO:<br/>${up(doc.logo.type.split(" ")[0] ?? "")}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.finish", "branding.fill")}</th>`;
     return `<th>${esc(c.label).replace(" &amp; ", "<br/>&amp; ")}</th>`;
   };
   const table = `<table class="breakdown"><tr><th>CWY</th>${cols.map(headCell).join("")}</tr>${doc.rows
@@ -144,16 +179,20 @@ function materialsPage(doc: PackDoc, n: number) {
       <div style="flex:1;display:flex;flex-direction:column;align-items:center">
         ${banner}
         <div style="display:flex;gap:0.3in;align-items:flex-start;margin-top:6px;flex:1;min-height:0;width:100%">
-          <div style="text-align:center;flex:1.2;min-height:0;height:100%;display:flex;flex-direction:column">
+          ${
+            doc.flats.front
+              ? `<div style="flex:${doc.flats.back ? 2.2 : 1.2};display:flex;gap:0.2in;height:100%;min-height:0"><div style="flex:1;min-width:0">${flatBox(doc.flats.front, "flat-mat", "FRONT VIEW")}</div>${doc.flats.back ? `<div style="flex:1;min-width:0">${flatBox(doc.flats.back, "flat-mat", "BACK VIEW")}</div>` : ""}</div>`
+              : `<div style="text-align:center;flex:1.2;min-height:0;height:100%;display:flex;flex-direction:column">
             <div class="big-label">FRONT VIEW</div>
             ${doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;flex:1;min-height:0"/>` : ""}
-          </div>
+          </div>`
+          }
           <div style="flex:0.8;display:flex;flex-direction:column;gap:8px;padding-top:0.4in">${logoNote}${callouts}${doc.hardwareFinish ? `<div style="font-size:10pt">HARDWARE: ${up(doc.hardwareFinish)}</div>` : ""}</div>
         </div>
       </div>
       <div style="width:2.4in;display:flex;flex-direction:column;gap:10px">${thumbs}</div>
     </div>
-    <div class="small" style="margin:6px 0 2px">MATERIAL / COLOR BREAKDOWN</div>
+    <div class="small" style="margin:6px 0 2px">MATERIAL / COLOR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish")}</div>
     ${table}
   </section>`;
 }
@@ -202,11 +241,11 @@ function measurementsPage(doc: PackDoc, n: number) {
     return `<section class="page">
     ${head(doc, n, "MEASUREMENTS SHEET")}
     <div style="position:absolute;left:0.4in;top:1.45in;width:5.6in">${commentsFor(doc, "MEASUREMENTS SHEET")}</div>
-    <div style="position:absolute;left:0.4in;top:2.6in;width:6.2in;height:4.6in">${doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;height:100%"/>` : ""}</div>
+    <div style="position:absolute;left:0.4in;top:2.6in;width:6.2in;height:4.6in">${measureVisual(doc)}</div>
     <div style="position:absolute;left:0.4in;top:7.35in;width:6.2in;columns:2;column-gap:0.3in;font-size:10pt;line-height:1.5">
-      ${overall.map((o) => `<div class="red">${esc(o)}</div>`).join("")}
-      ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}</div>`).join("")}
-      ${doc.logo.type ? `<div>LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)})</div>` : ""}
+      ${overall.map((o) => `<div class="red">${esc(o)}${upd(doc, "dims.")}</div>`).join("")}
+      ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}${upd(doc, m.key)}</div>`).join("")}
+      ${doc.logo.type ? `<div>LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)}) ${up(doc.logo.type)}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
       ${doc.gussetNote ? `<div>${up(doc.gussetNote)}</div>` : ""}
       ${doc.strapNote ? `<div>${up(doc.strapNote)}</div>` : ""}
     </div>
@@ -221,17 +260,18 @@ function measurementsPage(doc: PackDoc, n: number) {
       </div>`
         : ""
     }
+    ${doc.flats.side ? `<div style="position:absolute;right:0.4in;top:6.6in;width:3.3in;height:3.9in">${flatBox(doc.flats.side, "flat-measure", "SIDE VIEW")}</div>` : ""}
   </section>`;
   return `<section class="page">
     ${head(doc, n, "MEASUREMENTS SHEET")}
     <div style="position:absolute;left:0.4in;top:1.45in;width:5.6in">${commentsFor(doc, "MEASUREMENTS SHEET")}</div>
     <div style="position:absolute;left:0.4in;top:2.6in;width:9.6in;height:7.9in">
-      ${doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;height:100%"/>` : ""}
+      ${measureVisual(doc)}
     </div>
     <div style="position:absolute;left:10.3in;top:2.6in;width:3.0in;display:flex;flex-direction:column;gap:10px">
-      ${overall.map((o) => `<div class="dim">${esc(o)}</div>`).join("")}
-      ${doc.measures.map((m) => `<div class="dim">${esc(m.label)}: ${esc(m.value)}</div>`).join("")}
-      ${doc.logo.type ? `<div class="label">LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)})</div>` : ""}
+      ${overall.map((o) => `<div class="dim">${esc(o)}${upd(doc, "dims.")}</div>`).join("")}
+      ${doc.measures.map((m) => `<div class="dim">${esc(m.label)}: ${esc(m.value)}${upd(doc, m.key)}</div>`).join("")}
+      ${doc.logo.type ? `<div class="label">LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)}) ${up(doc.logo.type)}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
       ${doc.gussetNote ? `<div class="label">${up(doc.gussetNote)}</div>` : ""}
       ${doc.strapNote ? `<div class="label">${up(doc.strapNote)}</div>` : ""}
     </div>
@@ -248,14 +288,21 @@ function measurementsPage(doc: PackDoc, n: number) {
   </section>`;
 }
 
+/** Measurement sheet drawing: the front flat with its dimension lines, else the render. */
+function measureVisual(doc: PackDoc) {
+  if (doc.flats.front) return flatBox(doc.flats.front, "flat-measure");
+  return doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;height:100%"/>` : "";
+}
+
 /* ------------------------------ 4. ENLARGED CAD ------------------------------ */
 function cadPage(doc: PackDoc, n: number) {
-  const k = doc.colorwayRenders.length;
+  const k = doc.colorwayRenders.length + doc.flats.indicative.length;
   const w = k <= 2 ? 7.9 : 5.2;
   return `<section class="page">
     ${head(doc, n, "ENLARGED CAD")}
     <div style="display:flex;flex-wrap:wrap;gap:0.25in;justify-content:center;margin-top:0.35in">
       ${doc.colorwayRenders.map((r) => `<div style="text-align:center;width:${w}in"><div style="font-size:24pt;margin-bottom:8px">${up(doc.pack.styleNo)}${esc(r.colorway)}</div>${r.img ? `<img class="img" src="${r.img.src}" style="width:${w}in;height:${k <= 2 ? 6.6 : 3.6}in"/>` : ""}</div>`).join("")}
+      ${doc.flats.indicative.map((r) => `<div style="text-align:center;width:${w}in"><div style="font-size:24pt;margin-bottom:8px">${up(doc.pack.styleNo)}${esc(r.colorway)}</div><div style="width:${w}in;height:${k <= 2 ? 6.2 : 3.3}in">${r.svg}</div><div class="red" style="font-size:14pt;margin-top:6px">COLOUR INDICATIVE</div></div>`).join("")}
     </div>
   </section>`;
 }
@@ -610,6 +657,22 @@ function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialC
   </section>`;
 }
 
+/* ------------------------------ CHANGE LOG ------------------------------ */
+function changeLogPage(doc: PackDoc, n: number) {
+  return `<section class="page">
+    ${head(doc, n, "CHANGE LOG")}
+    <div style="position:absolute;left:0.4in;right:0.4in;top:1.6in">
+      <table class="log"><tr><th style="width:1.4in">REVISION</th><th style="width:1.3in">DATE</th><th style="width:1.4in">BY</th><th>CHANGES</th></tr>
+      ${[...doc.revision.log]
+        .reverse()
+        .map((r) => `<tr><td class="${r.sent ? "" : "red"}">${esc(r.label)}</td><td>${esc(r.date || "—")}</td><td>${up(r.by || "—")}</td><td>${r.lines.map((l) => `<div class="red">*UPDATED* ${up(l)}</div>`).join("")}</td></tr>`)
+        .join("")}
+      <tr><td>ORIGINAL</td><td>${esc(doc.revision.original || "—")}</td><td></td><td class="muted">FIRST ISSUE</td></tr>
+      </table>
+    </div>
+  </section>`;
+}
+
 /** Rough on-screen chips for common Pantone references (print uses the Pantone number). */
 function pantoneHex(code: string) {
   const c = code.toUpperCase();
@@ -647,7 +710,7 @@ export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
         case "SAMPLE COMMENTS":
           return samplePage(doc, p.n);
         case "CHANGE LOG":
-          return "";
+          return changeLogPage(doc, p.n);
       }
     })
     .map((html) => (opts.draft ? html.replace('<section class="page">', '<section class="page"><div class="draft"><span>DRAFT — NOT FOR FACTORY</span></div>') : html))

@@ -51,11 +51,13 @@ export type WorkspaceProps = {
     factory: string;
     factoryStyleNo: string;
     copiedFrom: { id: string; styleNo: string } | null;
+    chineseOn: boolean;
   };
   meId: string;
   review: { requestedBy: { id: string; name: string } | null; reviewedBy: { name: string } | null; reviewedAt: string | null };
   factoryQuestions: { id: string; askedBy: string; question: string; answer: string; answeredByName: string | null; createdAt: string; answeredAt: string | null }[];
   sampleSummary: { rounds: number; open: number };
+  flatSummary: { count: number; inferred: number };
   brand: { id: string; name: string; logoUrl: string | null; licensorRequired: boolean };
   sentBy: string;
   answers: AnswerMap;
@@ -86,6 +88,7 @@ export function PackWorkspace(props: WorkspaceProps) {
   const [flash, setFlash] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<{ running: boolean; message?: string; error?: string }>({ running: false });
   const [colorways, setColorways] = useState(pack.colorways);
+  const [chinese, setChinese] = useState(pack.chineseOn);
   const [, start] = useTransition();
   const inflight = useRef(0);
 
@@ -126,9 +129,11 @@ export function PackWorkspace(props: WorkspaceProps) {
         }
         setVersion((v) => v + 1);
         if (inflight.current === 0) setSave({ state: "saved", at: res.updatedAt });
+        // An edit after review / sign-off sends the pack back to draft: show that straight away.
+        if (pack.status === "IN_REVIEW" || pack.status === "APPROVED") router.refresh();
       });
     },
-    [answers, statuses, pack.id],
+    [answers, statuses, pack.id, pack.status, router],
   );
 
   const confirm = (questionId: string) => {
@@ -225,6 +230,10 @@ export function PackWorkspace(props: WorkspaceProps) {
               {brand.name} · {pack.category}
             </Eyebrow>
             <span className="flex items-center gap-5">
+              <a href={`/packs/${pack.id}/flats`} className="eyebrow hover:text-ink" data-testid="lineart-link">
+                Line art{props.flatSummary.count ? ` · ${props.flatSummary.count}` : ""}
+                {props.flatSummary.inferred ? <span className="text-signal"> · {props.flatSummary.inferred} to confirm</span> : null}
+              </a>
               <a href={`/packs/${pack.id}/samples`} className="eyebrow hover:text-ink" data-testid="samples-link">
                 Samples{props.sampleSummary.rounds ? ` · ${props.sampleSummary.open} open` : ""}
               </a>
@@ -279,6 +288,33 @@ export function PackWorkspace(props: WorkspaceProps) {
               </dd>
             </div>
             <Meta k="Description" v={(answers["header.description"] as string) || "—"} />
+            <div>
+              <dt className="eyebrow mb-1">Output</dt>
+              <dd className="inline-flex border border-hairline-strong" role="radiogroup" aria-label="Output language" data-testid="language">
+                {[
+                  { v: false, label: "EN" },
+                  { v: true, label: "EN + 中文" },
+                ].map((o) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={chinese === o.v}
+                    disabled={!canEdit}
+                    onClick={() => {
+                      setChinese(o.v);
+                      start(async () => {
+                        await updatePackSetup(pack.id, { chineseOn: o.v });
+                        setVersion((n) => n + 1);
+                      });
+                    }}
+                    className={cx("h-7 px-3 text-[11px] tracking-[0.1em] transition-colors", chinese === o.v ? "bg-ink text-ivory" : "text-ink-soft hover:text-ink")}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </dd>
+            </div>
             {pack.copiedFrom && (
               <div>
                 <dt className="eyebrow mb-1">Carried over from</dt>

@@ -6,6 +6,7 @@ const env = {
   DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgres://postgres@localhost:5433/techpack_test",
   AUTH_SECRET: "e2e-secret-e2e-secret-e2e-secret-0123456789",
   AI_FIXTURE_DIR: path.resolve("tests/fixtures/ai"),
+  FLAT_FIXTURE_DIR: path.resolve(".data/flat-fixtures"),
   SEED_ADMIN_EMAIL: "emily@iconluxurygroup.test",
   SEED_ADMIN_PASSWORD: "Atelier-2026!",
   SEED_ADMIN_NAME: "EMILY",

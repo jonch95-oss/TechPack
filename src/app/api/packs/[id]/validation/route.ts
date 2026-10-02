@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/dal";
 import { loadPack } from "@/lib/data";
 import { buildPackDoc } from "@/lib/pdf/doc";
 import { gatePasses } from "@/lib/validation";
+import { changeLine, revisionState } from "@/lib/revisions";
 
 /** The Part 5 gate for a pack: every rule with pass / fail / warn and the fix. */
 export async function GET(_req: Request, ctx: RouteContext<"/api/packs/[id]/validation">) {
@@ -11,7 +12,13 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/packs/[id]/vali
   const p = await loadPack(id);
   if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const doc = await buildPackDoc(p, { images: false });
+  const rev = await revisionState(p);
   return NextResponse.json({
+    revisions: {
+      list: rev.list.map((r) => ({ label: r.label, date: r.date, by: r.by, pdfUrl: r.pdfUrl, changes: r.changes.map(changeLine) })),
+      pending: rev.latest ? rev.pending.map(changeLine) : [],
+      next: rev.latest ? `R${rev.latest.number + 1}` : "ORIGINAL",
+    },
     passes: gatePasses(doc.validation),
     rules: doc.validation,
     spelling: doc.spelling,

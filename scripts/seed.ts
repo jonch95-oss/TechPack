@@ -7,7 +7,8 @@ import bcrypt from "bcryptjs";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
-import { brands, users } from "../src/db/schema";
+import { brands, glossary, users } from "../src/db/schema";
+import { DEFAULT_GLOSSARY } from "../src/lib/zh/dictionary";
 
 const LAUNCH_BRANDS = [
   { name: "Pink London", codePrefix: "PINK", licensorRequired: false },
@@ -28,6 +29,11 @@ async function main() {
   for (const b of LAUNCH_BRANDS) {
     const existing = await db.select({ id: brands.id }).from(brands).where(eq(brands.name, b.name));
     if (!existing.length) await db.insert(brands).values({ ...b, codeFormat: `${b.codePrefix}###` });
+  }
+  // Starter trade glossary (BRIEF 1.5) — only when empty, so admins' edits are never overwritten.
+  if (!(await db.select({ id: glossary.id }).from(glossary).limit(1)).length) {
+    await db.insert(glossary).values(DEFAULT_GLOSSARY.map(([en, zh]) => ({ en, zh }))).onConflictDoNothing();
+    console.log(`Glossary seeded (${DEFAULT_GLOSSARY.length} terms).`);
   }
   // The first admin is Jon; the password comes from SEED_ADMIN_PASSWORD (set in Vercel) and must be changed at first sign-in.
   const email = (process.env.SEED_ADMIN_EMAIL || "jonc@iconluxurygroup.com").toLowerCase();

@@ -22,6 +22,13 @@
       "when": 1790900323152,
       "tag": "0002_workflow_samples_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790904684691,
+      "tag": "0003_phase3_4_flats_revisions_glossary",
+      "breakpoints": true
     }
   ]
 }

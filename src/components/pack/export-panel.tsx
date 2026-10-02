@@ -6,7 +6,13 @@ import { applySpelling } from "@/app/actions/packs";
 import type { RuleResult } from "@/lib/validation";
 import { buttonClass, cx } from "@/components/ui";
 
-type Result = { passes: boolean; rules: RuleResult[]; spelling: { word: string; suggestion: string | null; count: number }[]; pages: { n: number; section: string }[] };
+type Result = {
+  passes: boolean;
+  rules: RuleResult[];
+  spelling: { word: string; suggestion: string | null; count: number }[];
+  pages: { n: number; section: string }[];
+  revisions: { list: { label: string; date: string; by: string; pdfUrl: string | null; changes: string[] }[]; pending: string[]; next: string };
+};
 
 /**
  * The validation gate (Part 5) in the workspace: re-checks after edits, lists exactly what to fix
@@ -84,13 +90,13 @@ export function ExportPanel({ packId, version, onJump, canEdit, signedOff }: { p
           {fails
             .filter((r) => r.group !== "Language" || !r.rule.startsWith("Spelling"))
             .map((r, i) => (
-              <button key={`${r.rule}-${i}`} type="button" onClick={() => r.questionId && !r.questionId.startsWith("$") && onJump(r.questionId)} className="block w-full text-left hover:bg-ivory -mx-2 px-2 py-1">
+              <button key={`${r.rule}-${i}`} type="button" onClick={() => (r.questionId === "$flats" ? router.push(`/packs/${packId}/flats`) : r.questionId && !r.questionId.startsWith("$") && onJump(r.questionId))} className="block w-full text-left hover:bg-ivory -mx-2 px-2 py-1">
                 <div className="text-[12px] leading-snug">{r.rule}</div>
                 <div className="text-[10.5px] text-signal leading-snug">{r.fix}</div>
               </button>
             ))}
           {warns.map((r, i) => (
-            <button key={`w-${i}`} type="button" onClick={() => r.questionId && onJump(r.questionId)} className="block w-full text-left hover:bg-ivory -mx-2 px-2 py-1">
+            <button key={`w-${i}`} type="button" onClick={() => (r.questionId === "$flats" ? router.push(`/packs/${packId}/flats`) : r.questionId && !r.questionId.startsWith("$") && onJump(r.questionId))} className="block w-full text-left hover:bg-ivory -mx-2 px-2 py-1">
               <div className="text-[12px] leading-snug">{r.rule}</div>
               <div className="text-[10.5px] text-gold leading-snug">{r.fix}</div>
             </button>
@@ -114,7 +120,36 @@ export function ExportPanel({ packId, version, onJump, canEdit, signedOff }: { p
         <a href={`/api/packs/${packId}/pdf?draft=1`} target="_blank" className={cx(buttonClass("secondary", "sm"), "w-full")} data-testid="draft-pdf">
           Draft PDF (watermarked)
         </a>
+        <a href={`/api/packs/${packId}/export`} className={cx(buttonClass("ghost", "sm"), "w-full")} data-testid="export-zip">
+          Files — SVG · AI · EPS · PSD (ZIP)
+        </a>
       </div>
+      {res?.revisions && (res.revisions.list.length > 0 || res.revisions.pending.length > 0) && (
+        <div className="px-6 pb-6 space-y-3" data-testid="revisions">
+          <div className="eyebrow">Revisions</div>
+          {res.revisions.pending.length > 0 && (
+            <div className="text-[11px] leading-snug" data-testid="pending-changes">
+              <div className="text-signal">Next export issues {res.revisions.next}:</div>
+              {res.revisions.pending.slice(0, 6).map((c) => (
+                <div key={c} className="text-taupe">*UPDATED* {c}</div>
+              ))}
+              {res.revisions.pending.length > 6 && <div className="text-taupe">+ {res.revisions.pending.length - 6} more</div>}
+            </div>
+          )}
+          <ul className="space-y-1">
+            {[...res.revisions.list].reverse().map((r) => (
+              <li key={r.label} className="flex items-center justify-between text-[12px]" data-testid={`revision-${r.label}`}>
+                <span>
+                  {r.label} <span className="text-taupe">· {r.date}{r.by ? ` · ${r.by}` : ""}</span>
+                </span>
+                {r.pdfUrl && (
+                  <a href={r.pdfUrl} target="_blank" className="eyebrow hover:text-ink">PDF</a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { factoryQuestions, packs, sampleComments, sampleRounds, users } from "@/db/schema";
+import { factoryQuestions, flats, packs, sampleComments, sampleRounds, users } from "@/db/schema";
 import { requireUser, can } from "@/lib/auth/dal";
 import { libraryOptions, loadPack } from "@/lib/data";
 import { PackWorkspace } from "@/components/pack/workspace";
@@ -24,6 +24,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
     ? (await db.select({ status: sampleComments.status, roundId: sampleComments.roundId }).from(sampleComments).where(inArray(sampleComments.roundId, rounds.map((r) => r.id)))).filter((c) => c.status !== "ACCEPTED").length
     : 0;
 
+  const flatRows = await db.select({ status: flats.status }).from(flats).where(eq(flats.packId, id));
   return (
     <>
       <Link href="/" className="eyebrow hover:text-ink inline-block mb-8">← All tech packs</Link>
@@ -39,6 +40,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
           factory: p.pack.factory,
           factoryStyleNo: p.pack.factoryStyleNo,
           copiedFrom: src ?? null,
+          chineseOn: p.pack.chineseOn,
         }}
         meId={user.id}
         review={{
@@ -56,6 +58,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
           answeredAt: q.answeredAt?.toISOString() ?? null,
         }))}
         sampleSummary={{ rounds: rounds.length, open: openComments }}
+        flatSummary={{ count: flatRows.length, inferred: flatRows.filter((f) => f.status === "INFERRED").length }}
         brand={{ id: p.brand.id, name: p.brand.name, logoUrl: p.brand.logoUrl, licensorRequired: p.brand.licensorRequired }}
         sentBy={p.sentBy}
         answers={p.answers}

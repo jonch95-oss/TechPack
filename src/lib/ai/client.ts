@@ -34,6 +34,8 @@ export async function callTechnicalDesigner<T>(opts: {
   pdfs?: Buffer[];
   schema: Record<string, unknown>;
   fixtureName?: string;
+  /** Reasoning effort; translation and other light tasks use "low". */
+  effort?: "low" | "medium" | "high";
 }): Promise<AICallResult<T>> {
   const fixtureDir = process.env.AI_FIXTURE_DIR;
   if (fixtureDir) {
@@ -70,7 +72,7 @@ export async function callTechnicalDesigner<T>(opts: {
     max_tokens: 32000,
     system: TECHNICAL_DESIGNER_SYSTEM_PROMPT,
     thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: { type: "json_schema", schema: opts.schema } },
+    output_config: { effort: opts.effort ?? "high", format: { type: "json_schema", schema: opts.schema } },
     messages: [{ role: "user", content }],
     ...(useFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
   });
