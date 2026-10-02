@@ -1,0 +1,611 @@
+import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "./common";
+import type { Category, Question, Section } from "./types";
+
+const ZIP_TYPES = ["COIL", "METAL", "MOLDED", "PLASTIC W/ METAL FINISH"];
+const HANDLE_TYPES = ["WRAP", "SEPARATE", "PADDED", "WEBBING", "PU"];
+
+/** Shoulder strap block reused by handbags, duffels, men's bags and coolers. */
+function strapQuestions(p: string, opts: { pad?: boolean } = {}): Question[] {
+  const on = { q: `${p}.strap`, eq: true } as const;
+  const qs: Question[] = [
+    { id: `${p}.strap`, label: "Shoulder / crossbody strap", kind: "toggle", required: true },
+    { id: `${p}.strap.removable`, label: "Removable or fixed", kind: "chips", options: ["REMOVABLE", "FIXED"], noOther: true, required: true, showIf: on },
+    { id: `${p}.strap.width`, label: "Strap width", kind: "stepper", unit: "dim", required: true, showIf: on },
+    { id: `${p}.strap.length`, label: "Strap total length", kind: "stepper", unit: "dim", required: true, showIf: on },
+    { id: `${p}.strap.adjustable`, label: "Adjustable", kind: "toggle", required: true, showIf: on },
+    {
+      id: `${p}.strap.adjust_method`,
+      label: "Adjustment",
+      kind: "chips",
+      options: ["HOLES", "BUCKLE", "SLIDER"],
+      required: true,
+      showIf: { q: `${p}.strap.adjustable`, eq: true },
+    },
+    { id: `${p}.strap.adjust_min`, label: "Adjustment range — shortest", kind: "stepper", unit: "dim", required: true, showIf: { q: `${p}.strap.adjustable`, eq: true } },
+    { id: `${p}.strap.adjust_max`, label: "Adjustment range — longest", kind: "stepper", unit: "dim", required: true, showIf: { q: `${p}.strap.adjustable`, eq: true } },
+    { id: `${p}.strap.holes`, label: "Hole count", kind: "stepper", unit: "qty", required: true, showIf: { q: `${p}.strap.adjust_method`, eq: "HOLES" } },
+    { id: `${p}.strap.drop`, label: "Strap drop", kind: "stepper", unit: "dim", showIf: on },
+    { id: `${p}.strap.material`, label: "Strap material", kind: "chips", options: ["SAME AS BODY", "CHAIN", "WEBBING", "COMBO"], showIf: on },
+    {
+      id: `${p}.strap.attachment`,
+      label: "Strap attachment hardware",
+      kind: "multi",
+      options: ["SWIVEL HOOK", "D-RING", "SQUARE/RECTANGULAR RING", "SIDE LOOP", "RIVET"],
+      required: true,
+      showIf: on,
+    },
+  ];
+  if (opts.pad) qs.push({ id: `${p}.strap.pad`, label: "Shoulder pad", kind: "toggle", showIf: on });
+  return qs;
+}
+
+const handbags: Section = {
+  id: "hb",
+  title: "Handbag",
+  questions: [
+    {
+      id: "hb.silhouette",
+      label: "Silhouette",
+      kind: "chips",
+      required: true,
+      options: [
+        "SATCHEL",
+        "TOP-HANDLE",
+        "TOTE",
+        "SHOULDER",
+        "CROSSBODY",
+        "HOBO",
+        "BUCKET",
+        "BAGUETTE",
+        "CLUTCH",
+        "CAMERA",
+        "SADDLE",
+        "BELT BAG",
+        "BACKPACK",
+        "MINI / MICRO",
+      ],
+    },
+    { id: "hb.structure", label: "Structure", kind: "chips", options: ["SOFT", "SEMI-STRUCTURED", "STRUCTURED"], required: true },
+    {
+      id: "hb.closure",
+      label: "Closure",
+      kind: "chips",
+      required: true,
+      options: [
+        "FLAP + MAGNETIC SNAP",
+        "FLAP + PRESS SNAP",
+        "TURNLOCK",
+        "TOP ZIP",
+        "OPEN TOP + MAGNETIC SNAP",
+        "DRAWSTRING",
+        "KISS-LOCK",
+        "TOGGLE",
+        "NONE",
+      ],
+    },
+    {
+      id: "hb.closure.snap_qty",
+      label: "Snap qty",
+      kind: "stepper",
+      unit: "qty",
+      required: true,
+      visibility: "inferred",
+      showIf: { q: "hb.closure", in: ["FLAP + MAGNETIC SNAP", "FLAP + PRESS SNAP", "OPEN TOP + MAGNETIC SNAP"] },
+    },
+    {
+      id: "hb.closure.snap_spacing",
+      label: "Snap spacing",
+      kind: "chips",
+      options: ["SPACED EVENLY", "CENTERED", "CUSTOM"],
+      required: true,
+      visibility: "inferred",
+      showIf: { q: "hb.closure", in: ["FLAP + MAGNETIC SNAP", "FLAP + PRESS SNAP", "OPEN TOP + MAGNETIC SNAP"] },
+    },
+    {
+      id: "hb.closure.snap_spacing_value",
+      label: "Snap spacing (centre to centre)",
+      kind: "stepper",
+      unit: "dim",
+      required: true,
+      showIf: { q: "hb.closure.snap_spacing", eq: "CUSTOM" },
+    },
+    { id: "hb.closure.zip_size", label: "Zip size", kind: "chips", options: ["#3", "#5", "#8"], required: true, showIf: { q: "hb.closure", eq: "TOP ZIP" } },
+    { id: "hb.closure.zip_type", label: "Zip type", kind: "chips", options: ZIP_TYPES, required: true, showIf: { q: "hb.closure", eq: "TOP ZIP" } },
+    {
+      id: "hb.flap",
+      label: "Flap",
+      kind: "chips",
+      options: ["FULL", "HALF", "ENVELOPE", "ROUNDED", "SQUARED"],
+      showIf: { q: "hb.closure", in: ["FLAP + MAGNETIC SNAP", "FLAP + PRESS SNAP", "TURNLOCK"] },
+    },
+    { id: "hb.flap_height", label: "Flap height", kind: "stepper", unit: "dim", showIf: { q: "hb.flap", truthy: true } },
+    { id: "hb.flap_overhang", label: "Flap overhang", kind: "stepper", unit: "dim", showIf: { q: "hb.flap", truthy: true } },
+    { id: "hb.top_handle", label: "Top handle", kind: "toggle", required: true },
+    { id: "hb.top_handle.qty", label: "Handle qty", kind: "stepper", unit: "qty", showIf: { q: "hb.top_handle", eq: true } },
+    { id: "hb.top_handle.drop", label: "Handle drop", kind: "stepper", unit: "dim", required: true, showIf: { q: "hb.top_handle", eq: true } },
+    { id: "hb.top_handle.width", label: "Handle width", kind: "stepper", unit: "dim", showIf: { q: "hb.top_handle", eq: true } },
+    {
+      id: "hb.top_handle.style",
+      label: "Handle style",
+      kind: "chips",
+      options: ["FLAT", "ROLLED", "DOUBLED/BONDED", "CHAIN", "CHAIN + LEATHER"],
+      showIf: { q: "hb.top_handle", eq: true },
+    },
+    {
+      id: "hb.top_handle.attachment",
+      label: "Handle attachment",
+      kind: "chips",
+      options: ["D-RING", "O-RING", "SQUARE/RECTANGULAR RING", "LOOP", "RIVET TAB", "SWIVEL"],
+      showIf: { q: "hb.top_handle", eq: true },
+    },
+    ...strapQuestions("hb"),
+    {
+      id: "hb.gusset",
+      label: "Gusset",
+      kind: "chips",
+      options: ["STANDARD (NO PLEATS)", "PLEATED", "ACCORDION", "BOXED", "NONE"],
+      required: true,
+    },
+    { id: "hb.gusset_width", label: "Gusset width (= D)", kind: "derived", from: "dims.d", unit: "dim", showIf: { q: "hb.gusset", truthy: true } },
+    { id: "hb.base", label: "Base", kind: "chips", options: ["FLAT", "BOARDED"], visibility: "inferred" },
+    { id: "hb.feet", label: "Feet", kind: "toggle", visibility: "inferred" },
+    { id: "hb.feet.qty", label: "Feet qty", kind: "stepper", unit: "qty", showIf: { q: "hb.feet", eq: true } },
+    { id: "hb.feet.code", label: "Feet code", kind: "lib", lib: "hardware", hardwareTypes: ["FEET"], showIf: { q: "hb.feet", eq: true } },
+    {
+      id: "hb.ext_pockets",
+      label: "Exterior pockets",
+      kind: "rows",
+      addLabel: "Add exterior pocket",
+      columns: [
+        { key: "type", label: "Type", kind: "chips", options: ["SLIP POCKET", "ZIP POCKET", "PHONE POCKET", "CARD SLOT"] },
+        { key: "position", label: "Position", kind: "chips", options: ["FRONT", "BACK", "SIDE", "UNDER FLAP"] },
+        { key: "detail", label: "Detail", kind: "text" },
+        { key: "w", label: "W", kind: "stepper", unit: "dim" },
+        { key: "h", label: "H", kind: "stepper", unit: "dim" },
+      ],
+    },
+    { id: "hb.quilting", label: "Quilting / embellishment", kind: "chips", options: ["NONE", "DIAMOND QUILT", "CHANNEL QUILT", "STUDS", "WHIPSTITCH", "EMBROIDERY"] },
+    { id: "hb.quilting_spec", label: "Quilting / embellishment spec", kind: "comment", showIf: { q: "hb.quilting", truthy: true } },
+    { id: "hb.charm", label: "Charm or keychain included", kind: "toggle" },
+    { id: "hb.charm.code", label: "Charm / keychain code", kind: "lib", lib: "hardware", hardwareTypes: ["KEYCHAIN/CHARM"], required: true, showIf: { q: "hb.charm", eq: true } },
+  ],
+};
+
+const slgs: Section = {
+  id: "slg",
+  title: "SLG",
+  questions: [
+    {
+      id: "slg.type",
+      label: "Type",
+      kind: "chips",
+      required: true,
+      options: [
+        "CARD CASE",
+        "BIFOLD",
+        "TRIFOLD",
+        "ZIP-AROUND",
+        "CONTINENTAL",
+        "COIN PURSE",
+        "WRISTLET",
+        "POUCH",
+        "KEY CASE",
+        "PASSPORT HOLDER",
+        "PHONE CASE/POUCH",
+        "LANYARD ID",
+      ],
+    },
+    { id: "slg.card_slots", label: "Card slots", kind: "stepper", unit: "qty", required: true, visibility: "inferred" },
+    { id: "slg.bill_compartments", label: "Bill compartments", kind: "stepper", unit: "qty", visibility: "inferred" },
+    { id: "slg.coin_pocket", label: "Coin pocket", kind: "toggle", visibility: "inferred" },
+    { id: "slg.coin_pocket_zip", label: "Coin pocket zip", kind: "chips", options: ["#3", "#5"], showIf: { q: "slg.coin_pocket", eq: true } },
+    { id: "slg.id_window", label: "ID window", kind: "toggle", visibility: "inferred" },
+    { id: "slg.id_window_size", label: "ID window size", kind: "dims2", unit: "dim", showIf: { q: "slg.id_window", eq: true } },
+    { id: "slg.closure", label: "Closure", kind: "chips", options: ["ZIP-AROUND", "SNAP TAB", "NONE", "MAGNETIC"], required: true },
+    { id: "slg.wrist_strap", label: "Wrist strap", kind: "toggle" },
+    { id: "slg.wrist_strap.removable", label: "Wrist strap removable", kind: "toggle", showIf: { q: "slg.wrist_strap", eq: true } },
+    { id: "slg.wrist_strap.length", label: "Wrist strap length", kind: "stepper", unit: "dim", showIf: { q: "slg.wrist_strap", eq: true } },
+    { id: "slg.wrist_strap.hook", label: "Wrist strap hook", kind: "lib", lib: "hardware", hardwareTypes: ["SWIVEL HOOK", "LOBSTER CLASP"], showIf: { q: "slg.wrist_strap", eq: true } },
+    {
+      id: "slg.folded_dims",
+      label: "Folded dimensions (W × H)",
+      kind: "dims2",
+      unit: "dim",
+      required: true,
+      showIf: { q: "slg.type", in: ["BIFOLD", "TRIFOLD", "PASSPORT HOLDER", "KEY CASE", "CARD CASE"] },
+    },
+    {
+      id: "slg.open_dims",
+      label: "Open dimensions (W × H)",
+      kind: "dims2",
+      unit: "dim",
+      required: true,
+      showIf: { q: "slg.type", in: ["BIFOLD", "TRIFOLD", "PASSPORT HOLDER", "KEY CASE", "CARD CASE"] },
+    },
+  ],
+};
+
+function luggageQuestions(p: string, soft: boolean): Question[] {
+  return [
+    {
+      id: `${p}.size`,
+      label: "Size",
+      kind: "chips",
+      options: ['CARRY-ON 20"', 'CARRY-ON 21"', 'MEDIUM 24/25"', 'LARGE 28/29"', "SET"],
+      required: true,
+    },
+    {
+      id: `${p}.set_sizes`,
+      label: "Set sizes",
+      kind: "multi",
+      options: ['20"', '21"', '24"', '25"', '28"', '29"'],
+      required: true,
+      showIf: { q: `${p}.size`, eq: "SET" },
+    },
+    ...(soft
+      ? ([
+          { id: `${p}.body_fabric`, label: "Body fabric", kind: "lib", lib: "material", required: true },
+          { id: `${p}.denier`, label: "Denier", kind: "stepper", unit: "D", required: true },
+          {
+            id: `${p}.front_pockets`,
+            label: "Front pockets",
+            kind: "multi",
+            options: ["FLAT ZIP POCKET", "LAPTOP POCKET", "BOX POCKET", "QUICK-ACCESS POCKET"],
+          },
+          { id: `${p}.expansion_zip`, label: "Expansion zip", kind: "toggle" },
+          { id: `${p}.base`, label: "Base", kind: "chips", options: ["SOFT", "BOARDED", "HARD TUB"], visibility: "inferred" },
+        ] as Question[])
+      : ([
+          { id: `${p}.shell`, label: "Shell", kind: "chips", options: ["PC", "ABS", "ABS+PC", "PP", "ALUMINIUM"], required: true },
+          { id: `${p}.shell_finish`, label: "Shell finish", kind: "chips", options: ["MATTE", "GLOSS", "TEXTURED", "EMBOSSED PATTERN", "PRINTED"] },
+        ] as Question[])),
+    { id: `${p}.wheels`, label: "Wheels", kind: "chips", options: ["8 DOUBLE SPINNER", "4 SINGLE SPINNER", "2 INLINE"], required: true },
+    { id: `${p}.wheel_diameter`, label: "Wheel diameter", kind: "stepper", unit: "mm" },
+    { id: `${p}.trolley`, label: "Trolley handle", kind: "chips", options: ["ALUMINIUM SINGLE TUBE", "ALUMINIUM DOUBLE TUBE"], required: true },
+    { id: `${p}.trolley_stages`, label: "Trolley stages", kind: "stepper", unit: "qty" },
+    { id: `${p}.trolley_max`, label: "Trolley max height", kind: "stepper", unit: "dim" },
+    { id: `${p}.lock`, label: "Lock", kind: "chips", options: ["TSA COMBO ZIP LOCK", "TSA FRAME LATCH", "NONE"], required: true },
+    { id: `${p}.closure`, label: "Closure", kind: "chips", options: ["ZIPPER", "ALUMINIUM FRAME"], required: true },
+    { id: `${p}.expandable`, label: "Expandable", kind: "toggle" },
+    { id: `${p}.expandable_mm`, label: "Expansion", kind: "stepper", unit: "mm", showIf: { q: `${p}.expandable`, eq: true } },
+    {
+      id: `${p}.carry_handles`,
+      label: "Carry handles",
+      kind: "rows",
+      required: true,
+      addLabel: "Add handle",
+      columns: [
+        { key: "position", label: "Position", kind: "chips", options: ["TOP", "SIDE", "BOTTOM"], required: true },
+        { key: "type", label: "Type", kind: "chips", options: ["MOLDED", "PADDED", "WEBBING", "RETRACTABLE"], required: true },
+      ],
+    },
+    {
+      id: `${p}.interior_features`,
+      label: "Interior",
+      kind: "multi",
+      options: ["ZIP DIVIDER PANEL", "CROSS/COMPRESSION STRAPS", "MESH POCKET", "SHOE BAG", "WET POCKET"],
+      visibility: "inferred",
+    },
+    { id: `${p}.corner_guards`, label: "Corner guards", kind: "toggle" },
+    { id: `${p}.feet_qty`, label: "Feet qty", kind: "stepper", unit: "qty", visibility: "inferred" },
+    { id: `${p}.branding`, label: "Luggage branding", kind: "chips", options: ["METAL BADGE ON SHELL", "EMBOSSED SHELL", "PRINTED"] },
+  ];
+}
+
+function duffelQuestions(p: string): Question[] {
+  return [
+    { id: `${p}.size_l`, label: "Length (L)", kind: "stepper", unit: "dim", required: true },
+    { id: `${p}.size_w`, label: "Width (W)", kind: "stepper", unit: "dim", required: true },
+    { id: `${p}.size_h`, label: "Height (H)", kind: "stepper", unit: "dim", required: true },
+    { id: `${p}.capacity`, label: "Capacity (auto)", kind: "derived", from: "$capacity", unit: "L" },
+    { id: `${p}.zip_size`, label: "Main closure zip size", kind: "chips", options: ["#8", "#10"], required: true },
+    { id: `${p}.zip_type`, label: "Main closure zip type", kind: "chips", options: ["COIL", "METAL", "MOLDED"], required: true },
+    { id: `${p}.zip_double_slider`, label: "Double slider", kind: "toggle", required: true },
+    { id: `${p}.zip_lockable`, label: "Lockable pulls", kind: "toggle", required: true },
+    { id: `${p}.grab_handles`, label: "Grab handles", kind: "chips", options: ["WRAP", "SEPARATE"], required: true },
+    { id: `${p}.handle_length`, label: "Handle length", kind: "stepper", unit: "dim" },
+    { id: `${p}.handle_drop`, label: "Handle drop", kind: "stepper", unit: "dim" },
+    ...strapQuestions(p, { pad: true }),
+    { id: `${p}.end_pockets`, label: "End pockets", kind: "toggle" },
+    { id: `${p}.shoe_compartment`, label: "Shoe compartment", kind: "toggle" },
+    { id: `${p}.shoe_location`, label: "Shoe compartment location", kind: "chips", options: ["END", "BASE", "SIDE"], showIf: { q: `${p}.shoe_compartment`, eq: true } },
+    { id: `${p}.trolley_sleeve`, label: "Trolley sleeve", kind: "toggle", visibility: "inferred" },
+    { id: `${p}.base`, label: "Base", kind: "chips", options: ["SOFT", "BOARDED"], visibility: "inferred" },
+    { id: `${p}.feet_qty`, label: "Feet qty", kind: "stepper", unit: "qty", visibility: "inferred" },
+    { id: `${p}.id_tag`, label: "ID tag", kind: "toggle" },
+    { id: `${p}.id_tag_code`, label: "ID tag code", kind: "lib", lib: "hardware", showIf: { q: `${p}.id_tag`, eq: true } },
+  ];
+}
+
+const duffels: Section = { id: "duf", title: "Duffel", questions: duffelQuestions("duf") };
+
+const rollingDuffels: Section = {
+  id: "rduf",
+  title: "Rolling duffel",
+  questions: [
+    ...duffelQuestions("rduf"),
+    { id: "rduf.wheels_qty", label: "Wheel qty", kind: "stepper", unit: "qty", required: true },
+    { id: "rduf.wheel_diameter", label: "Wheel diameter", kind: "stepper", unit: "mm", required: true },
+    { id: "rduf.wheels_inline", label: "Inline wheels", kind: "toggle", required: true },
+    { id: "rduf.tele_stages", label: "Telescopic handle stages", kind: "stepper", unit: "qty", required: true },
+    { id: "rduf.tele_max", label: "Telescopic handle max height", kind: "stepper", unit: "dim", required: true },
+    { id: "rduf.tele_tube", label: "Telescopic handle tube", kind: "chips", options: ["SINGLE", "DOUBLE"], required: true },
+    { id: "rduf.tele_retract", label: "Retract position", kind: "chips", options: ["EXTERIOR BACK", "INTERIOR ZIP COVER"], required: true },
+    { id: "rduf.base_type", label: "Base type", kind: "chips", options: ["HARD TUB", "BOARDED PANEL"], required: true },
+    { id: "rduf.skid_guards", label: "Skid guards", kind: "toggle" },
+    { id: "rduf.carry_handles", label: "Carry handles", kind: "multi", options: ["TOP", "SIDE", "BOTTOM"] },
+  ],
+};
+
+const mensBags: Section = {
+  id: "men",
+  title: "Men's bag",
+  questions: [
+    {
+      id: "men.type",
+      label: "Type",
+      kind: "chips",
+      options: ["BRIEFCASE", "MESSENGER", "BACKPACK", "SLING", "TOTE", "WEEKENDER", "DOPP KIT"],
+      required: true,
+      help: "Dopp kit adds the cosmetic / toiletry questions below.",
+    },
+    { id: "men.laptop", label: "Laptop compartment", kind: "toggle", showIf: { q: "men.type", in: ["BRIEFCASE", "MESSENGER", "BACKPACK", "SLING", "TOTE", "WEEKENDER"] } },
+    { id: "men.laptop_size", label: "Device size", kind: "chips", options: ['13"', '14"', '15"', '16"'], showIf: { q: "men.laptop", eq: true } },
+    { id: "men.laptop_padded", label: "Padded", kind: "toggle", showIf: { q: "men.laptop", eq: true } },
+    { id: "men.organiser", label: "Organiser panel", kind: "multi", options: ["PEN LOOPS", "CARD SLOTS", "ZIP POCKET", "PHONE POCKET", "KEY CLIP"], visibility: "inferred" },
+    { id: "men.trolley_sleeve", label: "Trolley sleeve", kind: "toggle", visibility: "inferred" },
+    { id: "men.back_padding", label: "Back padding", kind: "toggle", showIf: { q: "men.type", in: ["BACKPACK", "SLING"] } },
+    { id: "men.handles", label: "Handles", kind: "chips", options: HANDLE_TYPES },
+    { id: "men.handle_drop", label: "Handle drop", kind: "stepper", unit: "dim", showIf: { q: "men.handles", truthy: true } },
+    ...strapQuestions("men").map((q) => ({
+      ...q,
+      showIf: q.showIf
+        ? q.showIf
+        : ({ q: "men.type", in: ["BRIEFCASE", "MESSENGER", "BACKPACK", "SLING", "TOTE", "WEEKENDER"] } as const),
+    })),
+  ],
+};
+
+const belts: Section = {
+  id: "belt",
+  title: "Belt",
+  questions: [
+    { id: "belt.width", label: "Width", kind: "stepper", unit: "mm", required: true },
+    { id: "belt.size_run", label: "Size run", kind: "chips", options: ["S-M-L-XL", "WAIST 28–44", "ONE SIZE"], required: true },
+    {
+      id: "belt.measuring_rule",
+      label: "Measuring rule",
+      kind: "chips",
+      options: ["FOLD TO CENTRE HOLE"],
+      required: true,
+      noOther: true,
+    },
+    {
+      id: "belt.lengths",
+      label: "Length per size (fold to centre hole)",
+      kind: "rows",
+      required: true,
+      addLabel: "Add size",
+      columns: [
+        { key: "size", label: "Size", kind: "text", required: true },
+        { key: "length", label: "Length", kind: "stepper", unit: "dim", required: true },
+      ],
+    },
+    { id: "belt.hole_qty", label: "Hole qty", kind: "stepper", unit: "qty", required: true },
+    { id: "belt.hole_spacing", label: "Hole spacing", kind: "stepper", unit: "mm", required: true },
+    { id: "belt.hole_diameter", label: "Hole diameter", kind: "stepper", unit: "mm", required: true },
+    { id: "belt.tip", label: "Tip shape", kind: "chips", options: ["POINTED", "ROUNDED", "SQUARE"], required: true },
+    { id: "belt.buckle", label: "Buckle", kind: "lib", lib: "hardware", hardwareTypes: ["BUCKLE"], required: true },
+    {
+      id: "belt.buckle_attachment",
+      label: "Buckle attachment",
+      kind: "chips",
+      options: ["STITCHED", "SCREW (CHICAGO SCREW)", "SNAP (INTERCHANGEABLE)"],
+      required: true,
+    },
+    { id: "belt.keeper", label: "Keeper", kind: "chips", options: ["FIXED", "FLOATING", "METAL"], required: true },
+    { id: "belt.keeper_qty", label: "Keeper qty", kind: "stepper", unit: "qty" },
+    { id: "belt.construction", label: "Construction", kind: "chips", options: ["SINGLE-PLY", "BONDED 2-PLY", "STITCHED EDGE", "RAW EDGE-PAINTED"], required: true },
+    { id: "belt.reversible", label: "Reversible (swivel buckle)", kind: "toggle" },
+    { id: "belt.embossed_logo", label: "Embossed logo on strap", kind: "toggle" },
+  ],
+};
+
+const cosmetic: Section = {
+  id: "cos",
+  title: "Cosmetic bag / toiletry kit",
+  questions: [
+    { id: "cos.shape", label: "Shape", kind: "chips", options: ["DOME", "BOX / DOPP", "FLAT POUCH", "TRAIN CASE", "HANGING", "TRAPEZOID"], required: true },
+    { id: "cos.zip_size", label: "Zip size", kind: "chips", options: ["#3", "#5", "#8"], required: true },
+    { id: "cos.zip_type", label: "Zip type", kind: "chips", options: ZIP_TYPES, required: true },
+    { id: "cos.zip_tape", label: "Zip tape colour", kind: "chips", options: ["DTM", "BLACK", "CONTRAST"], required: true },
+    { id: "cos.zip_teeth", label: "Zip teeth colour", kind: "chips", options: ["DTM", ...HARDWARE_FINISHES], required: true },
+    { id: "cos.zip_path", label: "Zip path", kind: "chips", options: ["TOP", "AROUND", "3-SIDED"], required: true },
+    { id: "cos.puller", label: "Puller", kind: "lib", lib: "hardware", hardwareTypes: ["ZIPPER PULL"], required: true },
+    { id: "cos.side_handle", label: "Side handle", kind: "toggle" },
+    { id: "cos.side_handle_width", label: "Side handle width", kind: "stepper", unit: "mm", showIf: { q: "cos.side_handle", eq: true } },
+    { id: "cos.side_handle_doubled", label: "Doubled", kind: "toggle", showIf: { q: "cos.side_handle", eq: true } },
+    { id: "cos.lining", label: "Lining", kind: "chips", options: ["PRINTED POLY", "PEVA", "TPU-COATED WATERPROOF", "PLAIN"], required: true, visibility: "inferred" },
+    { id: "cos.interior_pockets", label: "Interior pockets", kind: "multi", options: ["MESH", "ZIP", "ELASTIC LOOPS"], required: true, visibility: "inferred" },
+    { id: "cos.padding", label: "Padding", kind: "toggle", visibility: "inferred" },
+    { id: "cos.padding_mm", label: "Padding thickness", kind: "stepper", unit: "mm", showIf: { q: "cos.padding", eq: true } },
+    { id: "cos.padding_where", label: "Padding coverage", kind: "chips", options: ["ALL OVER", "PANELS"], showIf: { q: "cos.padding", eq: true } },
+    { id: "cos.hanging_hook", label: "Hanging hook", kind: "toggle" },
+    { id: "cos.frame_opening", label: "Frame opening (train case)", kind: "toggle", showIf: { q: "cos.shape", eq: "TRAIN CASE" } },
+  ],
+};
+
+const coolers: Section = {
+  id: "cool",
+  title: "Cooler / insulated",
+  questions: [
+    {
+      id: "cool.type",
+      label: "Type",
+      kind: "chips",
+      options: ["SOFT COOLER TOTE", "BACKPACK COOLER", "LUNCH BAG", "LUNCH TOTE", "BOTTLE BAG", "WINE TOTE", "HARD COOLER"],
+      required: true,
+    },
+    { id: "cool.capacity_cans", label: "Capacity (cans)", kind: "stepper", unit: "qty", required: true },
+    { id: "cool.capacity_l", label: "Capacity (litres)", kind: "stepper", unit: "L", required: true },
+    { id: "cool.insulation", label: "Insulation", kind: "chips", options: ["EPE FOAM", "CLOSED-CELL PE", "PU FOAM"], required: true, visibility: "inferred" },
+    { id: "cool.insulation_mm", label: "Insulation thickness", kind: "stepper", unit: "mm" },
+    { id: "cool.liner", label: "Liner", kind: "chips", options: ["PEVA FOOD-SAFE", "TPU", "ALUMINIUM FOIL LAMINATE"], required: true, visibility: "inferred" },
+    { id: "cool.seams", label: "Seams", kind: "chips", options: ["RF/HEAT-WELDED LEAKPROOF", "STITCHED + TAPED", "STITCHED"], required: true, visibility: "inferred" },
+    { id: "cool.opening", label: "Opening", kind: "chips", options: ["ZIP TOP", "FLIP LID", "ROLL TOP"], required: true },
+    { id: "cool.waterproof_zip", label: "Waterproof zip", kind: "toggle" },
+    { id: "cool.bottle_opener", label: "Bottle opener", kind: "toggle" },
+    { id: "cool.bottle_opener_code", label: "Bottle opener code", kind: "lib", lib: "hardware", showIf: { q: "cool.bottle_opener", eq: true } },
+    { id: "cool.ext_pockets", label: "Exterior pockets", kind: "multi", options: ["FRONT ZIP", "SIDE MESH", "BACK SLIP", "LID POCKET"] },
+    { id: "cool.grab_handles", label: "Handles", kind: "chips", options: ["WRAP", "SEPARATE"] },
+    { id: "cool.handle_drop", label: "Handle drop", kind: "stepper", unit: "dim" },
+    ...strapQuestions("cool", { pad: true }),
+    { id: "cool.cold_claim", label: "Cold-retention claim", kind: "toggle" },
+    { id: "cool.cold_hours", label: "Cold retention", kind: "stepper", unit: "h", required: true, showIf: { q: "cool.cold_claim", eq: true } },
+  ],
+};
+
+const packingCubes: Section = {
+  id: "cube",
+  title: "Packing cubes",
+  questions: [
+    {
+      id: "cube.set",
+      label: "Set composition",
+      kind: "rows",
+      required: true,
+      addLabel: "Add size",
+      columns: [
+        { key: "size", label: "Size", kind: "chips", options: ["XS", "S", "M", "L", "XL"], required: true },
+        { key: "qty", label: "Qty", kind: "stepper", unit: "qty", required: true },
+        { key: "l", label: "L", kind: "stepper", unit: "dim", required: true },
+        { key: "w", label: "W", kind: "stepper", unit: "dim", required: true },
+        { key: "h", label: "H", kind: "stepper", unit: "dim", required: true },
+      ],
+    },
+    { id: "cube.body_fabric", label: "Body fabric", kind: "lib", lib: "material", required: true },
+    { id: "cube.denier", label: "Denier", kind: "stepper", unit: "D", required: true },
+    { id: "cube.mesh", label: "Mesh panel", kind: "toggle" },
+    { id: "cube.mesh_position", label: "Mesh position", kind: "chips", options: ["TOP", "SIDE", "TOP + SIDE"], showIf: { q: "cube.mesh", eq: true } },
+    { id: "cube.compression", label: "Compression zip", kind: "toggle" },
+    { id: "cube.double_slider", label: "Double-slider zip", kind: "toggle" },
+    { id: "cube.grab_loop", label: "Grab loop", kind: "toggle" },
+    { id: "cube.label_window", label: "Label window", kind: "toggle" },
+    { id: "cube.nesting", label: "Nesting order (auto)", kind: "derived", from: "$nesting", unit: "qty" },
+  ],
+};
+
+const neckPillows: Section = {
+  id: "neck",
+  title: "Neck pillow",
+  questions: [
+    { id: "neck.shape", label: "Shape", kind: "chips", options: ["U", "J", "HOODED", "WRAP"], required: true },
+    { id: "neck.fill", label: "Fill", kind: "chips", options: ["MEMORY FOAM", "MICROBEADS", "INFLATABLE", "FIBRE"], required: true },
+    { id: "neck.foam_density", label: "Memory foam density (kg/m³)", kind: "stepper", unit: "qty", showIf: { q: "neck.fill", eq: "MEMORY FOAM" }, required: true },
+    { id: "neck.cover", label: "Cover", kind: "chips", options: ["VELOUR", "JERSEY", "MINKY"], required: true },
+    { id: "neck.removable_cover", label: "Removable cover", kind: "toggle" },
+    { id: "neck.cover_zip", label: "Cover zip", kind: "chips", options: ["#3", "#5", "INVISIBLE"], showIf: { q: "neck.removable_cover", eq: true } },
+    { id: "neck.front_closure", label: "Front closure", kind: "chips", options: ["SNAP STRAP", "TOGGLE", "NONE"], required: true },
+    { id: "neck.luggage_clip", label: "Luggage clip / strap loop", kind: "toggle" },
+    { id: "neck.carry_pouch", label: "Carry pouch", kind: "toggle" },
+    { id: "neck.pouch_size", label: "Compressed pouch size", kind: "dims2", unit: "dim", showIf: { q: "neck.carry_pouch", eq: true } },
+  ],
+};
+
+const hardwareSheet: Section = {
+  id: "hw",
+  title: "Hardware component",
+  questions: [
+    { id: "hw.type", label: "Type", kind: "chips", options: HARDWARE_TYPES, required: true },
+    { id: "hw.component", label: "Component (library)", kind: "lib", lib: "hardware", required: true, help: "Pick the component or + New to assign the next code." },
+    { id: "hw.views", label: "Views to draw", kind: "multi", options: ["FRONT", "SIDE", "REAR", "TOP"], required: true },
+    { id: "hw.scale", label: "Drawing scale", kind: "chips", options: ["100%"], noOther: true, required: true },
+    { id: "hw.overall_w", label: "Overall width", kind: "stepper", unit: "mm", required: true },
+    { id: "hw.overall_h", label: "Overall height", kind: "stepper", unit: "mm", required: true },
+    { id: "hw.overall_d", label: "Overall depth / thickness", kind: "stepper", unit: "mm", required: true },
+    {
+      id: "hw.detail_dims",
+      label: "Detail dimensions",
+      kind: "rows",
+      required: true,
+      addLabel: "Add detail dimension",
+      columns: [
+        { key: "label", label: "Feature", kind: "text", required: true },
+        { key: "mm", label: "mm", kind: "stepper", unit: "mm", required: true },
+      ],
+    },
+    { id: "hw.material", label: "Material", kind: "chips", options: HARDWARE_MATERIALS, required: true },
+    { id: "hw.finish", label: "Finish", kind: "chips", options: HARDWARE_FINISHES, required: true },
+    {
+      id: "hw.logo_treatment",
+      label: "Logo treatment",
+      kind: "chips",
+      options: ["ENGRAVED", "DEBOSSED GROOVE", "EMBOSSED", "ENAMEL INLAY", "LASER", "INKED METALLIC LOGO"],
+      required: true,
+    },
+    { id: "hw.enamel_colour", label: "Enamel colour", kind: "text", showIf: { q: "hw.logo_treatment", eq: "ENAMEL INLAY" }, required: true },
+    { id: "hw.hollow", label: "Hollow sections", kind: "toggle" },
+    { id: "hw.hollow_where", label: "Hollow where", kind: "comment", showIf: { q: "hw.hollow", eq: true } },
+    { id: "hw.edge", label: "Edge", kind: "chips", options: ["BEVELLED", "ROUNDED", "SQUARE"] },
+    { id: "hw.etched_sides", label: "Etched side pattern", kind: "toggle" },
+    { id: "hw.attachment", label: "Attachment", kind: "chips", options: ["SCREW", "RIVET", "PRONG", "SEWN TAB"] },
+  ],
+};
+
+const decorative: Section = {
+  id: "deco",
+  title: "Decorative hardware",
+  questions: [
+    {
+      id: "deco.components",
+      label: "Components",
+      kind: "rows",
+      required: true,
+      addLabel: "Add component",
+      columns: [
+        { key: "type", label: "Component", kind: "chips", options: ["LOBSTER CLASP", "CHAIN", "SPLIT RING", "PENDANT", "STUD"], required: true },
+        { key: "qty", label: "Qty", kind: "stepper", unit: "qty", required: true },
+        { key: "size", label: "Size (mm)", kind: "stepper", unit: "mm" },
+        { key: "link_type", label: "Link type", kind: "chips", options: ["CABLE", "CURB", "BOX", "ROLO", "FIGARO"], showIf: { key: "type", in: ["CHAIN"] } },
+        { key: "length", label: "Chain length (mm)", kind: "stepper", unit: "mm", showIf: { key: "type", in: ["CHAIN"] } },
+      ],
+    },
+    { id: "deco.pendant_shape", label: "Pendant shape", kind: "chips", options: ["HEART", "ROUND", "SQUARE", "LOGO CUT-OUT", "PADLOCK"] },
+    { id: "deco.pendant_dims", label: "Pendant dims (W × H)", kind: "dims2", unit: "mm", showIf: { q: "deco.pendant_shape", truthy: true } },
+    { id: "deco.enamel", label: "Enamel colours (Pantone each)", kind: "text", showIf: { q: "deco.pendant_shape", truthy: true } },
+    { id: "deco.pendant_logo", label: "Pendant logo", kind: "chips", options: ["ENGRAVED", "ENAMEL", "PRINTED", "NONE"], showIf: { q: "deco.pendant_shape", truthy: true } },
+    { id: "deco.finish", label: "Finish", kind: "chips", options: HARDWARE_FINISHES, required: true },
+    { id: "deco.attachment", label: "Attachment to the product", kind: "chips", options: ["CLIPPED TO D-RING", "SEWN TAB", "LOOSE IN BAG"], required: true },
+  ],
+};
+
+const printArtwork: Section = {
+  id: "art",
+  title: "Print artwork",
+  questions: [
+    { id: "art.print", label: "Artwork (library)", kind: "lib", lib: "print", required: true, help: "Motif, repeat, tile, colours and application live on the library record." },
+    { id: "art.motif_scale", label: "Motif scale", kind: "stepper", unit: "mm" },
+    { id: "art.placement", label: "Placement", kind: "chips", options: ["ALL-OVER", "ENGINEERED/PLACED"], required: true },
+    { id: "art.placed_position", label: "Placed position", kind: "text", showIf: { q: "art.placement", eq: "ENGINEERED/PLACED" }, required: true },
+    { id: "art.placed_size", label: "Placed size (W × H)", kind: "dims2", unit: "dim", showIf: { q: "art.placement", eq: "ENGINEERED/PLACED" }, required: true },
+  ],
+};
+
+export const CATEGORY_SECTIONS: Record<Category, Section[]> = {
+  Handbags: [handbags],
+  SLGs: [slgs],
+  "Hardside luggage": [{ id: "lug", title: "Hardside luggage", questions: luggageQuestions("lug", false) }],
+  "Softside luggage": [{ id: "slug", title: "Softside luggage", questions: luggageQuestions("slug", true) }],
+  Duffels: [duffels],
+  "Rolling duffels": [rollingDuffels],
+  "Men's bags": [mensBags, { ...cosmetic, showIf: { q: "men.type", eq: "DOPP KIT" } }],
+  Belts: [belts],
+  "Cosmetic bags": [cosmetic],
+  "Toiletry kits": [cosmetic],
+  "Coolers / insulated": [coolers],
+  "Packing cubes": [packingCubes],
+  "Neck pillows": [neckPillows],
+  Hardware: [hardwareSheet],
+  "Decorative hardware": [decorative],
+  "Print artwork": [printArtwork],
+};

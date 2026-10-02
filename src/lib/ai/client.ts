@@ -1,0 +1,103 @@
+import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { TECHNICAL_DESIGNER_SYSTEM_PROMPT } from "./system-prompt";
+
+/** Used only when ANTHROPIC_MODEL isn't set (Vercel sets it). */
+export const DEFAULT_MODEL = "claude-fable-5-1";
+
+export function aiModel() {
+  return process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
+}
+
+/** Models that accept the server-side refusal fallback (`fallbacks: "default"`). */
+const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
+
+export class AIUnavailableError extends Error {}
+
+export type AIImage = { data: Buffer; contentType: string };
+
+export type AICallResult<T> = { output: T; model: string; fixture: boolean };
+
+/**
+ * One structured call to the Technical Designer agent.
+ *
+ * Test seam: when AI_FIXTURE_DIR is set (tests / local dev without a key), the
+ * response is read from `<AI_FIXTURE_DIR>/<task>.json` instead of calling the API.
+ * Never set it in Vercel.
+ */
+export async function callTechnicalDesigner<T>(opts: {
+  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "read_source" | "read_board" | "build_pack" | "validate" | "diff_revision" | "translate";
+  instructions: string;
+  images: AIImage[];
+  /** PDFs sent as document blocks (spec sheets, catalogues, scanned swatch cards). */
+  pdfs?: Buffer[];
+  schema: Record<string, unknown>;
+  /** Fixture file(s) to try, most specific first; the task name is the last fallback. */
+  fixtureName?: string | string[];
+  /** Reasoning effort; translation and other light tasks use "low". */
+  effort?: "low" | "medium" | "high";
+}): Promise<AICallResult<T>> {
+  const fixtureDir = process.env.AI_FIXTURE_DIR;
+  if (fixtureDir) {
+    const names = [...(Array.isArray(opts.fixtureName) ? opts.fixtureName : opts.fixtureName ? [opts.fixtureName] : []), opts.task];
+    for (const n of names) {
+      const text = await readFile(path.join(fixtureDir, `${n}.json`), "utf8").catch(() => null);
+      if (text) return { output: JSON.parse(text) as T, model: "fixture", fixture: true };
+    }
+    throw new Error(`No AI fixture for ${names.join(" / ")}`);
+  }
+  if (!process.env.ANTHROPIC_API_KEY) throw new AIUnavailableError("ANTHROPIC_API_KEY is not set");
+
+  // An org-level key must name its workspace on every request (ANTHROPIC_WORKSPACE_ID).
+  const workspace = process.env.ANTHROPIC_WORKSPACE_ID;
+  const client = new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {});
+  const model = aiModel();
+  const content: Anthropic.Beta.BetaContentBlockParam[] = [
+    ...(opts.pdfs ?? []).map(
+      (pdf): Anthropic.Beta.BetaRequestDocumentBlock => ({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") },
+      }),
+    ),
+    ...opts.images.map(
+      (img): Anthropic.Beta.BetaImageBlockParam => ({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: normaliseMediaType(img.contentType),
+          data: img.data.toString("base64"),
+        },
+      }),
+    ),
+    { type: "text", text: `TASK: ${opts.task}\n\n${opts.instructions}` },
+  ];
+
+  const useFallback = FALLBACK_MODELS.has(model);
+  const stream = client.beta.messages.stream({
+    model,
+    max_tokens: 32000,
+    system: TECHNICAL_DESIGNER_SYSTEM_PROMPT,
+    thinking: { type: "adaptive" },
+    output_config: { effort: opts.effort ?? "high", format: { type: "json_schema", schema: opts.schema } },
+    messages: [{ role: "user", content }],
+    ...(useFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+  });
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === "refusal") throw new Error("The model declined this request.");
+  if (msg.stop_reason === "max_tokens") throw new Error("The model response was cut off (max_tokens).");
+  const text = msg.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+  return { output: JSON.parse(text) as T, model: msg.model, fixture: false };
+}
+
+function normaliseMediaType(ct: string): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
+  const t = ct.toLowerCase();
+  if (t.includes("png")) return "image/png";
+  if (t.includes("gif")) return "image/gif";
+  if (t.includes("webp")) return "image/webp";
+  return "image/jpeg";
+}

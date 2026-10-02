@@ -1,0 +1,9 @@
+{
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 \u2014 an Off-White-style micro-mesh shoulder bag on a design board.",
+ "board_text": [
+  "(REFER TO SPEC)",
+  "STYLE PINK996 BLACK"
+ ],
+ "refers_to_spec": true,
+ "reference": "(REFER TO SPEC)"
+}
