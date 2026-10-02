@@ -21,6 +21,7 @@ export default async function PacksPage(props: PageProps<"/">) {
       logo: brands.logoUrl,
       by: users.name,
       status: packs.status,
+      archivedAt: packs.archivedAt,
       due: sql<string | null>`(select ${packAnswers.value} #>> '{}' from ${packAnswers} where ${packAnswers.packId} = ${packs.id} and ${packAnswers.questionId} = 'header.due_date' limit 1)`,
       render: sql<string | null>`(select ${packFiles.url} from ${packFiles} where ${packFiles.packId} = ${packs.id} and ${packFiles.kind} = 'render' limit 1)`,
       pending: sql<number>`(select count(*)::int from ${packAnswers} where ${packAnswers.packId} = ${packs.id} and ${packAnswers.status} <> 'confirmed')`,
@@ -30,19 +31,24 @@ export default async function PacksPage(props: PageProps<"/">) {
     .leftJoin(users, eq(users.id, packs.updatedBy))
     .orderBy(desc(packs.updatedAt));
   const statusFilter = typeof sp.status === "string" ? sp.status : "";
+  // Archived packs only show under the admin's "Archived" filter.
+  const showArchived = sp.archived === "1" && can(user, "admin");
+  const archivedCount = rows.filter((r) => r.archivedAt).length;
   const sort = sp.sort === "due" ? "due" : "recent";
   const shown = rows
+    .filter((r) => (showArchived ? !!r.archivedAt : !r.archivedAt))
     .filter((r) => !statusFilter || r.status === statusFilter)
     .sort((x, y) => {
       if (sort !== "due") return 0;
       const key = (d: string | null) => (d === "ASAP" ? "0" : d || "9");
       return key(x.due).localeCompare(key(y.due));
     });
-  const counts = rows.reduce<Record<string, number>>((m, r) => ((m[r.status] = (m[r.status] ?? 0) + 1), m), {});
+  const counts = rows.filter((r) => !r.archivedAt).reduce<Record<string, number>>((m, r) => ((m[r.status] = (m[r.status] ?? 0) + 1), m), {});
 
   return (
     <>
       {sp.denied && <p className="mb-6 text-signal text-[12px]">You don&apos;t have access to that page.</p>}
+      {typeof sp.deleted === "string" && <p className="mb-6 text-[12px] text-ok" role="status">{sp.deleted} was deleted.</p>}
       <PageHeader
         eyebrow="The Atelier"
         title="Tech Packs"
@@ -64,9 +70,16 @@ export default async function PacksPage(props: PageProps<"/">) {
               </Link>
             ))}
           </div>
-          <Link href={`/?${new URLSearchParams({ ...(statusFilter ? { status: statusFilter } : {}), ...(sort === "due" ? {} : { sort: "due" }) })}`} className="pb-3 eyebrow hover:text-ink">
-            {sort === "due" ? "Sorted by due date" : "Sort by due date"}
-          </Link>
+          <span className="flex gap-6">
+            {can(user, "admin") && archivedCount > 0 && (
+              <Link href={showArchived ? "/" : "/?archived=1"} className={`pb-3 eyebrow hover:text-ink ${showArchived ? "text-ink" : ""}`} data-testid="archived-filter">
+                {showArchived ? "← Active packs" : `Archived · ${archivedCount}`}
+              </Link>
+            )}
+            <Link href={`/?${new URLSearchParams({ ...(statusFilter ? { status: statusFilter } : {}), ...(sort === "due" ? {} : { sort: "due" }) })}`} className="pb-3 eyebrow hover:text-ink">
+              {sort === "due" ? "Sorted by due date" : "Sort by due date"}
+            </Link>
+          </span>
         </div>
       )}
       {rows.length === 0 ? (

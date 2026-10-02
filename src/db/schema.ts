@@ -185,6 +185,8 @@ export const packs = pgTable(
       ran_at: string;
       model: string;
     } | null>(),
+    /** Archived by an admin: hidden from the dashboard, read-only, style # stays reserved. */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     sentBy: uuid("sent_by").references(() => users.id),
     createdBy: uuid("created_by").references(() => users.id),
     updatedBy: uuid("updated_by").references(() => users.id),

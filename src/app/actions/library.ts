@@ -1,5 +1,6 @@
 "use server";
 
+import { friendlyAIError } from "@/lib/ai/errors";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -8,7 +9,7 @@ import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { checkComponentCode } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
-import { callTechnicalDesigner, AIUnavailableError } from "@/lib/ai/client";
+import { callTechnicalDesigner } from "@/lib/ai/client";
 import {
   READ_SWATCH_SCHEMA,
   SWATCH_FIELDS,
@@ -100,8 +101,7 @@ export async function readSwatchCard(materialId: string): Promise<ActionResult> 
     });
     out = res.output;
   } catch (e) {
-    if (e instanceof AIUnavailableError) return { ok: false, error: "AI is not configured (ANTHROPIC_API_KEY). Enter the card fields by hand." };
-    return { ok: false, error: `Couldn't read the card: ${(e as Error).message}` };
+    return { ok: false, error: friendlyAIError(e, "claude", "Reading the swatch card") };
   }
   const set: Record<string, unknown> = {};
   const fieldStatus: FieldStatusMap = { ...m.fieldStatus };

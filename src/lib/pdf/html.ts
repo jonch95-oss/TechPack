@@ -199,7 +199,7 @@ function materialsPage(doc: PackDoc, n: number) {
 
   const comments = commentsFor(doc, "MATERIALS / HARDWARE", n);
   const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.3in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
-  const top = h.physicalSample ? 3.05 : 2.45;
+  const top = h.physicalSample ? 3.05 : 2.75;
   const callouts = doc.materials
     .map((m) => `<div style="display:flex;gap:10px;align-items:center;font-size:15pt;line-height:1.15"><span class="callout">${m.callout}</span><span>${up(m.name)}${m.locations.length ? `<br/><span style="font-size:11pt" class="muted">${up(m.locations.join(", "))}</span>` : ""}</span></div>`)
     .join("");
@@ -222,7 +222,7 @@ function materialsPage(doc: PackDoc, n: number) {
       const px = r.x + doc.logoPoint.x * r.w,
         py = r.y + doc.logoPoint.y * r.h;
       const lx = Math.min(box.x + box.w - 0.2, r.x + r.w + 0.1),
-        ly = top + 0.55;
+        ly = top + 0.95; // below the FRONT VIEW title
       drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:15pt;line-height:1.1;z-index:6">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>`;
       lines += lead(lx - 0.15, ly, px, py, { dot: true });
     }
@@ -382,12 +382,6 @@ function measurementsPage(doc: PackDoc, n: number) {
   </section>`;
 }
 
-/** Measurement sheet drawing: the front flat with its dimension lines, else the render. */
-function measureVisual(doc: PackDoc) {
-  if (doc.flats.front) return flatBox(doc.flats.front, "flat-measure");
-  return doc.render ? `<img class="img" src="${doc.render.src}" style="width:100%;height:100%"/>` : "";
-}
-
 /* ------------------------------ 4. ENLARGED CAD ------------------------------ */
 function cadPage(doc: PackDoc, n: number) {
   const k = doc.colorwayRenders.length + doc.flats.indicative.length;
@@ -461,11 +455,23 @@ function referencePage(doc: PackDoc, n: number) {
   return `<section class="page">
     ${head(doc, n, "REFERENCE PHOTOS FOR CONSTRUCTION")}
     <div class="abs" style="left:5in;top:0.4in;width:9.5in">${commentsFor(doc, "REFERENCE PHOTOS FOR CONSTRUCTION", n)}</div>
-    ${photoGrid(ordered, { x: 0.4, y: 1.2, w: 16.2, h: 9.6 })}
+    ${photoGrid(ordered, { x: 0.4, y: 1.5, w: 16.2, h: 9.3 })}
   </section>`;
 }
 
 /* ------------------------------ 6. INTERIOR & LINING ------------------------------ */
+/**
+ * Width of an inside wall. Usually the front/back walls run the width and the sides the depth; on a
+ * Dopp / wash bag the zip runs along the length, so its SIDE 1 / SIDE 2 are the long walls.
+ */
+function longSides(doc: PackDoc) {
+  return /DOPP|TOILETRY|WASH ?BAG/.test(doc.header.category.toUpperCase());
+}
+function wallWidth(doc: PackDoc, wall: string) {
+  const side = /SIDE/.test(wall);
+  return (side !== longSides(doc) ? doc.dims.d : doc.dims.w) ?? null;
+}
+
 const OPPOSITE: Record<string, string> = { "BACK WALL": "FRONT WALL", "FRONT WALL": "BACK WALL", "SIDE 1": "SIDE 2", "SIDE 2": "SIDE 1" };
 
 /** The lining tile (uploaded artwork or generated) and its size in the pack's unit. */
@@ -491,8 +497,7 @@ function liningTile(doc: PackDoc) {
  */
 function wallSvg(doc: PackDoc, mode: "hatched" | "lining", wall: string, s: number) {
   const i = doc.interior;
-  const side = /SIDE/.test(wall);
-  const W = (side ? doc.dims.d : doc.dims.w) ?? null,
+  const W = wallWidth(doc, wall),
     H = doc.dims.h ?? null;
   if (W == null || H == null) return "";
   const u = doc.unit === "in" ? '"' : " CM";
@@ -569,10 +574,18 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
   // wall plus its plain opposite wall, both lined (as TB25: SIDE 1 with the zip pocket, SIDE 2).
   const walls = withArtwork ? [...new Set([...i.pockets.map((p) => p.wall ?? "").filter(Boolean), OPPOSITE[main] ?? "FRONT WALL"])].slice(0, 2) : [main, main];
   const modes: ("hatched" | "lining")[] = withArtwork ? walls.map(() => "lining") : ["hatched", "lining"];
-  const widthOf = (w: string) => (/SIDE/.test(w) ? D : W);
+  const widthOf = (w: string) => wallWidth(doc, w) ?? (/SIDE/.test(w) ? D : W);
   let panels = "";
   let lines = "";
-  if (withArtwork) {
+  const wide = withArtwork && Math.max(...walls.map(widthOf)) > H;
+  if (wide) {
+    // Landscape walls (a Dopp kit's long sides): staggered like the Icon sheet — first wall top left,
+    // second lower and to the right, the binding photo under the first.
+    const s = Math.min(6.0 / Math.max(...walls.map(widthOf)), 3.2 / H);
+    panels = walls
+      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.3 : 3.4}in;top:${k === 0 ? 1.4 : 5.75}in;text-align:center">${wallTitle(w, "hatched", false)}<div style="margin-top:6px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
+      .join("");
+  } else if (withArtwork) {
     // Two walls side by side, as large as the column left of the repeat allows.
     const s = Math.min(2.75 / Math.max(...walls.map(widthOf)), 4.3 / H);
     panels = walls
@@ -585,12 +598,12 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
       .join("");
   }
   // Photos for this page (e.g. PLEASE MAKE SURE TO ADD INTERIOR BINDING) with caption, dot and leader.
-  const pbox: R = withArtwork ? { x: 0.4, y: 7.0, w: 5.0, h: 3.7 } : { x: 12.6, y: 7.6, w: 4.0, h: 3.0 };
+  const pbox: R = wide ? { x: 0.4, y: 6.2, w: 2.95, h: 4.5 } : withArtwork ? { x: 0.4, y: 7.0, w: 5.0, h: 3.7 } : { x: 12.6, y: 7.6, w: 4.0, h: 3.0 };
   const photo = photos[0];
   let photoHtml = "";
   if (photo?.img) {
     const pr = fit(photo.img, { ...pbox, y: pbox.y + 0.55, h: pbox.h - 0.55 });
-    photoHtml = `<div class="abs cap" style="left:${pbox.x}in;top:${pbox.y}in;width:${pbox.w + 1.6}in">${photo.letter ? `<span class="bubble" style="margin-right:8px">${esc(photo.letter)}</span>` : ""}${up(photo.note)}</div>${imgIn(photo.img, { ...pbox, y: pbox.y + 0.55, h: pbox.h - 0.55 })}`;
+    photoHtml = `<div class="abs cap" style="left:${pbox.x}in;top:${pbox.y}in;width:${pbox.w + (wide ? 0 : 1.6)}in">${photo.letter ? `<span class="bubble" style="margin-right:8px">${esc(photo.letter)}</span>` : ""}${up(photo.note)}</div>${imgIn(photo.img, { ...pbox, y: pbox.y + 0.55, h: pbox.h - 0.55 })}`;
     const dot = photo.dot ?? { x: 0.5, y: 0.35 };
     lines += lead(pbox.x + 1.2, pbox.y + 0.42, pr.x + dot.x * pr.w, pr.y + dot.y * pr.h, { dot: true });
   }
@@ -599,10 +612,10 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
     ${lab ? `<div class="abs" style="left:${withArtwork ? 3.9 : 0.4}in;top:${withArtwork ? 0.45 : 1.3}in;font-size:24pt;line-height:1.2;width:9in">${lab}</div>` : ""}
     <div class="abs" style="left:${withArtwork ? 5.9 : 9.4}in;top:${withArtwork ? 0.45 : 1.3}in;width:${withArtwork ? 5.4 : 7}in">${commentsFor(doc, "INTERIOR & LINING", n)}</div>
     ${panels}
-    ${withArtwork ? `<div class="abs" style="left:11.0in;top:1.3in;width:5.6in">${artworkBlock(doc, 5.6)}</div>` : ""}
+    ${withArtwork ? `<div class="abs" style="left:${wide ? 12.1 : 11.0}in;top:1.3in;width:${wide ? 4.5 : 5.6}in">${artworkBlock(doc, wide ? 4.5 : 5.6)}</div>` : ""}
     ${!withArtwork ? `<div class="abs" style="left:0.4in;top:9.35in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>` : ""}
     ${photoHtml}
-    <div class="abs" style="left:${withArtwork ? 5.9 : 7.4}in;bottom:0.35in;width:${withArtwork ? 4.8 : 5}in;font-size:12pt;line-height:1.45">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets
+    <div class="abs" style="left:${wide ? 12.1 : withArtwork ? 5.9 : 7.4}in;bottom:0.35in;width:${wide ? 4.5 : withArtwork ? 4.8 : 5}in;font-size:12pt;line-height:1.45">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets
       .map((p) => `${up(p.type)} ON ${up(p.wall)}${p.w ? ` — ${p.w}${doc.U} WIDE` : ""}${p.top_offset != null ? `, ${p.top_offset}${doc.U} FROM TOP` : ""}${p.zip_size ? `, ${up(p.zip_size)} ZIP` : ""}`)
       .join("<br/>")}${i.seamBinding && !photo ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}</div>
     ${overlay(lines)}
@@ -616,10 +629,10 @@ function allWalls(doc: PackDoc) {
     D = doc.dims.d;
   if (W == null || H == null || D == null) return "";
   const walls: { name: string; w: number; h: number }[] = [
-    { name: "FRONT WALL", w: W, h: H },
-    { name: "BACK WALL", w: W, h: H },
-    { name: "SIDE 1", w: D, h: H },
-    { name: "SIDE 2", w: D, h: H },
+    { name: "FRONT WALL", w: longSides(doc) ? D : W, h: H },
+    { name: "BACK WALL", w: longSides(doc) ? D : W, h: H },
+    { name: "SIDE 1", w: longSides(doc) ? W : D, h: H },
+    { name: "SIDE 2", w: longSides(doc) ? W : D, h: H },
     { name: "BASE", w: W, h: D },
   ];
   const maxH = 0.75 * 72,
@@ -646,11 +659,11 @@ function allWalls(doc: PackDoc) {
 }
 
 /* ------------------------------ 7. LINING / PRINT ARTWORK ------------------------------ */
-/** The repeat across a panel of `w` inches with a thick red tile box (about 3½ tiles across). */
+/** The repeat across a panel of `w` inches with a thick red tile box (about 2½ tiles across, as the Icon sheet). */
 function repeatPanel(doc: PackDoc, w: number, h: number, labelSize = 26) {
   const l = doc.lining!;
   const img = l.img ?? l.generated;
-  const t = Math.min(w / 3.4, h / 3.2);
+  const t = Math.min(w / 2.5, h / 2.3);
   const th = img ? (t * img.h) / img.w : t;
   const bx = (w - t) / 2,
     by = (h - th) / 2;
@@ -703,7 +716,7 @@ function detailPage(doc: PackDoc, n: number) {
   const panelH = doc.detail.length > 1 ? 3.9 : 5.4;
   const panels = doc.detail
     .map((h) => {
-      const [wmm, hmm] = mm(h.dimsMm);
+      const [, hmm] = mm(h.dimsMm);
       // 100% views: drawn at true size (mm on paper).
       const view = (k: "front" | "side" | "rear", label: string, scale = 1) => {
         const v = h.views[k];

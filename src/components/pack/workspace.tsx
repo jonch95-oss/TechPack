@@ -37,6 +37,7 @@ import { ExportPanel } from "./export-panel";
 import { SignOff } from "./signoff";
 import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
+import { PackAdmin } from "./pack-admin";
 import { FactoryQA } from "./factory-qa";
 import { PhotoMarks } from "./photo-marks";
 
@@ -53,6 +54,7 @@ export type WorkspaceProps = {
     factoryStyleNo: string;
     copiedFrom: { id: string; styleNo: string } | null;
     chineseOn: boolean;
+    archived: boolean;
   };
   meId: string;
   review: { requestedBy: { id: string; name: string } | null; reviewedBy: { name: string } | null; reviewedAt: string | null };
@@ -67,6 +69,7 @@ export type WorkspaceProps = {
   files: PackFile[];
   library: LibraryOptions;
   canEdit: boolean;
+  isAdmin: boolean;
 };
 
 type SaveState = { state: "idle" | "saving" | "saved" | "error"; at?: string; error?: string };
@@ -252,9 +255,15 @@ export function PackWorkspace(props: WorkspaceProps) {
                 Samples{props.sampleSummary.rounds ? ` · ${props.sampleSummary.open} open` : ""}
               </a>
               {canEdit && <DuplicatePack packId={pack.id} styleNo={pack.styleNo} styleName={pack.styleName} />}
+              {props.isAdmin && <PackAdmin packId={pack.id} styleNo={pack.styleNo} archived={pack.archived} />}
               <SaveIndicator s={save} />
             </span>
           </div>
+          {pack.archived && (
+            <p className="mt-4 text-[12px] text-signal" role="status" data-testid="archived-note">
+              Archived — read-only and hidden from the dashboard.{props.isAdmin ? " Restore it to edit." : ""}
+            </p>
+          )}
           <h1 className="display text-[56px] leading-[1] mt-4">
             {pack.styleNo}
             <span className="block italic text-ink-soft text-[40px] mt-1">{pack.styleName}</span>

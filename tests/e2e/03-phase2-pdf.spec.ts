@@ -162,7 +162,13 @@ test("Phase 2: PDFs page for page, validation gate, spell-check", async ({ page 
   /* ---------- spell-check: the four misspellings from the source packs ---------- */
   await page.getByTestId("comments.list-add").click();
   const row = page.getByTestId("comments.list-row-4");
+  // Adding the row saves and re-renders it; type only once that save has landed, or the textarea
+  // can be swapped out between fill and Enter ("element was detached").
+  await expect(row).toBeVisible();
+  await settled();
+  await expect(row.locator("textarea")).toBeEditable();
   await row.locator("textarea").fill("FRONT FLAP SNAP CLOURE. YOU WILL RECIEVE IRRIDESCENT BLACK. INGRAIVED LOGO.");
+  await expect(row.locator("textarea")).toHaveValue(/INGRAIVED LOGO\.$/);
   await row.locator("textarea").press("Enter");
   await settled();
   const spelling = page.getByTestId("spelling");

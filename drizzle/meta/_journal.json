@@ -36,6 +36,20 @@
       "when": 1790908376837,
       "tag": "0004_reference_marks_detail_dims",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790912337118,
+      "tag": "0005_pack_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790912348954,
+      "tag": "0006_remove_smoke_test_pack",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { friendlyAIError } from "@/lib/ai/errors";
 import { PAGE_SECTIONS } from "@/lib/page-names";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -10,7 +11,7 @@ import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { brandHardware, hardwareByCode, loadPack, rebuildLibraryUsage } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
-import { AIUnavailableError, callTechnicalDesigner } from "@/lib/ai/client";
+import { callTechnicalDesigner } from "@/lib/ai/client";
 import {
   ANALYSE_RENDER_SCHEMA,
   buildAnalyseInstructions,
@@ -22,6 +23,12 @@ import type { ActionResult } from "./admin";
 import { suffixesFor } from "@/lib/codes";
 
 export type CreatePackState = { error?: string } | undefined;
+
+const ARCHIVED = "This pack is archived and read-only. An admin can restore it.";
+async function isArchived(packId: string) {
+  const [row] = await db.select({ archivedAt: packs.archivedAt }).from(packs).where(eq(packs.id, packId));
+  return !!row?.archivedAt;
+}
 
 export async function createPack(_prev: CreatePackState, form: FormData): Promise<CreatePackState> {
   const user = await requireRole("designer");
@@ -63,6 +70,7 @@ export async function updatePackSetup(
   patch: { styleName?: string; colorways?: string[]; brandId?: string; chineseOn?: boolean },
 ): Promise<ActionResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const [before] = await db.select().from(packs).where(eq(packs.id, packId));
   if (!before) return { ok: false, error: "Pack not found." };
   const set: Partial<typeof packs.$inferInsert> = { updatedBy: user.id, updatedAt: new Date() };
@@ -104,6 +112,7 @@ function knownQuestion(category: Category, qid: string) {
 /** Saves a designer's answer. Anything a designer sets is CONFIRMED. */
 export async function saveAnswer(packId: string, questionId: string, value: unknown): Promise<ActionResult & { updatedAt?: string }> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const [p] = await db.select().from(packs).where(eq(packs.id, packId));
   if (!p) return { ok: false, error: "Pack not found." };
   if (!knownQuestion(p.category as Category, questionId)) return { ok: false, error: `Unknown question ${questionId}.` };
@@ -146,6 +155,7 @@ export async function saveAnswer(packId: string, questionId: string, value: unkn
 /** One-click confirm of an AI-suggested / EST / INFERRED answer. */
 export async function confirmAnswer(packId: string, questionId: string): Promise<ActionResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const [prev] = await db
     .select()
     .from(packAnswers)
@@ -166,6 +176,7 @@ export type PrefillResult =
 /** analyse_render: pre-answers every question it can see; each is marked AI-suggested — confirm. */
 export async function runPrefill(packId: string): Promise<PrefillResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const loaded = await loadPack(packId);
   if (!loaded) return { ok: false, error: "Pack not found." };
   const render = loaded.files.find((f) => f.kind === "render");
@@ -193,8 +204,7 @@ export async function runPrefill(packId: string): Promise<PrefillResult> {
     model = res.model;
     fixture = res.fixture;
   } catch (e) {
-    if (e instanceof AIUnavailableError) return { ok: false, error: "AI pre-fill is not configured (ANTHROPIC_API_KEY). Answer the questions directly." };
-    return { ok: false, error: `AI pre-fill failed: ${(e as Error).message}` };
+    return { ok: false, error: friendlyAIError(e, "claude", "AI pre-fill") };
   }
 
   const { answers, materials, dropped } = normaliseAiAnswers(loaded.pack.category, output, await hardwareByCode());
@@ -248,6 +258,7 @@ export async function addPackFile(
   file: { kind: "render" | "colorway_render" | "reference" | "construction" | "reference_sample" | "swatch_photo"; url: string; name: string; tag?: string; note?: string },
 ): Promise<ActionResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   if (file.kind === "render") {
     // A single render is the expected input; replacing it keeps the pack to one.
     await db.delete(packFiles).where(and(eq(packFiles.packId, packId), eq(packFiles.kind, "render")));
@@ -269,6 +280,7 @@ export async function updatePackFile(
   patch: { tag?: string; note?: string; page?: string | null; marks?: FileMarks },
 ): Promise<ActionResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const set: Partial<typeof packFiles.$inferInsert> = {};
   if (patch.tag !== undefined) set.tag = patch.tag.toUpperCase();
   if (patch.note !== undefined) set.note = patch.note.toUpperCase();
@@ -290,6 +302,7 @@ export async function updatePackFile(
 
 export async function removePackFile(packId: string, fileId: string): Promise<ActionResult> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const [before] = await db.select().from(packFiles).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));
   await db.delete(packFiles).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "delete", field: "file", before });
@@ -317,6 +330,7 @@ async function nextLetter(packId: string) {
 /** One-click spelling correction: replaces the whole word everywhere it appears in the pack's answers. */
 export async function applySpelling(packId: string, word: string, replacement: string): Promise<ActionResult & { changed?: number }> {
   const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const loaded = await loadPack(packId);
   if (!loaded) return { ok: false, error: "Pack not found." };
   const re = new RegExp(`(^|[^A-Z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Z0-9])`, "gi");

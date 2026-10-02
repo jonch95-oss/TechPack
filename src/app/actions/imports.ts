@@ -1,5 +1,6 @@
 "use server";
 
+import { friendlyAIError } from "@/lib/ai/errors";
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -7,7 +8,7 @@ import { brands, hardware, materials, packs, type FieldStatusMap } from "@/db/sc
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { readStoredFile, storeFile, contentTypeFor } from "@/lib/storage";
-import { AIUnavailableError, callTechnicalDesigner } from "@/lib/ai/client";
+import { callTechnicalDesigner } from "@/lib/ai/client";
 import { READ_SWATCH_SCHEMA, SWATCH_FIELDS, buildSwatchInstructions, normaliseChipBox, type ReadSwatchOutput } from "@/lib/ai/read-swatch";
 import {
   brandForRow,
@@ -94,7 +95,7 @@ export async function parseUpload(form: FormData): Promise<ParseResult> {
       if (!res.rows.length) out.errors.push(`${p.name}: nothing to import was found in the PDF.`);
     } catch (e) {
       out.errors.push(
-        e instanceof AIUnavailableError ? `${p.name}: PDFs are read by the AI, which isn't configured yet (ANTHROPIC_API_KEY).` : `${p.name}: couldn't be read — ${(e as Error).message}`,
+        `${p.name}: ${friendlyAIError(e, "claude", "Reading the PDF")}`,
       );
     }
   }
@@ -161,7 +162,7 @@ export async function readCardImage(url: string, hint: { supplier?: string; colo
     for (const f of SWATCH_FIELDS) fields[f] = normaliseField("material", f, res.output[f]);
     return { ok: true as const, fields, chipBox: normaliseChipBox(res.output.chip_box) };
   } catch (e) {
-    return { ok: false as const, error: e instanceof AIUnavailableError ? "AI isn't configured yet (ANTHROPIC_API_KEY)." : (e as Error).message };
+    return { ok: false as const, error: friendlyAIError(e, "claude", "Reading the swatch card") };
   }
 }
 

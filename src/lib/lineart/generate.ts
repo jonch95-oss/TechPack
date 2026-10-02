@@ -1,4 +1,5 @@
 import "server-only";
+import { friendlyAIError } from "@/lib/ai/errors";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -44,9 +45,10 @@ export async function generateFlatRaster(render: Buffer, view: View, category: s
       const png = (process.env.IMAGE_PROVIDER ?? "openai").toLowerCase().startsWith("google") ? await google(render, view, category, key) : await openai(render, view, category, key);
       return { png, source: "AI", note: "" };
     } catch (e) {
-      if (view !== "FRONT") throw e;
+      const msg = friendlyAIError(e, "image", "Drawing the flat");
+      if (view !== "FRONT") throw new Error(msg);
       // Front view: fall back to tracing the render so the designer isn't blocked.
-      return { png: await edgeLineArt(render), mask: await renderSilhouette(render), source: "TRACE", note: `Image API failed (${(e as Error).message.slice(0, 160)}); traced from the render instead.` };
+      return { png: await edgeLineArt(render), mask: await renderSilhouette(render), source: "TRACE", note: `${msg} Traced from the render instead — tidy it in the editor.` };
     }
   }
   if (view !== "FRONT") throw new Error("Back, side and top views need the image API (IMAGE_API_KEY).");

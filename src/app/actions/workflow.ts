@@ -140,3 +140,31 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
   await audit({ userId: user.id, entity: "pack", entityId: np.id, action: "create", after: { duplicatedFrom: src.pack.styleNo, styleNo, keepFiles, keepComments } });
   redirect(`/packs/${np.id}`);
 }
+
+/* ------------------------------ archive / delete (admin only) ------------------------------ */
+
+/** Archive hides a pack from the dashboard and makes it read-only; its style # stays reserved. */
+export async function setPackArchived(packId: string, archived: boolean): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  const [row] = await db.update(packs).set({ archivedAt: archived ? new Date() : null, updatedBy: admin.id, updatedAt: new Date() }).where(eq(packs.id, packId)).returning({ styleNo: packs.styleNo });
+  if (!row) return { ok: false, error: "Pack not found." };
+  await audit({ userId: admin.id, entity: "pack", entityId: packId, action: "update", field: "archived", after: archived });
+  revalidatePath("/");
+  revalidatePath(`/packs/${packId}`);
+  return { ok: true };
+}
+
+/**
+ * Deletes a pack and everything under it (answers, files, flats, revisions, samples, Q&A). The admin
+ * must type the style # to confirm. Uploaded files stay in storage — duplicated packs can share them.
+ */
+export async function deletePack(packId: string, confirmStyleNo: string): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  const [p] = await db.select({ styleNo: packs.styleNo, styleName: packs.styleName }).from(packs).where(eq(packs.id, packId));
+  if (!p) return { ok: false, error: "Pack not found." };
+  if (confirmStyleNo.trim().toUpperCase() !== p.styleNo) return { ok: false, error: `Type ${p.styleNo} to confirm.` };
+  await db.delete(packs).where(eq(packs.id, packId));
+  await audit({ userId: admin.id, entity: "pack", entityId: packId, action: "delete", before: p });
+  revalidatePath("/");
+  redirect("/?deleted=" + encodeURIComponent(p.styleNo));
+}

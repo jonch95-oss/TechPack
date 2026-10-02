@@ -41,6 +41,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
           factoryStyleNo: p.pack.factoryStyleNo,
           copiedFrom: src ?? null,
           chineseOn: p.pack.chineseOn,
+          archived: !!p.pack.archivedAt,
         }}
         meId={user.id}
         review={{
@@ -66,7 +67,8 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
         meta={Object.fromEntries(Object.entries(p.meta).map(([k, m]) => [k, { aiNote: m.aiNote, aiValue: m.aiValue }]))}
         files={p.files}
         library={library}
-        canEdit={can(user, "designer")}
+        canEdit={can(user, "designer") && !p.pack.archivedAt}
+        isAdmin={can(user, "admin")}
       />
     </>
   );
