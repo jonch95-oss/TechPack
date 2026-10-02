@@ -166,6 +166,13 @@ test("technical designer: POM, BOM, approvals, duplicate, sign-off, factory Q&A,
   writeFileSync(file, await signed.body());
   const text = execFileSync("pdftotext", ["-raw", file, "-"]).toString().toUpperCase();
   for (const s of ["CONSTRUCTION DETAILS", "BILL OF MATERIALS", "POINT OF MEASURE", "HARDWARE PLACEMENT", "PINK006", "TURNED EDGE", "NO PRICES"]) expect(text).toContain(s);
+  // V2 §3 step 5: in the studio the PDF builds as a background job and is offered for download when ready.
+  await page.getByTestId("export-pdf").click();
+  const ready = page.getByTestId("pdf-ready");
+  await expect(ready).toContainText("PINK014", { timeout: 120_000 });
+  const fromJob = await page.request.get((await ready.getAttribute("href"))!);
+  expect(fromJob.status()).toBe(200);
+  expect(fromJob.headers()["content-type"]).toContain("application/pdf");
   if (SHOTS) execFileSync("pdftoppm", ["-r", "50", "-png", file, path.join(SHOTS, "PINK014")]);
 
   /* ---------- factory, sent, factory Q&A ---------- */

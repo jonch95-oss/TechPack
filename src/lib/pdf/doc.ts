@@ -10,7 +10,7 @@ import { changeLine, revisionState } from "@/lib/revisions";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
 import { intoCrop, readCroppedFile } from "@/lib/crop";
-import { spellcheck } from "@/lib/spellcheck";
+import { spellcheckParts } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, type Plan } from "./plan";
@@ -21,6 +21,17 @@ export type PackDoc = Awaited<ReturnType<typeof buildPackDoc>>;
 
 /** Collects every user-written string in the answers (for spell-check). */
 export function answersText(a: AnswerMap): string {
+  return answerTexts(a).join("\n");
+}
+
+/** The same strings, one chunk per answer (incremental spell-check caches each). */
+export function answerTexts(a: AnswerMap): string[] {
+  return Object.entries(a)
+    .filter(([k]) => !k.startsWith("optional."))
+    .map(([, v]) => stringsOf(v).join("\n"));
+}
+
+function stringsOf(v0: unknown): string[] {
   const out: string[] = [];
   const walk = (v: unknown, key = "") => {
     if (typeof v === "string") {
@@ -28,8 +39,8 @@ export function answersText(a: AnswerMap): string {
     } else if (Array.isArray(v)) v.forEach((x) => walk(x));
     else if (v && typeof v === "object") Object.entries(v).forEach(([k, x]) => walk(x, k));
   };
-  for (const [k, v] of Object.entries(a)) if (!k.startsWith("optional.")) walk(v);
-  return out.join("\n");
+  walk(v0);
+  return out;
 }
 
 export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {}) {
@@ -236,7 +247,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
 
   /* ---------- validation ---------- */
   const team = (await db.select({ name: users.name }).from(users)).flatMap((u) => u.name.split(/\s+/));
-  const spelling = spellcheck(answersText(a), [...team, p.brand.name, p.pack.styleName, ...p.brand.name.split(/\s+/)]);
+  const spelling = spellcheckParts(answerTexts(a), [...team, p.brand.name, p.pack.styleName, ...p.brand.name.split(/\s+/)]);
   const validation: RuleResult[] = validatePack({
     category: p.pack.category,
     brand: p.brand,

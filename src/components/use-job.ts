@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type JobState = {
   id: string;
-  kind: "PREFILL" | "FLAT" | "SOURCE" | "BOARD";
+  kind: "PREFILL" | "FLAT" | "SOURCE" | "BOARD" | "PDF";
   status: "QUEUED" | "RUNNING" | "DONE" | "ERROR";
   step: string;
   result: Record<string, unknown> | null;
   error: string | null;
   view: string | null;
   fileId?: string | null;
+  draft?: boolean;
 };
 
 const POLL_MS = 1500;
@@ -106,7 +107,7 @@ export function useJob(packId: string, match: (j: JobState) => boolean, onFinish
   }, [resume]);
 
   const start = useCallback(
-    async (body: { kind: "prefill" } | { kind: "flat"; view: string }) => {
+    async (body: { kind: "prefill" } | { kind: "flat"; view: string } | { kind: "pdf"; draft?: "1" }) => {
       setStartError(null);
       try {
         const res = await fetch(`/api/packs/${packId}/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

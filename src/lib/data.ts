@@ -14,7 +14,19 @@ import {
   type AnswerStatus,
 } from "@/db/schema";
 import { nextCode } from "@/lib/codes";
+import type { Origin } from "@/lib/answer-source";
 import type { AnswerMap, Category, LibValue, MatrixValue } from "@/lib/questions";
+
+export type AnswerMeta = {
+  aiNote: string;
+  aiValue: unknown;
+  source: string;
+  origin: Origin;
+  conflict: { origin: string; source: string; value: unknown; note: string; at: string } | null;
+  confidence: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
 
 export async function loadPack(id: string) {
   const [row] = await db
@@ -28,11 +40,20 @@ export async function loadPack(id: string) {
   const files = await db.select().from(packFiles).where(eq(packFiles.packId, id)).orderBy(asc(packFiles.createdAt));
   const answers: AnswerMap = {};
   const statuses: Record<string, AnswerStatus> = {};
-  const meta: Record<string, { aiNote: string; aiValue: unknown; source: string; updatedAt: string; updatedBy: string | null }> = {};
+  const meta: Record<string, AnswerMeta> = {};
   for (const a of answerRows) {
     answers[a.questionId] = a.value;
     statuses[a.questionId] = a.status;
-    meta[a.questionId] = { aiNote: a.aiNote, aiValue: a.aiValue, source: a.source, updatedAt: a.updatedAt.toISOString(), updatedBy: a.updatedBy };
+    meta[a.questionId] = {
+      aiNote: a.aiNote,
+      aiValue: a.aiValue,
+      source: a.source,
+      origin: a.origin,
+      conflict: a.conflict ?? null,
+      confidence: a.confidence,
+      updatedAt: a.updatedAt.toISOString(),
+      updatedBy: a.updatedBy,
+    };
   }
   const sentBy = row.pack.sentBy
     ? (await db.select({ name: users.name }).from(users).where(eq(users.id, row.pack.sentBy)))[0]?.name ?? ""

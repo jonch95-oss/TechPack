@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { factoryQuestions, flats, packs, sampleComments, sampleRounds, users } from "@/db/schema";
+import { brands, factoryQuestions, flats, packs, sampleComments, sampleRounds, users } from "@/db/schema";
 import { requireUser, can } from "@/lib/auth/dal";
 import { libraryOptions, loadPack } from "@/lib/data";
 import { PackWorkspace } from "@/components/pack/workspace";
@@ -64,11 +64,12 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
         sentBy={p.sentBy}
         answers={p.answers}
         statuses={p.statuses}
-        meta={Object.fromEntries(Object.entries(p.meta).map(([k, m]) => [k, { aiNote: m.aiNote, aiValue: m.aiValue, source: m.source }]))}
+        meta={Object.fromEntries(Object.entries(p.meta).map(([k, m]) => [k, { aiNote: m.aiNote, aiValue: m.aiValue, source: m.source, origin: m.origin, conflict: m.conflict, confidence: m.confidence, updatedAt: m.updatedAt }]))}
         files={p.files}
         library={library}
         canEdit={can(user, "designer") && !p.pack.archivedAt}
         isAdmin={can(user, "admin")}
+        brands={await db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name))}
       />
     </>
   );

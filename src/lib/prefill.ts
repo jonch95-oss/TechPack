@@ -1,7 +1,8 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { packAnswers, packs, type AnswerStatus } from "@/db/schema";
+import { packs, type AnswerStatus } from "@/db/schema";
+import { writeAnswer } from "@/lib/answer-write";
 import { audit } from "@/lib/audit";
 import { brandHardware, hardwareByCode, loadPack, rebuildLibraryUsage } from "@/lib/data";
 import { callTechnicalDesigner } from "@/lib/ai/client";
@@ -58,22 +59,16 @@ export async function prefillPack(packId: string, user: { id: string }, progress
   let filled = 0;
   let skippedConfirmed = 0;
   const now = new Date();
-  const write = async (questionId: string, value: unknown, status: Exclude<AnswerStatus, "confirmed">, note: string) => {
-    // Never overwrite something a designer already confirmed.
-    if (loaded.statuses[questionId] === "confirmed") {
-      skippedConfirmed++;
-      return;
-    }
-    await db
-      .insert(packAnswers)
-      .values({ packId, questionId, value, status, source: "", aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now })
-      .onConflictDoUpdate({
-        target: [packAnswers.packId, packAnswers.questionId],
-        set: { value, status, source: "", aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now },
-      });
-    filled++;
+  // AI is below every other source (§2): it fills blanks and replaces older AI reads; where a settled
+  // value differs, the read becomes a conflict chip instead of replacing it.
+  const write = async (questionId: string, value: unknown, status: Exclude<AnswerStatus, "confirmed">, note: string, confidence = "") => {
+    const m = loaded.meta[questionId];
+    const current = m ? { value: loaded.answers[questionId], origin: m.origin, status: loaded.statuses[questionId], aiValue: m.aiValue } : null;
+    const done = await writeAnswer({ packId, questionId, value, origin: "AI", status, note, confidence, userId: user.id }, current);
+    if (done === "write") filled++;
+    else if (done === "skip" || done === "conflict") skippedConfirmed++;
   };
-  for (const a of answers) await write(a.questionId, a.value, a.status, a.note);
+  for (const a of answers) await write(a.questionId, a.value, a.status, a.note, (a as { confidence?: string }).confidence ?? "");
   if (materials.length) await write("materials.list", materials, "ai", "MATERIALS SEEN ON RENDER");
   // Structured rows from what the render shows (AI-suggested — each row is confirmed by the designer).
   const has = (id: string) => allQuestions(loaded.pack.category).some((q) => q.id === id && q.kind === "rows");
@@ -92,7 +87,8 @@ export async function prefillPack(packId: string, user: { id: string }, progress
   if (names.length) await write("colorways.names", Object.fromEntries(colorways.map((c, i) => [c, names[i] ?? ""]).filter(([, v]) => v)), "ai", `COLOURWAY(S) SEEN: ${names.join(", ")}`);
   if (isEmpty(loaded.answers["header.description"])) {
     const merged = { ...loaded.answers, ...Object.fromEntries(answers.map((a) => [a.questionId, a.value])) };
-    await write("header.description", draftDescription(loaded.pack.category, merged), "ai", "AUTO-DRAFTED FROM ANSWERS");
+    // Derived from the answers: trusted, editable, no confirm (§10).
+    await writeAnswer({ packId, questionId: "header.description", value: draftDescription(loaded.pack.category, merged), origin: "DERIVED", userId: user.id }, null);
   }
   await db
     .update(packs)

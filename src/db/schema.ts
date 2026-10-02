@@ -23,6 +23,8 @@ export const roleEnum = pgEnum("role", ["admin", "designer", "viewer"]);
  */
 /** sourced = read by the AI from an uploaded spec sheet / photo / supplier sheet (packAnswers.source says which). */
 export const answerStatusEnum = pgEnum("answer_status", ["ai", "est", "inferred", "confirmed", "sourced"]);
+/** Where an answer came from (V2 brief §2), highest priority first. Separate from status (settled or not). */
+export const answerOriginEnum = pgEnum("answer_origin", ["DESIGNER", "SPEC", "BASE_STYLE", "LIBRARY", "HOUSE", "TEMPLATE", "AI", "DERIVED"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -261,12 +263,39 @@ export const packAnswers = pgTable(
     aiNote: text("ai_note").notNull().default(""),
     /** The AI's original value, kept when a designer overrides it. */
     aiValue: jsonb("ai_value").$type<unknown>(),
-    /** Where an AI answer came from when it wasn't the render: "SPEC SHEET", "BACK PHOTO", "SAMPLE PHOTO" … */
+    /** The upload / item it was read from: "SPEC SHEET", "BACK PHOTO", the base style's number … ("" = the render or a person). */
     source: text("source").notNull().default(""),
+    /** Where the value came from (priority order in lib/answer-source). */
+    origin: answerOriginEnum("origin").notNull().default("DESIGNER"),
+    /** A lower-priority read that disagrees with the value: shown as a red chip (keep / switch). */
+    conflict: jsonb("conflict").$type<{ origin: string; source: string; value: unknown; note: string; at: string } | null>(),
+    /** AI confidence for this value: high | med | low | "" (not an AI value). */
+    confidence: text("confidence").notNull().default(""),
     updatedBy: uuid("updated_by").references(() => users.id),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.packId, t.questionId] })],
+);
+
+/** Every value an answer has had: origin, status, value, who and when (feeds revisions, §9). */
+export const answerHistory = pgTable(
+  "answer_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    packId: uuid("pack_id")
+      .notNull()
+      .references(() => packs.id, { onDelete: "cascade" }),
+    questionId: text("question_id").notNull(),
+    value: jsonb("value").$type<unknown>(),
+    origin: answerOriginEnum("origin").notNull(),
+    status: answerStatusEnum("status").notNull(),
+    source: text("source").notNull().default(""),
+    /** write | upgrade | confirm | conflict | keep | switch | clear */
+    action: text("action").notNull(),
+    userId: uuid("user_id").references(() => users.id),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("answer_history_pack_q").on(t.packId, t.questionId, t.at)],
 );
 
 /** Which packs use which library item ("styles it is used in"). Rebuilt on every answer save. */
@@ -453,7 +482,7 @@ export type Revision = typeof revisions.$inferSelect;
  * Background jobs: AI pre-fill and line-art generation run after the request returns; the studio polls
  * the job, so a dropped connection never loses (or repeats) the work.
  */
-export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT", "SOURCE", "BOARD"]);
+export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT", "SOURCE", "BOARD", "PDF"]);
 export const jobStatusEnum = pgEnum("job_status", ["QUEUED", "RUNNING", "DONE", "ERROR"]);
 export const jobs = pgTable(
   "jobs",
@@ -463,7 +492,7 @@ export const jobs = pgTable(
       .notNull()
       .references(() => packs.id, { onDelete: "cascade" }),
     kind: jobKindEnum("kind").notNull(),
-    params: jsonb("params").$type<{ view?: FlatView; fileId?: string }>().notNull().default({}),
+    params: jsonb("params").$type<{ view?: FlatView; fileId?: string; draft?: boolean }>().notNull().default({}),
     status: jobStatusEnum("status").notNull().default("QUEUED"),
     step: text("step").notNull().default(""),
     result: jsonb("result").$type<Record<string, unknown> | null>(),

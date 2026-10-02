@@ -63,6 +63,12 @@ test("REFER TO SPEC prompt, Needed from you, and AI-read sources", async ({ page
   await needed.getByRole("button", { name: "SQUARE PRONG BUCKLE — INNER WIDTH" }).click();
   await expect(page.getByTestId("hardware.items-row-1")).toBeInViewport();
 
+  // V2 §2: the designer types a strap width before the spec arrives — the spec may only propose.
+  const strapW = page.getByTestId("q-hb.strap.width").locator("input").first();
+  await strapW.fill("4");
+  await strapW.press("Enter");
+  await expect(page.getByText("Saved ✓")).toBeVisible();
+
   /* ---- 3a. Spec sheet (Excel) from the prompt ---- */
   await page.getByTestId("spec-prompt-upload").click();
   await expect(page.getByTestId("slot-spec_sheet")).toBeInViewport();
@@ -75,6 +81,14 @@ test("REFER TO SPEC prompt, Needed from you, and AI-read sources", async ({ page
   // A spec sheet is a trusted source (V2 brief §2): settled, tagged, nothing to confirm one by one.
   await expect(page.getByTestId("source-dims.h")).toHaveText("From spec sheet");
   await expect(page.getByTestId("q-dims.h")).not.toContainText("confirm");
+  // The spec disagrees with the designer's strap width (38 MM = 3.8 CM): a conflict chip, not a silent replace.
+  const conflict = page.getByTestId("conflict-hb.strap.width");
+  await expect(conflict).toContainText("SPEC SHEET reads 3.8");
+  await expect(strapW).toHaveValue("4");
+  await page.getByTestId("conflict-switch-hb.strap.width").click();
+  await expect(conflict).toHaveCount(0);
+  await expect(strapW).toHaveValue("3.8");
+  await expect(page.getByTestId("source-hb.strap.width")).toHaveText("From spec sheet");
   // Round 5, item 1: 4 different parts on the spec → 4 different library items, each on its own row with its size.
   const specStatus = await page.getByTestId("slot-spec_sheet").getByTestId("source-status").innerText();
   const made = [...specStatus.matchAll(/PINK\d+ (LOGO PLATE|BUCKLE|SQUARE RING|EYELET)/gi)].map((m) => m[0].toUpperCase());

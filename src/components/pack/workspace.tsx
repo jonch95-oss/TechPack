@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AnswerStatus, PackFile, PackStatus } from "@/db/schema";
 import type { LibraryOptions } from "@/lib/data";
@@ -27,7 +27,9 @@ import {
   type Question,
   type Section,
 } from "@/lib/questions";
-import { addPackFile, confirmAnswer, confirmFromSource, saveAnswer, updatePackSetup } from "@/app/actions/packs";
+import { ReviewScreen } from "./review-screen";
+import { addPackFile, confirmAnswer, confirmAnswers, confirmFromSource, resolveConflict, saveAnswer, updatePackSetup, type ClientOrigin } from "@/app/actions/packs";
+import { ORIGIN_LABEL, type Origin } from "@/lib/answer-source";
 import { useJob } from "@/components/use-job";
 import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, cx, Eyebrow } from "@/components/ui";
@@ -39,6 +41,7 @@ import { ExportPanel } from "./export-panel";
 import { SignOff } from "./signoff";
 import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
+import { SetupEditor } from "./setup-editor";
 import { PackAdmin } from "./pack-admin";
 import { CropEditor } from "./crop-editor";
 import { SourcesPanel } from "./sources-panel";
@@ -70,14 +73,34 @@ export type WorkspaceProps = {
   sentBy: string;
   answers: AnswerMap;
   statuses: Record<string, AnswerStatus>;
-  meta: Record<string, { aiNote: string; aiValue: unknown; source?: string }>;
+  meta: Record<string, RowMeta>;
   files: PackFile[];
   library: LibraryOptions;
   canEdit: boolean;
   isAdmin: boolean;
+  brands: { id: string; name: string }[];
 };
 
-type SaveState = { state: "idle" | "saving" | "saved" | "error"; at?: string; error?: string };
+type RowMeta = {
+  aiNote: string;
+  aiValue: unknown;
+  source?: string;
+  origin?: Origin;
+  conflict?: { origin: string; source: string; value: unknown; note: string } | null;
+  confidence?: string;
+  /** When the server last changed it — sent back with a save so another person's change is never overwritten. */
+  updatedAt?: string;
+};
+
+type SaveState = {
+  state: "idle" | "saving" | "saved" | "error" | "stale";
+  at?: string;
+  error?: string;
+  /** Failed save: the typed value is kept; Retry sends it again. */
+  retry?: () => void;
+  /** Someone else changed it: reload theirs, or keep mine. */
+  stale?: { by: string; reload: () => void; keep: () => void };
+};
 
 const STATUS_BADGE: Record<string, { tone: "ai" | "est" | "inferred"; text: string }> = {
   ai: { tone: "ai", text: "AI-suggested — confirm" },
@@ -132,35 +155,96 @@ export function PackWorkspace(props: WorkspaceProps) {
   const requiredTotal = visibleQuestions(ctx).filter((q) => q.required).length;
   const requiredOpen = new Set(issues.map((i) => i.questionId)).size;
 
+  /** The latest commit, for Retry / Keep mine buttons created by an earlier render. */
+  const commitRef = useRef<(questionId: string, value: unknown, origin?: ClientOrigin, force?: boolean) => void>(() => {});
   const commit = useCallback(
-    (questionId: string, value: unknown) => {
-      const prev = { v: answers[questionId], s: statuses[questionId] };
+    (questionId: string, value: unknown, origin: ClientOrigin = "DESIGNER", force = false) => {
+      const base = meta[questionId]?.updatedAt ?? null;
       setAnswers((a) => ({ ...a, [questionId]: value }));
       setStatuses((s) => ({ ...s, [questionId]: "confirmed" }));
+      setMeta((m) => ({ ...m, [questionId]: { ...(m[questionId] ?? { aiNote: "", aiValue: null }), origin, source: "", conflict: null } }));
       setSave({ state: "saving" });
       inflight.current++;
       start(async () => {
-        const res = await saveAnswer(pack.id, questionId, value);
-        inflight.current--;
-        if (!res.ok) {
-          setAnswers((a) => ({ ...a, [questionId]: prev.v }));
-          setStatuses((s) => ({ ...s, [questionId]: prev.s }));
-          setSave({ state: "error", error: res.error });
+        // A failed save keeps the typed value on screen and offers Retry — nothing typed is lost.
+        const again = () => commitRef.current(questionId, value, origin, force);
+        let res: Awaited<ReturnType<typeof saveAnswer>>;
+        try {
+          res = await saveAnswer(pack.id, questionId, value, origin, { base, force });
+        } catch {
+          inflight.current--;
+          setSave({ state: "error", error: navigator.onLine ? "Couldn't save — the connection dropped." : "You're offline — not saved yet.", retry: again });
           return;
         }
+        inflight.current--;
+        if (!res.ok) {
+          if ("stale" in res) {
+            setSave({
+              state: "stale",
+              error: `${res.stale.by} changed this`,
+              stale: { by: res.stale.by, reload: () => router.refresh(), keep: () => commitRef.current(questionId, value, origin, true) },
+            });
+            return;
+          }
+          setSave({ state: "error", error: res.error, retry: again });
+          return;
+        }
+        setMeta((m) => ({ ...m, [questionId]: { ...(m[questionId] ?? { aiNote: "", aiValue: null }), updatedAt: res.updatedAt } }));
         setVersion((v) => v + 1);
         if (inflight.current === 0) setSave({ state: "saved", at: res.updatedAt });
         // An edit after review / sign-off sends the pack back to draft: show that straight away.
         if (pack.status === "IN_REVIEW" || pack.status === "APPROVED") router.refresh();
       });
     },
-    [answers, statuses, pack.id, pack.status, router],
+    [meta, pack.id, pack.status, router],
   );
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
+
+  /** Bulk confirm (review groups, "All visible", Enter on a row): one server call. */
+  const confirmMany = (ids: string[]) => {
+    if (!ids.length) return;
+    setStatuses((s) => ({ ...s, ...Object.fromEntries(ids.map((id) => [id, "confirmed" as const])) }));
+    start(async () => {
+      const res = await confirmAnswers(pack.id, ids);
+      if (!res.ok) setSave({ state: "error", error: res.error });
+      else {
+        setSave({ state: "saved", at: new Date().toISOString() });
+        setVersion((v) => v + 1);
+      }
+    });
+  };
+  // Review (compact, keyboard-first) or All questions (the full sections); remembered per browser.
+  const mode = useSyncExternalStore(subscribeMode, readMode, () => "all" as const);
+  const setMode = (m: "review" | "all") => {
+    try {
+      localStorage.setItem("packMode", m);
+    } catch {}
+    window.dispatchEvent(new Event("packmode"));
+  };
 
   const confirm = (questionId: string) => {
     setStatuses((s) => ({ ...s, [questionId]: "confirmed" }));
     start(async () => {
       const res = await confirmAnswer(pack.id, questionId);
+      if (!res.ok) setSave({ state: "error", error: res.error });
+      else {
+        setSave({ state: "saved", at: new Date().toISOString() });
+        setVersion((v) => v + 1);
+      }
+    });
+  };
+
+  const settleConflict = (questionId: string, choice: "keep" | "switch") => {
+    const c = meta[questionId]?.conflict;
+    setMeta((m) => ({ ...m, [questionId]: { ...m[questionId], conflict: null, ...(choice === "switch" && c ? { origin: c.origin as Origin, source: c.source } : {}) } }));
+    if (choice === "switch" && c) {
+      setAnswers((a) => ({ ...a, [questionId]: c.value }));
+      setStatuses((s) => ({ ...s, [questionId]: "confirmed" }));
+    }
+    start(async () => {
+      const res = await resolveConflict(pack.id, questionId, choice);
       if (!res.ok) setSave({ state: "error", error: res.error });
       else {
         setSave({ state: "saved", at: new Date().toISOString() });
@@ -341,6 +425,13 @@ export function PackWorkspace(props: WorkspaceProps) {
               <a href={`/packs/${pack.id}/samples`} className="eyebrow hover:text-ink" data-testid="samples-link">
                 Samples{props.sampleSummary.rounds ? ` · ${props.sampleSummary.open} open` : ""}
               </a>
+              {canEdit && (
+                <SetupEditor
+                  pack={{ id: pack.id, styleNo: pack.styleNo, styleName: pack.styleName, category: pack.category, brandId: brand.id, colorways }}
+                  brands={props.brands}
+                  names={(answers["colorways.names"] as Record<string, string> | undefined) ?? {}}
+                />
+              )}
               {canEdit && <DuplicatePack packId={pack.id} styleNo={pack.styleNo} styleName={pack.styleName} />}
               {props.isAdmin && <PackAdmin packId={pack.id} styleNo={pack.styleNo} archived={pack.archived} />}
               <SaveIndicator s={save} />
@@ -374,9 +465,13 @@ export function PackWorkspace(props: WorkspaceProps) {
                       className="w-6 h-6 border border-hairline-strong text-taupe hover:text-ink hover:border-ink disabled:opacity-30"
                       disabled={colorways.length <= 1}
                       onClick={() => {
-                        const next = colorways.slice(0, -1);
-                        setColorways(next);
-                        start(async () => void (await updatePackSetup(pack.id, { colorways: next })));
+                        // Removing goes through the server so the colourway's data goes with it.
+                        const last = colorways[colorways.length - 1];
+                        setColorways(colorways.slice(0, -1));
+                        start(async () => {
+                          await updatePackSetup(pack.id, { removeColorway: last });
+                          router.refresh();
+                        });
                       }}
                     >
                       −
@@ -540,7 +635,44 @@ export function PackWorkspace(props: WorkspaceProps) {
         </aside>
 
         <div className="min-w-0 space-y-16">
-          {sections.map((s, si) => {
+          <div className="flex items-center gap-1 -mb-8" role="tablist" aria-label="View">
+            {(
+              [
+                ["review", "Review"],
+                ["all", "All questions"],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                data-testid={`mode-${m}`}
+                onClick={() => setMode(m)}
+                className={cx("h-8 px-4 text-[10px] tracking-[0.2em] uppercase border", mode === m ? "bg-ink text-ivory border-ink" : "border-hairline-strong text-ink-soft hover:border-ink")}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === "review" && (
+            <ReviewScreen
+              questions={visibleQuestions(ctx)}
+              answers={answers}
+              statuses={statuses}
+              meta={meta}
+              renderUrl={null}
+              ctx={ctx}
+              colorways={colorways}
+              unitLabel={unitLabel}
+              canEdit={canEdit}
+              onCommit={(qid, v) => commit(qid, v)}
+              onConfirm={confirmMany}
+              onConflict={settleConflict}
+              display={displayAi}
+            />
+          )}
+          {mode === "all" && sections.map((s, si) => {
             if (s.optional) return null;
             if (!sectionVisible(s, ctx)) return null;
             const qs = s.questions.filter((q) => visible.has(q.id));
@@ -560,6 +692,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                       canEdit={canEdit}
                       onChange={(v) => commit(q.id, v)}
                       onConfirm={() => confirm(q.id)}
+                      onConflict={(c) => settleConflict(q.id, c)}
                       ctx={ctx}
                       colorways={colorways}
                       unitLabel={unitLabel}
@@ -610,6 +743,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                                 canEdit={canEdit}
                                 onChange={(v) => commit(q.id, v)}
                                 onConfirm={() => confirm(q.id)}
+                                onConflict={(c) => settleConflict(q.id, c)}
                                 ctx={ctx}
                                 colorways={colorways}
                                 unitLabel={unitLabel}
@@ -696,6 +830,22 @@ export function PackWorkspace(props: WorkspaceProps) {
   );
 }
 
+function subscribeMode(cb: () => void) {
+  window.addEventListener("packmode", cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener("packmode", cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+function readMode(): "review" | "all" {
+  try {
+    return localStorage.getItem("packMode") === "review" ? "review" : "all";
+  } catch {
+    return "all";
+  }
+}
+
 function SectionTitle({ n, title }: { n: number | string; title: string }) {
   return (
     <div className="flex items-baseline gap-5 mb-6">
@@ -738,7 +888,25 @@ function Meta({ k, v }: { k: string; v: string }) {
 
 function SaveIndicator({ s }: { s: SaveState }) {
   if (s.state === "saving") return <span className="eyebrow text-gold">Saving…</span>;
-  if (s.state === "error") return <span className="text-[11px] text-signal" role="alert">{s.error}</span>;
+  if (s.state === "stale" && s.stale)
+    return (
+      <span className="text-[11px] text-signal flex items-center gap-2" role="alert" data-testid="save-stale">
+        {s.stale.by} changed this —
+        <button type="button" className="underline" onClick={s.stale.reload}>reload</button>/
+        <button type="button" className="underline" onClick={s.stale.keep} data-testid="save-keep-mine">keep mine</button>
+      </span>
+    );
+  if (s.state === "error")
+    return (
+      <span className="text-[11px] text-signal flex items-center gap-2" role="alert">
+        {s.error}
+        {s.retry && (
+          <button type="button" className="underline" onClick={s.retry} data-testid="save-retry">
+            Retry
+          </button>
+        )}
+      </span>
+    );
   if (s.state === "saved") return <span className="eyebrow text-ok">Saved ✓</span>;
   return <span className="eyebrow">Autosaves every click</span>;
 }
@@ -752,6 +920,7 @@ function QuestionRow({
   canEdit,
   onChange,
   onConfirm,
+  onConflict,
   ctx,
   colorways,
   unitLabel,
@@ -760,11 +929,12 @@ function QuestionRow({
   q: Question;
   value: unknown;
   status?: AnswerStatus;
-  meta?: { aiNote: string; aiValue: unknown; source?: string };
+  meta?: RowMeta;
   flash: boolean;
   canEdit: boolean;
   onChange: (v: unknown) => void;
   onConfirm: () => void;
+  onConflict: (choice: "keep" | "switch") => void;
   ctx: EvalContext;
   colorways: string[];
   unitLabel: (u: string) => string;
@@ -804,9 +974,26 @@ function QuestionRow({
           </div>
         )}
         {badge && meta?.aiNote && <div className="text-[10.5px] tracking-[0.08em] text-gold mt-2">Saw: {meta.aiNote}</div>}
-        {!badge && status === "confirmed" && meta?.source && (
-          <div className="mt-2 text-[10px] tracking-[0.14em] uppercase text-taupe" data-testid={`source-${q.id}`} title={meta.aiNote || undefined}>
-            From {meta.source.toLowerCase()}
+        {!badge && status === "confirmed" && settledTag(meta) && (
+          <div className="mt-2 text-[10px] tracking-[0.14em] uppercase text-taupe" data-testid={`source-${q.id}`} title={meta?.aiNote || undefined}>
+            {settledTag(meta)}
+          </div>
+        )}
+        {meta?.conflict && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border border-signal/60 bg-signal/5 px-2.5 py-1.5" data-testid={`conflict-${q.id}`} role="alert">
+            <span className="text-[10.5px] tracking-[0.06em] text-signal">
+              {conflictWho(meta.conflict)} reads {displayAi(meta.conflict.value)}
+            </span>
+            {canEdit && (
+              <>
+                <button type="button" onClick={() => onConflict("switch")} data-testid={`conflict-switch-${q.id}`} className="h-[22px] px-2 border border-signal text-signal text-[9.5px] tracking-[0.16em] uppercase hover:bg-signal hover:text-ivory">
+                  Switch
+                </button>
+                <button type="button" onClick={() => onConflict("keep")} data-testid={`conflict-keep-${q.id}`} className="h-[22px] px-2 border border-hairline-strong text-[9.5px] tracking-[0.16em] uppercase hover:border-ink">
+                  Keep
+                </button>
+              </>
+            )}
           </div>
         )}
         {overridden && <div className="text-[10.5px] text-taupe mt-2 italic">AI suggested {displayAi(meta!.aiValue)}</div>}
@@ -826,6 +1013,20 @@ function QuestionRow({
       </div>
     </div>
   );
+}
+
+/** "From spec sheet", "Base style PINK013", "House", "Derived" … for settled answers that a person didn't type. */
+function settledTag(meta?: RowMeta): string {
+  if (!meta) return "";
+  if (meta.origin === "BASE_STYLE") return `Base style${meta.source ? ` ${meta.source}` : ""}`;
+  if (meta.source && meta.origin !== "DESIGNER") return `From ${meta.source.toLowerCase()}`;
+  if (meta.origin && meta.origin !== "DESIGNER" && meta.origin !== "AI") return ORIGIN_LABEL[meta.origin];
+  return "";
+}
+
+function conflictWho(c: { origin: string; source: string }) {
+  if (c.source) return c.source;
+  return c.origin === "AI" ? "The render" : (ORIGIN_LABEL[c.origin as Origin] ?? c.origin);
 }
 
 function displayAi(v: unknown): string {
@@ -861,24 +1062,24 @@ function ContentLabelPreview({ answers, colorways }: { answers: AnswerMap; color
   );
 }
 
-function QuestionHelpers({ qid, category, answers, colorways, onCommit }: { qid: string; category: Category; answers: AnswerMap; colorways: string[]; onCommit: (qid: string, v: unknown) => void }) {
+function QuestionHelpers({ qid, category, answers, colorways, onCommit }: { qid: string; category: Category; answers: AnswerMap; colorways: string[]; onCommit: (qid: string, v: unknown, origin?: ClientOrigin) => void }) {
   const helper = (label: string, onClick: () => void, testId?: string) => (
     <button key={label} type="button" data-testid={testId} className="block text-[10px] tracking-[0.2em] uppercase text-gold hover:text-ink mt-1" onClick={onClick}>
       ✦ {label}
     </button>
   );
-  if (qid === "header.description") return helper("Redraft from answers", () => onCommit(qid, draftDescription(category, answers)));
+  if (qid === "header.description") return helper("Redraft from answers", () => onCommit(qid, draftDescription(category, answers), "DERIVED"));
   if (qid === "pom.list") {
     const rows = (answers["pom.list"] as PomRow[] | undefined) ?? [];
     return (
       <>
-        {helper(`Load ${templateKey(category, answers).toLowerCase()} template`, () => onCommit(qid, pomFromTemplate(category, answers, rows)), "pom-template")}
+        {helper(`Load ${templateKey(category, answers).toLowerCase()} template`, () => onCommit(qid, pomFromTemplate(category, answers, rows), "DERIVED"), "pom-template")}
         {rows.some((r) => r.tol == null) && helper("Apply standard tolerances to blanks", () => onCommit(qid, applyStandardTolerances(rows, answers["dims.unit"] === "INCHES")), "pom-tolerances")}
       </>
     );
   }
   if (qid === "opt.labels.types") return <ContentLabelPreview answers={answers} colorways={colorways} />;
-  if (qid === "bom.list") return helper("Build from answers", () => onCommit(qid, bomFromAnswers(answers, (answers["bom.list"] as BomRow[] | undefined) ?? [])), "bom-build");
+  if (qid === "bom.list") return helper("Build from answers", () => onCommit(qid, bomFromAnswers(answers, (answers["bom.list"] as BomRow[] | undefined) ?? []), "DERIVED"), "bom-build");
   return null;
 }
 

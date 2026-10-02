@@ -2,7 +2,8 @@ import "server-only";
 import ExcelJS from "exceljs";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { hardware, materials, packAnswers, packFiles, type AnswerStatus, type PackFile } from "@/db/schema";
+import { hardware, materials, packFiles, type AnswerStatus, type PackFile } from "@/db/schema";
+import { writeAnswer } from "@/lib/answer-write";
 import { audit } from "@/lib/audit";
 import { callTechnicalDesigner } from "@/lib/ai/client";
 import { buildSourceInstructions, normaliseSource, READ_SOURCE_SCHEMA, sourceLabel, type ReadSourceOutput, type SourceKind } from "@/lib/ai/read-source";
@@ -73,28 +74,23 @@ export async function readSource(packId: string, fileId: string, user: { id: str
 }
 
 /**
- * Writes one answer with where it came from. A spec sheet is a trusted source (V2 brief §2): its
- * values are settled ("confirmed", tagged SPEC SHEET); photos and rulers still need confirming. Never
- * replaces an answer a designer set or confirmed — only unconfirmed answers, or this source's own.
+ * Writes one answer with where it came from, under the §2 priority rules (lib/answer-write): a spec
+ * sheet is SPEC (settled, above BASE STYLE / HOUSE / AI); photos, rulers, swatch cards and supplier
+ * sheets are AI reads (need confirming). A read never replaces a designer's value — where it
+ * disagrees it shows as a conflict chip. Hardware rows and breakdown cells are merged into by the
+ * caller (parts linked, sizes added) and keep every designer row.
  */
 function writer(p: LoadedPack, user: { id: string }, result: SourceResult) {
   return async (questionId: string, value: unknown, status: AnswerStatus, source: string, note: string) => {
-    // Confirmed values belong to the designer, unless they came from this same source (a re-read).
-    // Hardware rows and breakdown cells from another upload may still be merged into (parts linked,
-    // sizes added, a spec's material text replaced by the swatch card itself).
-    const from = p.meta[questionId]?.source;
-    const mergeable = (questionId === "hardware.items" || questionId === "materials.matrix") && !!from;
-    if (p.statuses[questionId] === "confirmed" && from !== source && !mergeable) {
-      result.skippedConfirmed++;
-      return;
-    }
-    const now = new Date();
-    await db
-      .insert(packAnswers)
-      .values({ packId: p.pack.id, questionId, value, status, source, aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now })
-      .onConflictDoUpdate({ target: [packAnswers.packId, packAnswers.questionId], set: { value, status, source, aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now } });
-    p.answers[questionId] = value;
-    result.answered++;
+    const origin = source === "SPEC SHEET" ? "SPEC" : "AI";
+    const m = p.meta[questionId];
+    const current = m ? { value: p.answers[questionId], origin: m.origin, status: p.statuses[questionId], aiValue: m.aiValue } : null;
+    const merge = questionId === "hardware.items" || questionId === "materials.matrix";
+    const done = await writeAnswer({ packId: p.pack.id, questionId, value, origin, status: origin === "SPEC" && status === "confirmed" ? undefined : status, source, note, userId: user.id, merge }, current);
+    if (done === "write" || done === "upgrade") {
+      p.answers[questionId] = value;
+      result.answered++;
+    } else result.skippedConfirmed++;
   };
 }
 

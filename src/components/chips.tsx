@@ -12,7 +12,8 @@ const chip = (on: boolean, disabled?: boolean) =>
 
 /**
  * Single-select chips. Every chip set ends with "Other…" (unless allowOther=false): the typed
- * text becomes the value. Clicking the selected chip clears it.
+ * text becomes the value. Clicking the selected chip CONFIRMS it (re-commits the same value, so an
+ * AI-suggested chip is accepted, never deleted); the small ✕ clears it.
  */
 export function ChipRow({
   options,
@@ -48,7 +49,7 @@ export function ChipRow({
           className={chip(value === o, disabled)}
           onClick={() => {
             setOtherOpen(false);
-            onChange(value === o ? "" : o);
+            onChange(o);
           }}
         >
           {o}
@@ -83,6 +84,11 @@ export function ChipRow({
             Other…
           </button>
         ))}
+      {value && !disabled && (
+        <button type="button" className="h-9 px-2 text-taupe hover:text-signal text-[11px]" aria-label="Clear" title="Clear" onClick={() => onChange("")}>
+          ✕
+        </button>
+      )}
     </div>
   );
 }
@@ -158,7 +164,10 @@ export function Toggle({ value, onChange, disabled, testId }: { value: boolean |
   );
 }
 
-/** Number with unit; commits on blur / Enter and on the ± buttons. */
+/**
+ * Number with unit; commits on the ± buttons, on Enter (always — Enter accepts an EST value as it is)
+ * and on blur only when the value changed (tabbing past an EST never silently confirms it).
+ */
 export function Stepper({
   value,
   onChange,
@@ -182,12 +191,14 @@ export function Stepper({
     setSeen(value);
     setDraft(value == null ? "" : String(value));
   }
-  const commit = (s: string) => {
+  const enterRef = useRef(false);
+  const commit = (s: string, force = false) => {
     const t = s.trim();
-    if (!t) return onChange(null);
+    if (!t) return value == null && !force ? undefined : onChange(null);
     const n = Number(t.replace(",", "."));
-    if (Number.isFinite(n) && n >= 0) onChange(Math.round(n * 1000) / 1000);
-    else setDraft(value == null ? "" : String(value));
+    if (!Number.isFinite(n) || n < 0) return setDraft(value == null ? "" : String(value));
+    const r = Math.round(n * 1000) / 1000;
+    if (force || r !== value) onChange(r);
   };
   const bump = (d: number) => {
     const n = Math.max(0, Math.round(((value ?? 0) + d) * 1000) / 1000);
@@ -205,8 +216,16 @@ export function Stepper({
         disabled={disabled}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => commit(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+        onBlur={(e) => {
+          if (enterRef.current) enterRef.current = false;
+          else commit(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          commit(draft, true);
+          enterRef.current = true;
+          (e.currentTarget as HTMLInputElement).blur();
+        }}
         className={cx("text-center bg-transparent border-x border-hairline-strong focus:outline-none text-[14px]", compact ? "w-14" : "w-20")}
       />
       <button type="button" disabled={disabled} className="w-9 text-ink-soft hover:bg-ink hover:text-ivory transition-colors" onClick={() => bump(step)} aria-label="Increase">

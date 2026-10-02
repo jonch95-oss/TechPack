@@ -130,7 +130,21 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
   const skip = new Set(["header.due_date", ...(keepComments ? [] : ["comments.list"])]);
   const copy = rows.filter((r) => !skip.has(r.questionId));
   if (copy.length)
-    await db.insert(packAnswers).values(copy.map((r) => ({ packId: np.id, questionId: r.questionId, value: r.value, status: r.status, aiNote: r.aiNote, aiValue: r.aiValue, updatedBy: user.id })));
+    // Settled values are inherited as BASE STYLE (trusted, §3 step 2); unconfirmed ones keep their origin and still need confirming.
+    await db.insert(packAnswers).values(
+      copy.map((r) => ({
+        packId: np.id,
+        questionId: r.questionId,
+        value: r.value,
+        status: r.status,
+        origin: r.status === "confirmed" ? ("BASE_STYLE" as const) : r.origin,
+        source: r.status === "confirmed" ? src.pack.styleNo : r.source,
+        aiNote: r.aiNote,
+        aiValue: r.aiValue,
+        confidence: r.confidence,
+        updatedBy: user.id,
+      })),
+    );
   if (keepFiles) {
     const files = await db.select().from(packFiles).where(eq(packFiles.packId, sourceId));
     if (files.length) await db.insert(packFiles).values(files.map((f) => ({ packId: np.id, kind: f.kind, url: f.url, name: f.name, tag: f.tag, note: f.note, createdBy: user.id })));

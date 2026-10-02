@@ -9,21 +9,22 @@ import { prefillPack } from "@/lib/prefill";
 import { generateFlat } from "@/lib/lineart/service";
 import { readSource } from "@/lib/sources";
 import { readBoard } from "@/lib/board";
+import { exportPackPdf } from "@/lib/pdf/export";
 
 /** A job still RUNNING this long after its last progress update has died with its function. */
 const STALE_MS = 6 * 60 * 1000;
 
-export type JobView = { id: string; kind: Job["kind"]; status: Job["status"]; step: string; result: Record<string, unknown> | null; error: string | null; view: FlatView | null; fileId: string | null };
+export type JobView = { id: string; kind: Job["kind"]; status: Job["status"]; step: string; result: Record<string, unknown> | null; error: string | null; view: FlatView | null; fileId: string | null; draft: boolean };
 
-const viewOf = (j: Job): JobView => ({ id: j.id, kind: j.kind, status: j.status, step: j.step, result: j.result ?? null, error: j.error, view: j.params?.view ?? null, fileId: j.params?.fileId ?? null });
+const viewOf = (j: Job): JobView => ({ id: j.id, kind: j.kind, status: j.status, step: j.step, result: j.result ?? null, error: j.error, view: j.params?.view ?? null, fileId: j.params?.fileId ?? null, draft: !!j.params?.draft });
 
 /**
  * Queues a job and runs it after the response is sent (Vercel keeps the function alive for the
  * route's maxDuration). One live job per pack and kind/view: starting again returns the running one.
  */
-export async function startJob(packId: string, kind: Job["kind"], params: { view?: FlatView; fileId?: string }, userId: string): Promise<JobView> {
+export async function startJob(packId: string, kind: Job["kind"], params: { view?: FlatView; fileId?: string; draft?: boolean }, userId: string): Promise<JobView> {
   const live = await activeJobs(packId);
-  const same = live.find((j) => j.kind === kind && (kind !== "FLAT" || j.view === (params.view ?? null)) && (j.fileId ?? null) === (params.fileId ?? null));
+  const same = live.find((j) => j.kind === kind && (kind !== "FLAT" || j.view === (params.view ?? null)) && (j.fileId ?? null) === (params.fileId ?? null) && j.draft === !!params.draft);
   if (same) return same;
   const [job] = await db.insert(jobs).values({ packId, kind, params, createdBy: userId }).returning();
   after(() => runJob(job.id));
@@ -48,6 +49,12 @@ export async function runJob(id: string) {
     } else if (job.kind === "SOURCE") {
       const res = await readSource(job.packId, job.params.fileId ?? "", user, progress);
       await update(id, { status: "DONE", step: "", result: res });
+    } else if (job.kind === "PDF") {
+      // Only designers can start jobs (see the jobs route), so a final export may issue a revision.
+      await progress(job.params.draft ? "Building the draft PDF" : "Building the PDF");
+      const res = await exportPackPdf(job.packId, { id: user.id, canEdit: true }, { draft: !!job.params.draft, store: true });
+      if (!res.ok) await update(id, { status: "ERROR", step: "", error: res.error, result: { failing: res.failing } });
+      else await update(id, { status: "DONE", step: "", result: { url: res.url, name: res.name, pages: res.pages, revision: res.revision } });
     } else if (job.kind === "BOARD") {
       const p = await loadPack(job.packId);
       const board = p ? await readBoard(job.packId, job.params.fileId ?? "", p.pack.styleNo) : null;

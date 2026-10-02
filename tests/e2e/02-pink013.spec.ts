@@ -264,7 +264,9 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   await shot(page, "04b-after-prefill-full", true);
 
   /* ---- Header ---- */
-  await confirm(page, "header.description");
+  // V2: the drafted description is DERIVED — trusted, editable, nothing to confirm.
+  await expect(page.getByTestId("confirm-header.description")).toHaveCount(0);
+  await expect(page.getByTestId("source-header.description")).toHaveText("Derived");
   await expect(page.getByTestId("q-input-header.description")).toHaveValue("SHOULDER BAG SATCHEL W/ FLAP & LONG SHOULDER STRAP");
   await other(page, "header.retailer", "PINK");
   await page.getByTestId("q-input-header.due_date").click();

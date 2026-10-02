@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { applySpelling } from "@/app/actions/packs";
 import type { RuleResult } from "@/lib/validation";
 import { buttonClass, cx } from "@/components/ui";
+import { useJob, type JobState } from "@/components/use-job";
 
 type Result = {
   passes: boolean;
@@ -34,6 +35,16 @@ export function ExportPanel({ packId, version, onJump, canEdit, signedOff }: { p
       setLoading(false);
     }
   }, [packId]);
+
+  // PDFs are built as background jobs (V2 §3 step 5): the page stays usable; download when ready.
+  const [ready, setReady] = useState<{ draft: boolean; url: string | null; name: string; pages: number } | { draft: boolean; error: string } | null>(null);
+  const onPdf = (j: JobState) => {
+    const r = (j.result ?? {}) as { url?: string | null; name?: string; pages?: number };
+    setReady(j.status === "DONE" ? { draft: !!j.draft, url: r.url ?? null, name: r.name ?? "PDF", pages: r.pages ?? 0 } : { draft: !!j.draft, error: j.error ?? "The PDF didn't build — try again." });
+    if (!j.draft) void check(); // a final export may have issued a revision
+  };
+  const finalPdf = useJob(packId, (j) => j.kind === "PDF" && !j.draft, onPdf);
+  const draftPdf = useJob(packId, (j) => j.kind === "PDF" && !!j.draft, onPdf);
 
   // Re-check shortly after the designer stops editing.
   useEffect(() => {
@@ -109,17 +120,51 @@ export function ExportPanel({ packId, version, onJump, canEdit, signedOff }: { p
             Export PDF — needs sign-off
           </button>
         ) : res?.passes ? (
-          <a href={`/api/packs/${packId}/pdf`} target="_blank" className={cx(buttonClass("primary"), "w-full")} data-testid="export-pdf">
-            Export PDF · {res.pages.length} pages
-          </a>
+          <button
+            type="button"
+            className={cx(buttonClass("primary"), "w-full")}
+            data-testid="export-pdf"
+            disabled={!canEdit || finalPdf.running}
+            onClick={() => {
+              setReady(null);
+              void finalPdf.start({ kind: "pdf" });
+            }}
+          >
+            {finalPdf.running ? `${finalPdf.job?.step || "Building the PDF"}…` : `Export PDF · ${res.pages.length} pages`}
+          </button>
         ) : (
           <button className={cx(buttonClass("primary"), "w-full")} disabled title="Fix the items above to unlock">
             Export PDF — {fails.length || "…"} to fix
           </button>
         )}
-        <a href={`/api/packs/${packId}/pdf?draft=1`} target="_blank" className={cx(buttonClass("secondary", "sm"), "w-full")} data-testid="draft-pdf">
-          Draft PDF (watermarked)
-        </a>
+        <button
+          type="button"
+          className={cx(buttonClass("secondary", "sm"), "w-full")}
+          data-testid="draft-pdf"
+          disabled={!canEdit || draftPdf.running}
+          onClick={() => {
+            setReady(null);
+            void draftPdf.start({ kind: "pdf", draft: "1" });
+          }}
+        >
+          {draftPdf.running ? `${draftPdf.job?.step || "Building the draft"}…` : "Draft PDF (watermarked)"}
+        </button>
+        {(finalPdf.startError || draftPdf.startError) && <div className="text-[11px] text-signal">{finalPdf.startError || draftPdf.startError}</div>}
+        {ready && "error" in ready && (
+          <div className="text-[11px] text-signal" role="alert">
+            {ready.error}
+          </div>
+        )}
+        {ready && "name" in ready && ready.url && (
+          <a href={ready.url} target="_blank" className="block text-center text-[11px] tracking-[0.12em] uppercase text-ok underline underline-offset-4" data-testid="pdf-ready">
+            ↓ {ready.name} · {ready.pages} pages
+          </a>
+        )}
+        {!canEdit && (
+          <a href={`/api/packs/${packId}/pdf?draft=1`} target="_blank" className="block text-center eyebrow hover:text-ink">
+            Download draft
+          </a>
+        )}
         <a href={`/api/packs/${packId}/export`} className={cx(buttonClass("ghost", "sm"), "w-full")} data-testid="export-zip">
           Files — SVG · AI · EPS · PSD (ZIP)
         </a>

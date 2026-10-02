@@ -6,16 +6,18 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { brands, hardware, packAnswers, packFiles, packs, type FileMarks } from "@/db/schema";
+import { brands, hardware, packAnswers, packFiles, packs, users, type FileMarks } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { loadPack, rebuildLibraryUsage } from "@/lib/data";
+import { confirmAnswers as confirmMany, currentAnswer, keepCurrent, switchToConflict, writeAnswer } from "@/lib/answer-write";
 import { readStoredFile } from "@/lib/storage";
-import { CATEGORIES, findQuestion, isEmpty, optionalToggleId, sectionsFor, type Category } from "@/lib/questions";
+import { CATEGORIES, findQuestion, optionalToggleId, sectionsFor, type Category } from "@/lib/questions";
 import type { ActionResult } from "./admin";
 import { prefillPack, type PrefillResult } from "@/lib/prefill";
 import { startJob } from "@/lib/jobs";
 import { suffixesFor } from "@/lib/codes";
+import { remapAnswers, remapTag, removeColorway } from "@/lib/colorways";
 
 export type CreatePackState = { error?: string } | undefined;
 
@@ -60,18 +62,38 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
   redirect(`/packs/${p.id}`);
 }
 
+/**
+ * Brand, category, style #, style name and colourways stay editable after creation (V2 §3 step 2).
+ * Removing a colourway re-letters the ones after it (-A, -B …) and moves their data with them.
+ */
 export async function updatePackSetup(
   packId: string,
-  patch: { styleName?: string; colorways?: string[]; brandId?: string; chineseOn?: boolean },
-): Promise<ActionResult> {
+  patch: { styleNo?: string; styleName?: string; colorways?: string[]; removeColorway?: string; brandId?: string; category?: string; chineseOn?: boolean },
+): Promise<ActionResult & { colorways?: string[] }> {
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   const [before] = await db.select().from(packs).where(eq(packs.id, packId));
   if (!before) return { ok: false, error: "Pack not found." };
   const set: Partial<typeof packs.$inferInsert> = { updatedBy: user.id, updatedAt: new Date() };
+  if (patch.styleNo !== undefined) {
+    const styleNo = patch.styleNo.trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{3,30}$/.test(styleNo)) return { ok: false, error: "Style # — letters, digits, _ or -, e.g. PINK013 or TB25_ACC0023." };
+    if (styleNo !== before.styleNo) {
+      const dup = await db.select({ id: packs.id }).from(packs).where(and(eq(packs.styleNo, styleNo), ne(packs.id, packId)));
+      if (dup.length) return { ok: false, error: `${styleNo} already exists.` };
+      const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, styleNo));
+      if (clash.length) return { ok: false, error: `${styleNo} is already a component code — styles and components can't share a number.` };
+      set.styleNo = styleNo;
+    }
+  }
   if (patch.styleName !== undefined) {
     if (!patch.styleName.trim()) return { ok: false, error: "Style name is required." };
     set.styleName = patch.styleName.trim().toUpperCase();
+  }
+  if (patch.category !== undefined) {
+    if (!CATEGORIES.includes(patch.category as Category)) return { ok: false, error: "Pick a category." };
+    // Answers that don't apply to the new category are kept (hidden), so switching back loses nothing.
+    set.category = patch.category;
   }
   if (patch.colorways) {
     const cws = [...new Set(patch.colorways.map((c) => c.trim().toUpperCase()).filter(Boolean))];
@@ -79,12 +101,32 @@ export async function updatePackSetup(
     if (cws.some((c) => !/^-[A-Z0-9]{1,3}$/.test(c))) return { ok: false, error: "Suffixes look like -A, -B …" };
     set.colorways = cws;
   }
-  if (patch.brandId) set.brandId = patch.brandId;
+  if (patch.removeColorway) {
+    if (before.colorways.length <= 1) return { ok: false, error: "At least one colorway." };
+    if (!before.colorways.includes(patch.removeColorway)) return { ok: false, error: "No such colorway." };
+    const { next, map } = removeColorway(before.colorways, patch.removeColorway);
+    set.colorways = next;
+    const rows = await db.select({ q: packAnswers.questionId, v: packAnswers.value }).from(packAnswers).where(eq(packAnswers.packId, packId));
+    const moved = remapAnswers(Object.fromEntries(rows.map((r) => [r.q, r.v])), map);
+    for (const [q, v] of Object.entries(moved)) await db.update(packAnswers).set({ value: v }).where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, q)));
+    const files = await db.select().from(packFiles).where(eq(packFiles.packId, packId));
+    for (const f of files) {
+      const tag = remapTag(f.tag, map);
+      if (tag === f.tag) continue;
+      if (tag === null && f.kind === "colorway_render") await db.delete(packFiles).where(eq(packFiles.id, f.id));
+      else await db.update(packFiles).set({ tag: tag ?? f.tag.split("|")[0] }).where(eq(packFiles.id, f.id));
+    }
+  }
+  if (patch.brandId) {
+    const [b] = await db.select({ id: brands.id }).from(brands).where(eq(brands.id, patch.brandId));
+    if (!b) return { ok: false, error: "Unknown brand." };
+    set.brandId = patch.brandId;
+  }
   if (typeof patch.chineseOn === "boolean") set.chineseOn = patch.chineseOn;
   await db.update(packs).set(set).where(eq(packs.id, packId));
-  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", before, after: set });
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", before, after: { ...set, removeColorway: patch.removeColorway } });
   revalidatePath(`/packs/${packId}`);
-  return { ok: true };
+  return { ok: true, colorways: set.colorways ?? before.colorways };
 }
 
 /** Free text in answers is printed in CAPITALS (house style). */
@@ -104,65 +146,73 @@ function knownQuestion(category: Category, qid: string) {
   return Boolean(findQuestion(category, qid));
 }
 
-/** Saves a designer's answer. Anything a designer sets is CONFIRMED. */
-export async function saveAnswer(packId: string, questionId: string, value: unknown): Promise<ActionResult & { updatedAt?: string }> {
+const hasLibraryRef = (v: unknown) => /"id":"[0-9a-f-]{36}"/i.test(JSON.stringify(v ?? null));
+async function rebuildUsage(packId: string) {
+  const rows = await db.select({ q: packAnswers.questionId, v: packAnswers.value }).from(packAnswers).where(eq(packAnswers.packId, packId));
+  await rebuildLibraryUsage(packId, Object.fromEntries(rows.map((r) => [r.q, r.v])));
+}
+
+/** Values the client may write besides a designer's own: one-click fills computed from other answers. */
+export type ClientOrigin = "DESIGNER" | "DERIVED";
+
+export type SaveResult = (ActionResult & { updatedAt?: string }) | { ok: false; error: string; stale: { by: string; at: string } };
+
+/**
+ * Saves a designer's answer (or a derived fill the designer clicked). Both are settled.
+ * `base` is the answer's updatedAt the client last saw: if someone else changed it since, nothing is
+ * overwritten — the client asks "<name> changed this — reload / keep mine" (keep mine = force).
+ */
+export async function saveAnswer(
+  packId: string,
+  questionId: string,
+  value: unknown,
+  origin: ClientOrigin = "DESIGNER",
+  opts: { base?: string | null; force?: boolean } = {},
+): Promise<SaveResult> {
   const user = await requireRole("designer");
-  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
-  const [p] = await db.select().from(packs).where(eq(packs.id, packId));
+  // One query for the pack (archived, category, status) and the current answer together.
+  const [[p], prev] = await Promise.all([
+    db.select({ category: packs.category, status: packs.status, archivedAt: packs.archivedAt }).from(packs).where(eq(packs.id, packId)),
+    currentAnswer(packId, questionId),
+  ]);
   if (!p) return { ok: false, error: "Pack not found." };
+  if (p.archivedAt) return { ok: false, error: ARCHIVED };
   if (!knownQuestion(p.category as Category, questionId)) return { ok: false, error: `Unknown question ${questionId}.` };
-  const [prev] = await db
-    .select()
-    .from(packAnswers)
-    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, questionId)));
+  if (!opts.force && opts.base !== undefined && prev?.updatedAt && prev.updatedBy && prev.updatedBy !== user.id && (!opts.base || prev.updatedAt.getTime() > new Date(opts.base).getTime() + 1)) {
+    const [who] = await db.select({ name: users.name }).from(users).where(eq(users.id, prev.updatedBy));
+    return { ok: false, error: `${who?.name ?? "Someone"} changed this.`, stale: { by: who?.name ?? "Someone", at: prev.updatedAt.toISOString() } };
+  }
   const v = upperDeep(value);
   const now = new Date();
-  if (isEmpty(v) && v !== false) {
-    await db.delete(packAnswers).where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, questionId)));
-  } else {
-    await db
-      .insert(packAnswers)
-      .values({ packId, questionId, value: v, status: "confirmed", source: "", updatedBy: user.id, updatedAt: now })
-      .onConflictDoUpdate({
-        target: [packAnswers.packId, packAnswers.questionId],
-        set: {
-          value: v,
-          status: "confirmed",
-          source: "", // the designer's own value: no upload replaces it
-          // keep what the AI first suggested when a designer overrides it
-          aiValue: prev && prev.status !== "confirmed" ? prev.value : prev?.aiValue ?? null,
-          updatedBy: user.id,
-          updatedAt: now,
-        },
-      });
-  }
   // Any change after review / sign-off sends the pack back to draft — the approval no longer covers it.
   const reopen = p.status === "IN_REVIEW" || p.status === "APPROVED";
-  await db
-    .update(packs)
-    .set({ updatedBy: user.id, updatedAt: now, ...(reopen ? { status: "DRAFT" as const, reviewedBy: null, reviewedAt: null } : {}) })
-    .where(eq(packs.id, packId));
-  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, before: prev?.value ?? null, after: v });
-  const loaded = await loadPack(packId);
-  if (loaded) await rebuildLibraryUsage(packId, loaded.answers);
+  await Promise.all([
+    writeAnswer({ packId, questionId, value: v, origin: origin === "DERIVED" ? "DERIVED" : "DESIGNER", userId: user.id }, prev),
+    db
+      .update(packs)
+      .set({ updatedBy: user.id, updatedAt: now, ...(reopen ? { status: "DRAFT" as const, reviewedBy: null, reviewedAt: null } : {}) })
+      .where(eq(packs.id, packId)),
+  ]);
+  await Promise.all([
+    audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, before: prev?.value ?? null, after: v }),
+    // "Styles it is used in" only changes when a library link was added or removed.
+    hasLibraryRef(v) || hasLibraryRef(prev?.value) ? rebuildUsage(packId) : null,
+  ]);
   return { ok: true, updatedAt: now.toISOString() };
 }
 
-/** One-click confirm of an AI-suggested / EST / INFERRED answer. */
-export async function confirmAnswer(packId: string, questionId: string): Promise<ActionResult> {
+/** One-click confirm of AI-suggested / EST / INFERRED answers — one, a review group, or "all visible". */
+export async function confirmAnswers(packId: string, questionIds: string[]): Promise<ActionResult & { confirmed?: string[] }> {
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
-  const [prev] = await db
-    .select()
-    .from(packAnswers)
-    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, questionId)));
-  if (!prev) return { ok: false, error: "Nothing to confirm." };
-  await db
-    .update(packAnswers)
-    .set({ status: "confirmed", updatedBy: user.id, updatedAt: new Date() })
-    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, questionId)));
-  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, before: { status: prev.status }, after: { status: "confirmed" } });
-  return { ok: true };
+  const done = await confirmMany(packId, questionIds, user.id);
+  if (!done.length && questionIds.length === 1) return { ok: false, error: "Nothing to confirm." };
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionIds.length === 1 ? questionIds[0] : "confirm-group", after: { status: "confirmed", questions: done } });
+  return { ok: true, confirmed: done };
+}
+
+export async function confirmAnswer(packId: string, questionId: string): Promise<ActionResult> {
+  return confirmAnswers(packId, [questionId]);
 }
 
 /** "Confirm all from <source>": settles every unconfirmed answer read from one upload in one go. */
@@ -170,14 +220,25 @@ export async function confirmFromSource(packId: string, source: string): Promise
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
   if (!source.trim()) return { ok: false, error: "Pick an upload." };
-  const rows = await db
-    .update(packAnswers)
-    .set({ status: "confirmed", updatedBy: user.id, updatedAt: new Date() })
-    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.source, source), ne(packAnswers.status, "confirmed")))
-    .returning({ questionId: packAnswers.questionId });
-  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: `confirm-all:${source}`, after: { questions: rows.map((r) => r.questionId) } });
+  const ids = await db
+    .select({ q: packAnswers.questionId })
+    .from(packAnswers)
+    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.source, source), ne(packAnswers.status, "confirmed")));
+  const done = await confirmMany(packId, ids.map((r) => r.q), user.id);
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: `confirm-all:${source}`, after: { questions: done } });
   revalidatePath(`/packs/${packId}`);
-  return { ok: true, confirmed: rows.length };
+  return { ok: true, confirmed: done.length };
+}
+
+/** Conflict chip: keep the current value, or switch to the value the other source read. */
+export async function resolveConflict(packId: string, questionId: string, choice: "keep" | "switch"): Promise<ActionResult> {
+  const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
+  if (choice === "keep") await keepCurrent(packId, questionId, user.id);
+  else if (!(await switchToConflict(packId, questionId, user.id))) return { ok: false, error: "That conflict was already resolved." };
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, after: { conflict: choice } });
+  revalidatePath(`/packs/${packId}`);
+  return { ok: true };
 }
 
 export type { PrefillResult } from "@/lib/prefill";

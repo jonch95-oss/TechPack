@@ -9,7 +9,7 @@ import { activeJobs, startJob } from "@/lib/jobs";
 /** The job itself runs after this response, within this route's limit. */
 export const maxDuration = 300;
 
-/** POST /api/packs/:id/jobs  { kind: "prefill" } | { kind: "flat", view } | { kind: "source", fileId } — starts a background job. */
+/** POST /api/packs/:id/jobs  { kind: "prefill" } | { kind: "flat", view } | { kind: "source", fileId } | { kind: "pdf", draft?: "1" } — starts a background job. */
 export async function POST(req: Request, ctx: RouteContext<"/api/packs/[id]/jobs">) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -19,7 +19,8 @@ export async function POST(req: Request, ctx: RouteContext<"/api/packs/[id]/jobs
   const [p] = await db.select({ archivedAt: packs.archivedAt }).from(packs).where(eq(packs.id, id));
   if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (p.archivedAt) return NextResponse.json({ error: "This pack is archived and read-only." }, { status: 409 });
-  const body = (await req.json().catch(() => ({}))) as { kind?: string; view?: string; fileId?: string };
+  const body = (await req.json().catch(() => ({}))) as { kind?: string; view?: string; fileId?: string; draft?: string };
+  if (body.kind === "pdf") return NextResponse.json({ job: await startJob(id, "PDF", { draft: body.draft === "1" }, user.id) });
   if (body.kind === "prefill") return NextResponse.json({ job: await startJob(id, "PREFILL", {}, user.id) });
   if (body.kind === "flat" && flatViewEnum.enumValues.includes(body.view as FlatView)) return NextResponse.json({ job: await startJob(id, "FLAT", { view: body.view as FlatView }, user.id) });
   if (body.kind === "source" && /^[0-9a-f-]{36}$/i.test(body.fileId ?? "")) {
