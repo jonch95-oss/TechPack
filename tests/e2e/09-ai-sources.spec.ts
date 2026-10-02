@@ -72,7 +72,24 @@ test("REFER TO SPEC prompt, Needed from you, and AI-read sources", async ({ page
   await page.getByTestId("source-spec_sheet").setInputFiles({ name: "PINK996 spec.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) });
   await expect(page.getByTestId("slot-spec_sheet").getByTestId("source-status")).toContainText(/answers? filled/, { timeout: 30_000 });
   await expect(page.getByTestId("spec-prompt")).toHaveCount(0);
-  await expect(page.getByTestId("q-dims.h")).toContainText("From spec sheet — confirm");
+  // A spec sheet is a trusted source (V2 brief §2): settled, tagged, nothing to confirm one by one.
+  await expect(page.getByTestId("source-dims.h")).toHaveText("From spec sheet");
+  await expect(page.getByTestId("q-dims.h")).not.toContainText("confirm");
+  // Round 5, item 1: 4 different parts on the spec → 4 different library items, each on its own row with its size.
+  const specStatus = await page.getByTestId("slot-spec_sheet").getByTestId("source-status").innerText();
+  const made = [...specStatus.matchAll(/PINK\d+ (LOGO PLATE|BUCKLE|SQUARE RING|EYELET)/gi)].map((m) => m[0].toUpperCase());
+  expect(made).toHaveLength(4);
+  expect(new Set(made.map((m) => m.split(" ")[0])).size).toBe(4);
+  const hwRows = page.getByTestId("q-hardware.items");
+  const rowValues = (i: number) => hwRows.getByTestId(`hardware.items-row-${i}`).locator("input, textarea").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(await rowValues(1)).toContain("SQUARE PRONG BUCKLE");
+  // Rows from the render: 0 arrows plate, 1 buckle, 2 ring zip pulls, 3 strap rings, 4 eyelet.
+  for (const [row, size] of [[0, "50 X 32 MM"], [1, "INNER 40 MM"], [3, "40 X 15 MM"], [4, "DIA 8 MM"]] as const) expect(await rowValues(row)).toContain(size);
+  expect((await rowValues(2)).join(" ")).not.toMatch(/ MM/); // zip pulls: not on the spec
+  // Round 5, item 5: materials named on the spec pre-fill the breakdown cells.
+  await expect(needed).not.toContainText("MICRO MESH (-A) — SWATCH / MATERIAL");
+  await expect(page.getByTestId("cell-text--A-mat_2").locator("input, textarea").first()).toHaveValue("BLACK SMOOTH LEATHER 1.2MM");
+  await expect(page.getByTestId("cell-text--A-mat_1").locator("input, textarea").first()).toHaveValue("BLACK NYLON MICRO MESH");
   await expect(page.getByTestId("q-dims.h").getByRole("spinbutton").or(page.getByTestId("q-dims.h").locator("input")).first()).toHaveValue("18.5");
   await expect(needed).not.toContainText("OVERALL SIZE");
   await expect(needed).not.toContainText("SQUARE PRONG BUCKLE — INNER WIDTH");
@@ -90,12 +107,15 @@ test("REFER TO SPEC prompt, Needed from you, and AI-read sources", async ({ page
   await page.getByLabel("Swatch for").selectOption("1|-A");
   await page.getByTestId("source-swatch_photo").setInputFiles({ name: "junfa.jpg", mimeType: "image/jpeg", buffer: assets!.swatchBlack });
   await expect(page.getByTestId("slot-swatch_photo").getByTestId("source-status")).toContainText(/linked: JUNFA LEATHER/, { timeout: 30_000 });
-  await expect(needed).not.toContainText("MICRO MESH (-A) — SWATCH / MATERIAL");
 
   /* ---- 3d. Sample photo with a ruler: EST from the scale ---- */
   await page.getByTestId("source-scale_photo").setInputFiles({ name: "ruler.png", mimeType: "image/png", buffer: sheetImg });
   await expect(page.getByTestId("slot-scale_photo").getByTestId("source-status")).toContainText(/answers? filled/, { timeout: 30_000 });
   await expect(page.getByTestId("q-hb.strap.drop")).toContainText("EST from sample photo — confirm");
+  // Round 5, item 2: confirm everything from one upload in one click.
+  await page.getByTestId("confirm-all-sample-photo").click();
+  await expect(page.getByTestId("q-hb.strap.drop")).not.toContainText("confirm");
+  await expect(page.getByTestId("confirm-all-sample-photo")).toHaveCount(0);
 
   // Remaining counts after the sources.
   await expect(counts(page)).not.toHaveText("12 measurements · 1 material · 5 hardware still needed");

@@ -244,6 +244,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     statuses: p.statuses,
     colorways: p.pack.colorways,
     chineseOn: p.pack.chineseOn,
+    stage: round && round.stage !== "PROTO" ? "PRODUCTION" : "PROTO",
     hardware: [...hwById.values()].map((h) => ({ id: h.id, code: h.code, type: h.type, dimsMm: h.dimsMm, finish: h.finish, approval: h.approval?.status })),
     materials: [...matById.values()].map((m) => ({ id: m.id, label: materialLabel(m), approval: m.approval?.status ?? "PENDING", composition: m.composition })),
     flats: flatRows.map((f) => ({ view: f.view, status: f.status, materialCallouts: [...calloutsOn(f.svg).materials] })),

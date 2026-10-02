@@ -114,6 +114,7 @@ describe("technical-designer rules", () => {
   it("warns on pending approvals and missing pattern matching", () => {
     const r = validatePack({
       ...withSnap,
+      stage: "PRODUCTION", // plating / mould approval is checked at production
       materials: [{ id: "m1", label: "GINGHAM", approval: "PENDING", composition: "" }],
       answers: { ...withSnap.answers, "materials.list": [{ callout: 1, name: "GINGHAM CHECK", locations: ["BODY"] }], "optional.opt.labels": true },
     });
@@ -126,5 +127,22 @@ describe("technical-designer rules", () => {
   it("POM must agree with the dimensions", () => {
     const r = validatePack({ ...base, answers: { "dims.unit": "CM", "dims.h": 16, "pom.list": [{ point: "TOTAL HEIGHT", value: 17 }] } });
     expect(find(r, "Point of measure TOTAL HEIGHT")?.status).toBe("fail");
+  });
+});
+
+describe("round 5 validation fixes", () => {
+  const unapproved = { id: "h1", code: "OW002", type: "BUCKLE", dimsMm: "40", finish: "BLACK NICKEL", approval: "PENDING" };
+  const withHw = { ...base, answers: { ...base.answers, "hardware.items": [{ item: { id: "h1", label: "OW002" }, qty: 1 }] }, hardware: [unapproved] };
+
+  it("Chinese line under every English line passes when Chinese is off", () => {
+    expect(find(validatePack({ ...base, chineseOn: false }), "Chinese line under every English line")?.status).toBe("pass");
+  });
+  it("body panel heights only apply when panel heights exist", () => {
+    expect(find(validatePack(base), /Body panel heights/)).toBeUndefined();
+  });
+  it("plating / mould approval is a production check, not a proto one", () => {
+    expect(find(validatePack({ ...withHw, stage: "PROTO" }), "Hardware OW002")).toBeUndefined();
+    expect(find(validatePack(withHw), "Hardware OW002")).toBeUndefined(); // no stage = proto
+    expect(find(validatePack({ ...withHw, stage: "PRODUCTION" }), "Hardware OW002")).toMatchObject({ status: "warn", fix: "Plating / mould sample not approved yet." });
   });
 });

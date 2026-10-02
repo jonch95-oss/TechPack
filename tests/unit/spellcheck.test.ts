@@ -23,6 +23,12 @@ describe("spell-check against the trade dictionary", () => {
     expect(check("PU EDGE PAINT DTM. TPU LOGO REF TO PINK005. 17-3914 TCX SHARKSKIN. PANTONE 203 C. 16 cm H X 20 cm W. #8 COIL ZIP. W/ PKT. SEE PG 6/8. CROSSBODY DOPP KIT")).toEqual([]);
   });
 
+  it("accepts spec-sheet abbreviations and never 'corrects' a short all-caps abbreviation", () => {
+    expect(check("BUCKLE INNER W 40MM. EYELET DIA 8 MM Ø 8. TOL +/- 2MM. W×H 50 X 32 CM. PU / TPU / DTM. SEE POM + BOM. 8 SPI. PP SAMPLE, SMS.")).toEqual([]);
+    expect(check("ADD XYZQ LABEL. SEE QWRT.")).toEqual([]); // unknown 4-letter caps: an abbreviation, not a typo
+    expect(check("ADD Xyzq LABEL")[0]).toMatchObject({ word: "XYZQ" }); // not all caps → still checked
+  });
+
   it("suggests the nearest word for unknown typos", () => {
     expect(check("ADJUSTEBLE STRAP")[0]).toMatchObject({ word: "ADJUSTEBLE", suggestion: "ADJUSTABLE" });
     expect(distance("GUSET", "GUSSET")).toBe(1);

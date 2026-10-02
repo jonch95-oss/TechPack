@@ -9,6 +9,9 @@ export const TRADE_TERMS = [
   "PG", "PGS", "REF", "QTY", "CM", "MM", "IN", "W", "H", "D", "L", "LBS", "KG", "OZ", "SS", "FW", "AW", "PO", "MOQ", "RN", "CA", "COO",
   "TCX", "TPX", "TPG", "PMS", "PANTONE", "RGB", "CMYK", "AI", "EPS", "SVG", "PSD", "PDF", "ZIP", "YKK", "SBS", "EST", "OEM", "SKU",
   "R1", "R2", "R3", "R4", "W/", "W/O", "N/A", "AH", "HB", "TB", "TBC", "ASAP", "CAD", "CADS", "LAB", "L/AB", "TJX", "UPC",
+  // measurement / spec-sheet abbreviations
+  "DIA", "DIAM", "TOL", "POM", "POMS", "BOM", "BOMS", "SMS", "TOP", "PPS", "APPROX", "ADJ", "ASSY", "CTR", "CF", "CB", "SA", "GSM", "TBD", "REQ",
+  "OPT", "MIN", "MAX", "THK", "LG", "SM", "MED", "XL", "BLK", "WHT", "NAT", "LT", "DK", "INNER", "OD", "ID", "HT", "WD", "DP", "LEN",
   // materials / construction
   "CROSSBODY", "DOPP", "GINGHAM", "RIPSTOP", "POLYURETHANE", "POLY", "POLYESTER", "NYLON", "SAFFIANO", "PEBBLED", "NUBUCK", "SUEDETTE",
   "MICROFIBRE", "MICROFIBER", "MINKY", "VELOUR", "NEOPRENE", "TRICOT", "TAFFETA", "JACQUARD", "DENIER", "INTERLINING", "LEATHERBOARD",

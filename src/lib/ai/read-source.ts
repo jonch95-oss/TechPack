@@ -1,4 +1,4 @@
-import { allQuestions, isEmpty, type AnswerMap, type Category, type Column, type PomRow, type Question, type RowsQ } from "@/lib/questions";
+import { allQuestions, isEmpty, NOT_A_MATERIAL, type AnswerMap, type Category, type Column, type MaterialEntry, type MatrixValue, type PomRow, type Question, type RowsQ } from "@/lib/questions";
 import { POM_POINTS } from "@/lib/questions/common";
 import { coerce, prefillableQuestions } from "./analyse-render";
 
@@ -14,7 +14,7 @@ export type SourceKind = "spec_sheet" | "view_photo" | "scale_photo" | "hardware
 export const READ_SOURCE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["answers", "row_values", "new_rows", "measurements", "hardware", "board_notes", "notes"],
+  required: ["answers", "row_values", "new_rows", "measurements", "hardware", "materials", "board_notes", "notes"],
   properties: {
     answers: {
       type: "array",
@@ -90,6 +90,22 @@ export const READ_SOURCE_SCHEMA = {
         },
       },
     },
+    materials: {
+      type: "array",
+      description: "Fabrics and leathers named on the sheet (never hardware or zippers), one entry per material and colourway.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["callout", "colorway", "description", "part", "locations"],
+        properties: {
+          callout: { type: "integer", description: "Its number in CURRENT MATERIALS; 0 when the sheet names a material that isn't listed yet." },
+          colorway: { type: "string", description: "Colourway suffix (e.g. -A) or colour name it applies to; empty = every colourway." },
+          description: { type: "string", description: 'As written, CAPITALS, e.g. "BLACK NYLON MICRO MESH" or "BLACK SMOOTH LEATHER 1.2MM".' },
+          part: { type: "string", description: 'What it is used for, e.g. "MAIN BODY", "TRIM", "STRAP".' },
+          locations: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
     board_notes: { type: "array", items: { type: "string" }, description: "Text written on the sheet/board that the designer should act on." },
     notes: { type: "string" },
   },
@@ -101,6 +117,7 @@ export type ReadSourceOutput = {
   new_rows?: { question_id: string; row_json: string; unit: string; note: string }[];
   measurements?: { point: string; value: number; unit: string; tolerance: number | null; how: string }[];
   hardware?: { type: string; description: string; supplier_code: string; dims_mm: string; material: string; finish: string }[];
+  materials?: { callout: number; colorway: string; description: string; part: string; locations: string[] }[];
   board_notes?: string[];
   notes?: string;
 };
@@ -119,7 +136,8 @@ const GUIDE: Record<SourceKind, (view?: string) => string[]> = {
     "- Overall height, width and depth → answers dims.h, dims.w, dims.d (and dims.unit).",
     "- Every measurement (overall and detail) → measurements[], naming the point with a POINTS OF MEASURE name where one fits; include tolerance and how to measure when given.",
     "- Measurements that belong to a current row (pocket W × H, zip opening length, strap width / length / adjustment range, hardware sizes) → row_values on that row, or answers for single fields such as the strap.",
-    "- Hardware sizes (buckle inner width, ring inner size, plate W × H, eyelet diameter) → row_values for hardware.items column \"size\", e.g. \"INNER 25 MM\".",
+    "- Hardware: every part in hardware[] — each with ITS OWN type (BUCKLE, SQUARE RING, EYELET, LOGO PLATE, ZIPPER PULL, ZIPPER SLIDER …), description and size as written (\"INNER 40\", \"40 X 15\", \"DIA 8\", \"50 X 32\"). Supplier code only when one is printed; never a placeholder.",
+    "- Materials named on the sheet (shell, trim, lining …) → materials[], matched to CURRENT MATERIALS by number; 0 for one that isn't listed.",
     "- Read only what is written; never estimate. Give each measurement's unit as written.",
   ],
   view_photo: (view) => [
@@ -151,7 +169,7 @@ function currentRows(category: Category, answers: AnswerMap) {
   return out;
 }
 
-export function buildSourceInstructions(opts: { kind: SourceKind; view?: string; category: Category; styleNo: string; unit: "cm" | "in"; answers: AnswerMap; sheetText?: string }) {
+export function buildSourceInstructions(opts: { kind: SourceKind; view?: string; category: Category; styleNo: string; unit: "cm" | "in"; answers: AnswerMap; colorways?: string[]; sheetText?: string }) {
   const qs = prefillableQuestions(opts.category).map((q) => {
     const b: Record<string, unknown> = { id: q.id, label: q.label, kind: q.kind };
     if ("options" in q) b.options = q.options;
@@ -167,6 +185,9 @@ export function buildSourceInstructions(opts: { kind: SourceKind; view?: string;
     "",
     "QUESTIONS:",
     JSON.stringify(qs),
+    "",
+    `CURRENT MATERIALS: ${JSON.stringify(((opts.answers["materials.list"] as { callout: number; name: string; locations?: string[] }[] | undefined) ?? []).map((m) => ({ callout: m.callout, name: m.name, locations: m.locations ?? [] })))}`,
+    `COLOURWAYS: ${JSON.stringify(opts.colorways ?? [])}`,
     "",
     "CURRENT ROWS (row_values refer to these indexes):",
     JSON.stringify(currentRows(opts.category, opts.answers)),
@@ -218,7 +239,7 @@ export type SourceWrites = { values: Record<string, unknown>; notes: Record<stri
  * (row_values) or appended (new_rows); measurements become points of measure, merged by point, and
  * fill H × W × D when the sheet didn't answer them directly. Pure — the caller skips confirmed answers.
  */
-export function normaliseSource(category: Category, out: ReadSourceOutput, answers: AnswerMap, unit: "cm" | "in", hw: Map<string, { id: string; label: string }>): SourceWrites {
+export function normaliseSource(category: Category, out: ReadSourceOutput, answers: AnswerMap, unit: "cm" | "in", hw: Map<string, { id: string; label: string }>, colorways?: string[]): SourceWrites {
   const byId = new Map<string, Question>(allQuestions(category).map((q) => [q.id, q]));
   const prefillable = new Set(prefillableQuestions(category).map((q) => q.id));
   const values: Record<string, unknown> = {};
@@ -297,6 +318,36 @@ export function normaliseSource(category: Category, out: ReadSourceOutput, answe
     }
     values["pom.list"] = pom;
     note("pom.list", `${out.measurements.length} MEASUREMENT(S) READ`);
+  }
+  // Materials named on the sheet: fill empty colourway cells (as text — the caller swaps in a library
+  // match); a material the list doesn't have yet is added to it with the next number.
+  if (out.materials?.length && colorways?.length) {
+    const list = ((values["materials.list"] ?? answers["materials.list"]) as MaterialEntry[] | undefined)?.map((m) => ({ ...m })) ?? [];
+    const matrix = structuredClone(((values["materials.matrix"] ?? answers["materials.matrix"]) as MatrixValue | undefined) ?? {});
+    let changed = false;
+    for (const m of out.materials) {
+      const desc = String(m.description ?? "").trim().toUpperCase();
+      if (!desc || NOT_A_MATERIAL.test(desc)) continue;
+      let callout = list.some((x) => x.callout === m.callout) ? m.callout : 0;
+      if (!callout) {
+        callout = Math.max(0, ...list.map((x) => x.callout)) + 1;
+        list.push({ callout, name: `${String(m.part || "MATERIAL").trim().toUpperCase().replace(/\s*MTL$/, "")} MTL`, locations: (m.locations ?? []).map((l) => l.toUpperCase()) });
+        values["materials.list"] = list;
+        note("materials.list", `${desc} (FROM SHEET)`);
+      }
+      const cw = String(m.colorway ?? "").trim().toUpperCase();
+      const targets = cw && colorways.includes(cw) ? [cw] : colorways;
+      for (const c of targets) {
+        const cell = matrix[c]?.[`mat_${callout}`];
+        if (cell?.lib || cell?.text) continue;
+        matrix[c] = { ...(matrix[c] ?? {}), [`mat_${callout}`]: { text: desc } };
+        changed = true;
+      }
+    }
+    if (changed) {
+      values["materials.matrix"] = matrix;
+      note("materials.matrix", `MATERIALS FROM SHEET: ${out.materials.map((m) => m.description.toUpperCase()).join(", ")}`);
+    }
   }
   if ((values["dims.h"] ?? values["dims.w"] ?? values["dims.d"]) !== undefined && isEmpty(answers["dims.unit"]) && values["dims.unit"] === undefined)
     values["dims.unit"] = unit === "in" ? "INCHES" : "CM";

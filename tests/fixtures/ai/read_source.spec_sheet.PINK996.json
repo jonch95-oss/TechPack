@@ -56,14 +56,6 @@
    "value_json": "140",
    "unit": "MM",
    "note": "SPEC: ZIP OPENING 140"
-  },
-  {
-   "question_id": "hardware.items",
-   "row": 1,
-   "column": "size",
-   "value_json": "\"INNER 38 MM\"",
-   "unit": "",
-   "note": "SPEC: BUCKLE 38MM"
   }
  ],
  "new_rows": [],
@@ -83,7 +75,63 @@
    "how": ""
   }
  ],
- "hardware": [],
+ "hardware": [
+  {
+   "type": "LOGO PLATE",
+   "description": "ARROWS LOGO PLATE",
+   "supplier_code": "N/A",
+   "dims_mm": "50 X 32",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL"
+  },
+  {
+   "type": "BUCKLE",
+   "description": "SQUARE PRONG BUCKLE",
+   "supplier_code": "N/A",
+   "dims_mm": "INNER 40",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL"
+  },
+  {
+   "type": "HARDWARE",
+   "description": "RECTANGULAR STRAP RING",
+   "supplier_code": "-",
+   "dims_mm": "40 X 15",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL"
+  },
+  {
+   "type": "EYELET",
+   "description": "METAL EYELET",
+   "supplier_code": "TBC",
+   "dims_mm": "DIA 8",
+   "material": "BRASS",
+   "finish": "BLACK NICKEL"
+  }
+ ],
  "board_notes": [],
- "notes": ""
+ "notes": "",
+ "materials": [
+  {
+   "callout": 1,
+   "colorway": "",
+   "description": "BLACK NYLON MICRO MESH",
+   "part": "MAIN BODY",
+   "locations": [
+    "FRONT",
+    "BACK",
+    "GUSSET"
+   ]
+  },
+  {
+   "callout": 0,
+   "colorway": "",
+   "description": "BLACK SMOOTH LEATHER 1.2MM",
+   "part": "TRIM",
+   "locations": [
+    "TRIM",
+    "STRAP"
+   ]
+  }
+ ]
 }

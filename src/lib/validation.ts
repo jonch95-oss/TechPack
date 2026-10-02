@@ -31,6 +31,8 @@ export type ValidationInput = {
   statuses: Record<string, string>;
   colorways: string[];
   chineseOn: boolean;
+  /** PROTO until a production sample round (SMS / PP / TOP) exists. */
+  stage?: "PROTO" | "PRODUCTION";
   /** Library hardware referenced by the pack, resolved. */
   hardware: { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string }[];
   /** Library materials used by the pack. */
@@ -86,8 +88,6 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   const flap = num(a["hb.flap_height"]);
   if (flap !== null && H !== null)
     push(flap <= H ? { group: "Geometry", rule: "Flap height ≤ body height", status: "pass", fix: "" } : { group: "Geometry", rule: "Flap height ≤ body height", status: "fail", fix: `Flap ${flap} ${unit} is taller than the bag (${H} ${unit}).`, questionId: "hb.flap_height" });
-
-  push({ group: "Geometry", rule: "Body panel heights sum to total H", status: "na", fix: "No separate body panel heights entered." });
 
   const pockets = (a["interior.pockets"] as { type?: string; wall?: string; w?: number; h?: number; top_offset?: number }[] | undefined) ?? [];
   pockets.forEach((p, i) => {
@@ -202,7 +202,8 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   for (const m of input.materials ?? [])
     if (m.approval !== "APPROVED") push({ group: "Consistency", rule: `Material ${m.label}`, status: "warn", fix: m.approval === "REJECTED" ? "This material was REJECTED — choose another swatch." : "Not approved yet (lab dip / strike-off pending).", questionId: "materials.matrix" });
   for (const h of input.hardware.filter((x) => used.has(x.id)))
-    if (h.approval && h.approval !== "APPROVED") push({ group: "Consistency", rule: `Hardware ${h.code}`, status: "warn", fix: h.approval === "REJECTED" ? "This component was REJECTED." : "Plating / mould sample not approved yet.", questionId: "hardware.items" });
+    // Plating / mould approval is a production matter (SMS / PP / TOP), not a proto one.
+    if (input.stage === "PRODUCTION" && h.approval && h.approval !== "APPROVED") push({ group: "Consistency", rule: `Hardware ${h.code}`, status: "warn", fix: h.approval === "REJECTED" ? "This component was REJECTED." : "Plating / mould sample not approved yet.", questionId: "hardware.items" });
 
   /* Pattern matching for checks, stripes and plaids. */
   const PATTERN = /GINGHAM|CHECK|STRIPE|PLAID|TARTAN|MONOGRAM/;
@@ -226,7 +227,7 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     push({ group: "Language", rule: `Spelling: ${f.word}`, status: "fail", fix: f.suggestion ? `Change ${f.word} → ${f.suggestion}.` : `Check ${f.word} — not in the trade dictionary.`, questionId: "$spelling" });
   const lower = lowercaseAnswers(a);
   push(lower.length ? { group: "Language", rule: "All callouts in capitals", status: "fail", fix: `Use capitals in: ${lower.slice(0, 5).join(", ")}.`, questionId: lower[0] } : { group: "Language", rule: "All callouts in capitals", status: "pass", fix: "" });
-  push(input.chineseOn ? { group: "Language", rule: "Chinese line under every English line", status: "pass", fix: "Checked line by line as the PDF is made: glossary first, then translation; any line left without Chinese blocks the export." } : { group: "Language", rule: "Chinese line under every English line", status: "na", fix: "Chinese is off." });
+  push({ group: "Language", rule: "Chinese line under every English line", status: "pass", fix: input.chineseOn ? "Checked line by line as the PDF is made: glossary first, then translation; any line left without Chinese blocks the export." : "Chinese is off — English only." });
 
   /* ------------------------------ Licensor ------------------------------ */
   if (input.brand.licensorRequired || category === "Coolers / insulated") {

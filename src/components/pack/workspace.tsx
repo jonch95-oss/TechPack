@@ -27,7 +27,7 @@ import {
   type Question,
   type Section,
 } from "@/lib/questions";
-import { addPackFile, confirmAnswer, saveAnswer, updatePackSetup } from "@/app/actions/packs";
+import { addPackFile, confirmAnswer, confirmFromSource, saveAnswer, updatePackSetup } from "@/app/actions/packs";
 import { useJob } from "@/components/use-job";
 import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, cx, Eyebrow } from "@/components/ui";
@@ -187,6 +187,24 @@ export function PackWorkspace(props: WorkspaceProps) {
 
 
   const [cropOpen, setCropOpen] = useState(false);
+  // Unconfirmed answers read from uploads, grouped by upload, for "Confirm all from …".
+  const pendingBySource = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const [qid, st] of Object.entries(statuses)) {
+      const src = meta[qid]?.source;
+      if (src && st !== "confirmed") m.set(src, [...(m.get(src) ?? []), qid]);
+    }
+    return [...m.entries()];
+  }, [statuses, meta]);
+  const confirmAllFrom = (source: string, ids: string[]) => {
+    setStatuses((s) => ({ ...s, ...Object.fromEntries(ids.map((id) => [id, "confirmed" as const])) }));
+    start(async () => {
+      const res = await confirmFromSource(pack.id, source);
+      if (!res.ok) setSave({ state: "error", error: res.error });
+      else setSave({ state: "saved", at: new Date().toISOString() });
+      router.refresh();
+    });
+  };
   const [sourceFocus, setSourceFocus] = useState<"spec_sheet" | null>(null);
   const needed = useMemo(
     () =>
@@ -451,6 +469,16 @@ export function PackWorkspace(props: WorkspaceProps) {
                 </div>
               )}
               {pack.aiAnalysis && needed.items.length > 0 && <NeededList needed={needed} onJump={jump} />}
+              {canEdit && pendingBySource.length > 0 && (
+                <div className="mt-5 flex flex-wrap items-center gap-3" data-testid="confirm-sources">
+                  <span className="text-[11px] text-taupe">Read from uploads, still to confirm:</span>
+                  {pendingBySource.map(([src, ids]) => (
+                    <Button key={src} size="sm" variant="ghost" onClick={() => confirmAllFrom(src, ids)} data-testid={`confirm-all-${src.toLowerCase().replace(/\W+/g, "-")}`}>
+                      Confirm all {ids.length} from {src.toLowerCase()}
+                    </Button>
+                  ))}
+                </div>
+              )}
               {pack.aiAnalysis && (
                 <div className="grid sm:grid-cols-2 gap-6 mt-6 pt-6 border-t border-hairline text-[11.5px]">
                   <div>
@@ -776,6 +804,11 @@ function QuestionRow({
           </div>
         )}
         {badge && meta?.aiNote && <div className="text-[10.5px] tracking-[0.08em] text-gold mt-2">Saw: {meta.aiNote}</div>}
+        {!badge && status === "confirmed" && meta?.source && (
+          <div className="mt-2 text-[10px] tracking-[0.14em] uppercase text-taupe" data-testid={`source-${q.id}`} title={meta.aiNote || undefined}>
+            From {meta.source.toLowerCase()}
+          </div>
+        )}
         {overridden && <div className="text-[10.5px] text-taupe mt-2 italic">AI suggested {displayAi(meta!.aiValue)}</div>}
         {extra && <div className="mt-2">{extra}</div>}
       </div>

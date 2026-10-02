@@ -89,7 +89,8 @@ test("technical designer: POM, BOM, approvals, duplicate, sign-off, factory Q&A,
   const pink005 = hw.find((h) => h.code === "PINK005")!;
   const pink006 = hw.find((h) => h.code === "PINK006")!;
   const warns = async () => ((await (await page.request.get(`/api/packs/${pink.id}/validation`)).json()).rules as { rule: string; status: string }[]).filter((r) => r.status === "warn").map((r) => r.rule);
-  expect(await warns()).toContain("Hardware PINK005");
+  // Plating / mould approval is a production check (round 5): a proto pack doesn't warn about it.
+  expect(await warns()).not.toContain("Hardware PINK005");
   await page.goto(`/library/hardware/${pink005.id}`);
   await page.getByTestId("approval-status").getByRole("radio", { name: "APPROVED" }).click();
   await page.getByLabel("Approval note").fill("PLATING SAMPLE APPROVED");

@@ -133,6 +133,7 @@ export function normaliseType(t: string): string {
   if (HARDWARE_TYPES.includes(up)) return up;
   const rules: [RegExp, string][] = [
     [/KEY ?CHAIN|CHARM|KEYRING/, "KEYCHAIN/CHARM"],
+    [/SLIDER/, "ZIPPER SLIDER"],
     [/PULL|PULLER/, "ZIPPER PULL"],
     [/ZIP/, "ZIPPER"],
     [/MAGNET/, "MAGNETIC SNAP"],
@@ -140,12 +141,13 @@ export function normaliseType(t: string): string {
     [/TURN ?LOCK/, "TURNLOCK"],
     [/\bD[- ]?RING/, "D-RING"],
     [/\bO[- ]?RING/, "O-RING"],
-    [/(SQUARE|RECTANGULAR) RING/, "SQUARE RING"],
+    [/(SQUARE|RECTANGULAR|RECT\.?)\b.*\bRING|\bRING\b.*\b(SQUARE|RECTANGULAR)/, "SQUARE RING"],
     [/SWIVEL/, "SWIVEL HOOK"],
     [/LOBSTER/, "LOBSTER CLASP"],
     [/CHAIN/, "CHAIN"],
     [/BUCKLE/, "BUCKLE"],
     [/RIVET/, "RIVET"],
+    [/EYELET|GROMMET/, "EYELET"],
     [/FEET|FOOT/, "FEET"],
     [/WOVEN/, "WOVEN LABEL"],
     [/TPU|RUBBER/, "TPU/RUBBER PATCH"],

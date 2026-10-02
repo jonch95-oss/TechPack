@@ -8,7 +8,8 @@ import { callTechnicalDesigner } from "@/lib/ai/client";
 import { buildSourceInstructions, normaliseSource, READ_SOURCE_SCHEMA, sourceLabel, type ReadSourceOutput, type SourceKind } from "@/lib/ai/read-source";
 import { buildSwatchInstructions, normaliseChipBox, READ_SWATCH_SCHEMA, SWATCH_FIELDS, type ReadSwatchOutput } from "@/lib/ai/read-swatch";
 import { checkComponentCode, hardwareByCode, loadPack, materialLabel, rebuildLibraryUsage, type LoadedPack } from "@/lib/data";
-import { normaliseField, normaliseType } from "@/lib/library-import";
+import { normaliseField } from "@/lib/library-import";
+import { assignRows, realCode, resolveParts } from "@/lib/hardware-match";
 import type { LibValue, MatrixValue } from "@/lib/questions";
 import { readStoredFile } from "@/lib/storage";
 
@@ -71,10 +72,19 @@ export async function readSource(packId: string, fileId: string, user: { id: str
   return result;
 }
 
-/** Writes one answer unless it was confirmed; status sourced (or est), with where it came from. */
+/**
+ * Writes one answer with where it came from. A spec sheet is a trusted source (V2 brief §2): its
+ * values are settled ("confirmed", tagged SPEC SHEET); photos and rulers still need confirming. Never
+ * replaces an answer a designer set or confirmed — only unconfirmed answers, or this source's own.
+ */
 function writer(p: LoadedPack, user: { id: string }, result: SourceResult) {
-  return async (questionId: string, value: unknown, status: Exclude<AnswerStatus, "confirmed">, source: string, note: string) => {
-    if (p.statuses[questionId] === "confirmed") {
+  return async (questionId: string, value: unknown, status: AnswerStatus, source: string, note: string) => {
+    // Confirmed values belong to the designer, unless they came from this same source (a re-read).
+    // Hardware rows and breakdown cells from another upload may still be merged into (parts linked,
+    // sizes added, a spec's material text replaced by the swatch card itself).
+    const from = p.meta[questionId]?.source;
+    const mergeable = (questionId === "hardware.items" || questionId === "materials.matrix") && !!from;
+    if (p.statuses[questionId] === "confirmed" && from !== source && !mergeable) {
       result.skippedConfirmed++;
       return;
     }
@@ -96,7 +106,7 @@ async function readGeneric(p: LoadedPack, file: PackFile, f: { data: Buffer; con
   if (/\.xls$/i.test(file.name)) throw new Error("Old .xls files can't be read — save it as .xlsx or export CSV, then upload again.");
   const res = await callTechnicalDesigner<ReadSourceOutput>({
     task: "read_source",
-    instructions: buildSourceInstructions({ kind, view: file.tag, category: p.pack.category, styleNo: p.pack.styleNo, unit, answers: p.answers, sheetText: isSheet ? await sheetText(f.data, file.name) : undefined }),
+    instructions: buildSourceInstructions({ kind, view: file.tag, category: p.pack.category, styleNo: p.pack.styleNo, unit, answers: p.answers, colorways: p.pack.colorways, sheetText: isSheet ? await sheetText(f.data, file.name) : undefined }),
     images: isPdf || isSheet ? [] : [f],
     pdfs: isPdf ? [f.data] : [],
     schema: READ_SOURCE_SCHEMA,
@@ -106,58 +116,76 @@ async function readGeneric(p: LoadedPack, file: PackFile, f: { data: Buffer; con
   const out = res.output;
   result.boardNotes = (out.board_notes ?? []).map((n) => n.toUpperCase());
   const hw = await hardwareByCode();
-  const { values, notes, dropped } = normaliseSource(p.pack.category, out, p.answers, unit, hw);
+  const { values, notes, dropped } = normaliseSource(p.pack.category, out, p.answers, unit, hw, p.pack.colorways);
+  if (values["materials.matrix"]) values["materials.matrix"] = await libraryMaterials(values["materials.matrix"] as MatrixValue);
   result.dropped = dropped;
   const source = sourceLabel(kind, file.tag);
   const write = writer(p, user, result);
   for (const [qid, v] of Object.entries(values)) {
     // A ruler gives estimates; everything read off a sheet or seen on a photo is "from <source>".
-    const status = kind === "scale_photo" && isMeasure(qid) ? "est" : "sourced";
+    const status = kind === "spec_sheet" ? "confirmed" : kind === "scale_photo" && isMeasure(qid) ? "est" : "sourced";
     await write(qid, v, status, source, (notes[qid] ?? []).join("; ").slice(0, 400) || `FROM ${source}`);
   }
-  if (out.hardware?.length) await linkHardware(p, out.hardware, source, write, result);
+  if (out.hardware?.length) await linkHardware(p, out.hardware, source, kind === "spec_sheet" ? "confirmed" : "sourced", write, result);
+}
+
+/**
+ * Spec-sheet materials arrive as text ("BLACK SMOOTH LEATHER 1.2MM"); a library material that clearly
+ * is that one (its article and colour name both appear in the text) is linked instead.
+ */
+async function libraryMaterials(matrix: MatrixValue): Promise<MatrixValue> {
+  const all = await db.select().from(materials);
+  const words = (s: string) => s.toUpperCase().replace(/[^0-9A-Z.]+/g, " ").trim();
+  for (const cw of Object.keys(matrix))
+    for (const [k, cell] of Object.entries(matrix[cw])) {
+      if (!cell.text || cell.lib) continue;
+      const t = ` ${words(cell.text)} `;
+      const m = all.find((x) => x.articleName && x.colourName && t.includes(` ${words(x.articleName)} `) && t.includes(` ${words(x.colourName)} `));
+      if (m) matrix[cw][k] = { lib: { id: m.id, label: materialLabel(m) } };
+    }
+  return matrix;
 }
 
 const isMeasure = (qid: string) => /^dims\.|\.width$|\.length$|\.drop$|\.height$|_height$|pom\.list|adjust_m(in|ax)/.test(qid);
 
-/** Hardware from a photo / supplier sheet: match the brand's library (type + size) or add it with the next free code, then link it on the pack. */
-async function linkHardware(p: LoadedPack, parts: NonNullable<ReadSourceOutput["hardware"]>, source: string, write: ReturnType<typeof writer>, result: SourceResult) {
+/**
+ * Hardware from a spec sheet / supplier sheet / photo: each part keeps its own type and gets its own
+ * library item (matched on a real supplier code or the same size, else added with the next free
+ * code), then fills the pack row of its own type with the sheet's size. See lib/hardware-match.
+ */
+async function linkHardware(p: LoadedPack, parts: NonNullable<ReadSourceOutput["hardware"]>, source: string, status: "sourced" | "confirmed", write: ReturnType<typeof writer>, result: SourceResult) {
   const lib = await db.select().from(hardware).where(eq(hardware.brandId, p.brand.id));
-  const rows = ((p.answers["hardware.items"] as Record<string, unknown>[] | undefined) ?? []).map((r) => ({ ...r }));
-  const norm = (s: string) => s.toUpperCase().replace(/[^0-9A-Z.]+/g, " ").trim();
-  for (const part of parts) {
-    const type = normaliseType(part.type || part.description);
-    const dims = norm(part.dims_mm || "");
-    let item = lib.find((h) => h.type === type && dims && norm(h.dimsMm) === dims) ?? lib.find((h) => part.supplier_code && h.notes.toUpperCase().includes(part.supplier_code.toUpperCase()));
+  const resolved = resolveParts(parts, lib);
+  const created = new Map<string, (typeof lib)[number]>();
+  const linked: { type: string; size: string; item: LibValue; description: string }[] = [];
+  for (const r of resolved) {
+    let item = r.match ?? created.get(r.key) ?? null;
     if (!item) {
       const code = (await checkComponentCode(p.brand.id, "")).suggestion;
       if (!code) continue;
+      const supplierCode = realCode(r.part.supplier_code);
       [item] = await db
         .insert(hardware)
         .values({
           brandId: p.brand.id,
           code,
-          type,
-          name: (part.description || type).toUpperCase(),
-          dimsMm: (part.dims_mm || "").toUpperCase(),
-          material: normaliseField("hardware", "material", part.material),
-          finish: normaliseField("hardware", "finish", part.finish),
-          notes: [`FROM ${source}`, part.supplier_code && `SUPPLIER CODE ${part.supplier_code.toUpperCase()}`].filter(Boolean).join(" · "),
+          type: r.type,
+          name: (r.part.description || r.type).toUpperCase(),
+          dimsMm: r.size.replace(/ MM$/, ""),
+          material: normaliseField("hardware", "material", r.part.material),
+          finish: normaliseField("hardware", "finish", r.part.finish),
+          notes: [`FROM ${source}`, supplierCode && `SUPPLIER CODE ${supplierCode}`].filter(Boolean).join(" · "),
         })
         .returning();
+      created.set(r.key, item);
       lib.push(item);
-      result.created.push(code);
-    }
-    const value: LibValue = { id: item.id, label: item.code };
-    // The first pack row of this type still waiting for its part gets it; otherwise add a row.
-    const words = norm(`${type} ${part.description}`).split(" ").filter((w) => w.length > 3);
-    const i = rows.findIndex((r) => !r.item && words.some((w) => norm(String(r.seen ?? "")).includes(w)));
-    const size = part.dims_mm ? `${part.dims_mm.toUpperCase()} MM`.replace(/MM MM$/, "MM") : undefined;
-    if (i >= 0) rows[i] = { ...rows[i], item: value, ...(size && !rows[i].size ? { size } : {}) };
-    else if (!rows.some((r) => (r.item as LibValue | undefined)?.id === item.id)) rows.push({ item: value, qty: 1, seen: (part.description || type).toUpperCase(), ...(size ? { size } : {}) });
-    result.linked.push(item.code);
+      result.created.push(`${code} ${r.type}`);
+    } else if (!result.linked.includes(item.code)) result.linked.push(item.code);
+    linked.push({ type: r.type, size: r.size, item: { id: item.id, label: item.code }, description: r.part.description || r.type });
   }
-  await write("hardware.items", rows, "sourced", source, `PARTS FROM ${source}: ${result.linked.join(", ")}`);
+  const typeOf = new Map(lib.map((h) => [h.id, h.type]));
+  const rows = assignRows((p.answers["hardware.items"] as Record<string, unknown>[] | undefined) ?? [], linked, (id) => typeOf.get(id));
+  await write("hardware.items", rows, status, source, `PARTS FROM ${source}: ${linked.map((l) => `${l.item.label} ${l.type}${l.size ? ` ${l.size}` : ""}`).join(", ")}`);
 }
 
 /** Swatch card: read it, match a library material (supplier + colour no. + article) or add one, and put it in the breakdown cell. */

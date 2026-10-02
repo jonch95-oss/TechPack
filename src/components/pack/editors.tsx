@@ -267,6 +267,17 @@ export function MatrixEditor({
                                 {qv}
                               </button>
                             ))}
+                            {c.lib && !cell?.lib && (
+                              // As written on a spec sheet (e.g. BLACK SMOOTH LEATHER 1.2MM) until a library swatch is picked.
+                              <div className="flex-1 min-w-40" data-testid={`cell-text-${cw}-${c.key}`}>
+                                <CommitText
+                                  value={cell?.text && !QUICK.includes(cell.text) ? cell.text : ""}
+                                  onCommit={(t) => setCell(cw, c.key, t ? { text: t } : null)}
+                                  disabled={disabled}
+                                  placeholder="Or as written…"
+                                />
+                              </div>
+                            )}
                             {!c.lib && (
                               <div className="flex-1 min-w-48">
                                 <CommitText

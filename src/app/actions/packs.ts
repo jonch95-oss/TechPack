@@ -2,7 +2,7 @@
 
 import { cleanCrop, detectProductBox, type CropBox } from "@/lib/crop";
 import { PAGE_SECTIONS } from "@/lib/page-names";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -122,12 +122,13 @@ export async function saveAnswer(packId: string, questionId: string, value: unkn
   } else {
     await db
       .insert(packAnswers)
-      .values({ packId, questionId, value: v, status: "confirmed", updatedBy: user.id, updatedAt: now })
+      .values({ packId, questionId, value: v, status: "confirmed", source: "", updatedBy: user.id, updatedAt: now })
       .onConflictDoUpdate({
         target: [packAnswers.packId, packAnswers.questionId],
         set: {
           value: v,
           status: "confirmed",
+          source: "", // the designer's own value: no upload replaces it
           // keep what the AI first suggested when a designer overrides it
           aiValue: prev && prev.status !== "confirmed" ? prev.value : prev?.aiValue ?? null,
           updatedBy: user.id,
@@ -162,6 +163,21 @@ export async function confirmAnswer(packId: string, questionId: string): Promise
     .where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, questionId)));
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: questionId, before: { status: prev.status }, after: { status: "confirmed" } });
   return { ok: true };
+}
+
+/** "Confirm all from <source>": settles every unconfirmed answer read from one upload in one go. */
+export async function confirmFromSource(packId: string, source: string): Promise<ActionResult & { confirmed?: number }> {
+  const user = await requireRole("designer");
+  if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
+  if (!source.trim()) return { ok: false, error: "Pick an upload." };
+  const rows = await db
+    .update(packAnswers)
+    .set({ status: "confirmed", updatedBy: user.id, updatedAt: new Date() })
+    .where(and(eq(packAnswers.packId, packId), eq(packAnswers.source, source), ne(packAnswers.status, "confirmed")))
+    .returning({ questionId: packAnswers.questionId });
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: `confirm-all:${source}`, after: { questions: rows.map((r) => r.questionId) } });
+  revalidatePath(`/packs/${packId}`);
+  return { ok: true, confirmed: rows.length };
 }
 
 export type { PrefillResult } from "@/lib/prefill";

@@ -64,9 +64,17 @@ export function spellcheckText(
   const counts = new Map<string, number>();
   for (const t of tokenize(text)) {
     const w = t.toUpperCase().replace(/’/g, "'");
+    // An all-caps word of 4 letters or fewer is an abbreviation (DIA, TOL, SPI …): never "corrected",
+    // unless it's a misspelling we know.
+    if (isAbbreviation(t) && !KNOWN_CORRECTIONS[w]) continue;
     if (!ok(w)) counts.set(w, (counts.get(w) ?? 0) + 1);
   }
   return [...counts].map(([word, count]) => ({ word, count, suggestion: suggest(word, suggestFrom) }));
+}
+
+/** All capitals (A–Z only), 4 letters or fewer: DIA, TOL, SPI, PU … */
+export function isAbbreviation(token: string) {
+  return /^[A-Z]{1,4}$/.test(token);
 }
 
 /** Known correction first; otherwise the closest trade term, then the closest English word. */
