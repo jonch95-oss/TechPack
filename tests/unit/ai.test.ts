@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { TECHNICAL_DESIGNER_SYSTEM_PROMPT } from "@/lib/ai/system-prompt";
-import { buildAnalyseInstructions, normaliseAiAnswers, type AnalyseRenderOutput } from "@/lib/ai/analyse-render";
+import { buildAnalyseInstructions, normaliseAiAnswers, structuredPrefill, type AnalyseRenderOutput } from "@/lib/ai/analyse-render";
 import { normaliseChipBox } from "@/lib/ai/read-swatch";
 
 describe("Technical Designer agent", () => {
@@ -51,5 +51,56 @@ describe("Technical Designer agent", () => {
   it("clamps the swatch chip box", () => {
     expect(normaliseChipBox({ found: true, x: 0.9, y: 0.5, w: 0.3, h: 0.1 })).toEqual({ x: 0.9, y: 0.5, w: expect.closeTo(0.1, 5), h: 0.1 });
     expect(normaliseChipBox({ found: false, x: 0, y: 0, w: 0, h: 0 })).toBeNull();
+  });
+});
+
+describe("structured pre-fill (round 3: Off-White micro-mesh shoulder bag)", () => {
+  const out = {
+    answers: [],
+    materials: [
+      { name: "MICRO MESH", locations: ["FRONT", "BACK"] },
+      { name: "#5 METAL ZIPPER", locations: ["FRONT"] }, // not a material — dropped
+    ],
+    exterior_pockets: [{ type: "ZIP POCKET", position: "FRONT", qty: 2, detail: "curved, ring pull" }],
+    hardware: [
+      { type: "LOGO PLATE", description: "ARROWS PLATE", qty: 1, placement: "FRONT CENTRE", library_code: "" },
+      { type: "BUCKLE", description: "SQUARE PRONG BUCKLE", qty: 1, placement: "STRAP", library_code: "" },
+      { type: "ZIPPER PULL", description: "RING ZIP PULL", qty: 2, placement: "FRONT POCKETS", library_code: "OW001" },
+      { type: "SQUARE RING", description: "RECTANGULAR STRAP RING", qty: 2, placement: "SIDES", library_code: "" },
+      { type: "EYELET", description: "EYELET", qty: 1, placement: "", library_code: "" },
+    ],
+    zippers: [{ position: "FRONT POCKET", size: "#5", type: "METAL", qty: 2 }],
+    colorways: [{ name: "black" }],
+    visible_features: [],
+    not_visible: [],
+    agent_notes: "",
+  };
+  const hw = new Map([["OW001", { id: "hw-1", label: "OW001 RING PULL" }]]);
+
+  it("turns pockets, hardware, zippers and colourways into rows", () => {
+    const s = structuredPrefill(out, hw);
+    expect(s.pocketRows).toEqual([
+      { type: "ZIP POCKET", position: "FRONT", detail: "CURVED, RING PULL" },
+      { type: "ZIP POCKET", position: "FRONT", detail: "CURVED, RING PULL" },
+    ]);
+    expect(s.hardwareRows.map((r) => [r.seen, r.qty])).toEqual([
+      ["ARROWS PLATE (LOGO PLATE)", 1],
+      ["SQUARE PRONG BUCKLE", 1],
+      ["RING ZIP PULL (ZIPPER PULL)", 2],
+      ["RECTANGULAR STRAP RING (SQUARE RING)", 2],
+      ["EYELET", 1],
+    ]);
+    expect(s.hardwareRows[2].item).toEqual({ id: "hw-1", label: "OW001 RING PULL" }); // linked only when the code exists
+    expect(s.hardwareRows[0].item).toBeUndefined();
+    expect(s.zipperRows).toEqual([
+      { position: "FRONT POCKET", size: "#5", type: "METAL" },
+      { position: "FRONT POCKET", size: "#5", type: "METAL" },
+    ]);
+    expect(s.colorwayNames).toEqual(["BLACK"]);
+  });
+
+  it("keeps hardware and zippers out of the numbered materials", () => {
+    const { materials } = normaliseAiAnswers("Handbags", out, hw);
+    expect(materials.map((m) => m.name)).toEqual(["MICRO MESH"]);
   });
 });

@@ -140,7 +140,7 @@ export function normaliseType(t: string): string {
     [/TURN ?LOCK/, "TURNLOCK"],
     [/\bD[- ]?RING/, "D-RING"],
     [/\bO[- ]?RING/, "O-RING"],
-    [/SQUARE RING/, "SQUARE RING"],
+    [/(SQUARE|RECTANGULAR) RING/, "SQUARE RING"],
     [/SWIVEL/, "SWIVEL HOOK"],
     [/LOBSTER/, "LOBSTER CLASP"],
     [/CHAIN/, "CHAIN"],

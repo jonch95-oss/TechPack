@@ -3,6 +3,7 @@
  * but allowed. Each result says exactly what to fix and which question to jump to.
  */
 import {
+  bodyMaterials,
   completeness,
   matrixColumns,
   visibleQuestions,
@@ -174,7 +175,10 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   }
 
   /* ------------------------------ Consistency ------------------------------ */
-  const mats = (a["materials.list"] as MaterialEntry[] | undefined) ?? [];
+  const allMats = (a["materials.list"] as MaterialEntry[] | undefined) ?? [];
+  const mats = bodyMaterials(allMats);
+  for (const m of allMats.filter((x) => !mats.includes(x)))
+    push({ group: "Consistency", rule: `Material ${m.callout} is not a fabric or leather`, status: "fail", fix: `${m.name} is hardware or a zipper — remove it from Materials and add it under Hardware or Zippers.`, questionId: "materials.list" });
   const cols = new Set(matrixColumns(ctx).map((c) => c.key));
   const noLoc = mats.filter((m) => !m.locations?.length || !cols.has(`mat_${m.callout}`));
   if (mats.length) push(noLoc.length ? { group: "Consistency", rule: "Every material number appears on the drawings and in the table", status: "fail", fix: `Give material ${noLoc.map((m) => m.callout).join(", ")} its locations.`, questionId: "materials.list" } : { group: "Consistency", rule: "Every material number appears on the drawings and in the table", status: "pass", fix: "" });

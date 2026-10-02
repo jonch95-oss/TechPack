@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, can } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { loadPack } from "@/lib/data";
-import { generateFlat } from "@/lib/lineart/service";
+import { generateFlat, getFlat } from "@/lib/lineart/service";
 import { flatViewEnum, type FlatView } from "@/db/schema";
 
 // Image generation can take a minute or two.
@@ -34,4 +34,15 @@ export async function POST(req: Request, ctx: RouteContext<"/api/packs/[id]/flat
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 422 });
   }
+}
+
+/** GET /api/packs/:id/flats?view=FRONT — one view (the studio reloads it when a background job finishes). */
+export async function GET(req: Request, ctx: RouteContext<"/api/packs/[id]/flats">) {
+  if (!(await getCurrentUser())) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const { id } = await ctx.params;
+  const view = new URL(req.url).searchParams.get("view") ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !flatViewEnum.enumValues.includes(view as FlatView)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const flat = await getFlat(id, view as FlatView);
+  if (!flat) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ flat: { id: flat.id, view: flat.view, status: flat.status, source: flat.source, svg: flat.svg, updatedAt: flat.updatedAt.toISOString() } }, { headers: { "cache-control": "no-store" } });
 }

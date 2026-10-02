@@ -197,6 +197,8 @@ export const packs = pgTable(
 );
 
 export type FileMarks = {
+  /** Product crop on a render / board (fractions of the image); everything downstream uses the crop. */
+  crop?: { x: number; y: number; w: number; h: number } | null;
   /** Zoom detail: circular crop (fractions of the photo), printed in a thick red ring. */
   zoom?: { x: number; y: number; r: number } | null;
   /** Red dot a leader line points to (on the render: the logo). */
@@ -434,3 +436,30 @@ export const translations = pgTable("translations", {
 export type Flat = typeof flats.$inferSelect;
 export type FlatView = (typeof flatViewEnum.enumValues)[number];
 export type Revision = typeof revisions.$inferSelect;
+
+/**
+ * Background jobs: AI pre-fill and line-art generation run after the request returns; the studio polls
+ * the job, so a dropped connection never loses (or repeats) the work.
+ */
+export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT"]);
+export const jobStatusEnum = pgEnum("job_status", ["QUEUED", "RUNNING", "DONE", "ERROR"]);
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    packId: uuid("pack_id")
+      .notNull()
+      .references(() => packs.id, { onDelete: "cascade" }),
+    kind: jobKindEnum("kind").notNull(),
+    params: jsonb("params").$type<{ view?: FlatView }>().notNull().default({}),
+    status: jobStatusEnum("status").notNull().default("QUEUED"),
+    step: text("step").notNull().default(""),
+    result: jsonb("result").$type<Record<string, unknown> | null>(),
+    error: text("error"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("jobs_pack_idx").on(t.packId, t.createdAt)],
+);
+export type Job = typeof jobs.$inferSelect;

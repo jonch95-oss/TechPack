@@ -40,19 +40,58 @@ export async function generateFlatRaster(render: Buffer, view: View, category: s
     if (data) return { png: data, source: "AI", note: "fixture" };
   }
   const key = process.env.IMAGE_API_KEY;
+  let apiError = "";
   if (key) {
     try {
       const png = (process.env.IMAGE_PROVIDER ?? "openai").toLowerCase().startsWith("google") ? await google(render, view, category, key) : await openai(render, view, category, key);
       return { png, source: "AI", note: "" };
     } catch (e) {
-      const msg = friendlyAIError(e, "image", "Drawing the flat");
-      if (view !== "FRONT") throw new Error(msg);
-      // Front view: fall back to tracing the render so the designer isn't blocked.
-      return { png: await edgeLineArt(render), mask: await renderSilhouette(render), source: "TRACE", note: `${msg} Traced from the render instead — tidy it in the editor.` };
+      apiError = friendlyAIError(e, "image", "Drawing the flat");
     }
   }
-  if (view !== "FRONT") throw new Error("Back, side and top views need the image API (IMAGE_API_KEY).");
-  return { png: await edgeLineArt(render), mask: await renderSilhouette(render), source: "TRACE", note: "No image API key — traced straight from the render. Tidy it in the editor." };
+  if (view !== "FRONT") throw new Error(apiError || "Back, side and top views need the image service (IMAGE_API_KEY).");
+  // Front view: trace the render itself so the designer isn't blocked — but only when a trace can work.
+  // A dark or sheer product (black leather, micro-mesh) traces as a solid blob, so stop with a clear message.
+  const why = await untraceable(render);
+  if (why) throw new Error(`${apiError || "No image service is set up."} The render can't be traced instead — ${why}. Try again once the image service is back, or upload your own flat drawing.`);
+  return {
+    png: await edgeLineArt(render),
+    mask: await renderSilhouette(render),
+    source: "TRACE",
+    note: apiError ? `${apiError} Traced from the render instead — tidy it in the editor.` : "No image API key — traced straight from the render. Tidy it in the editor.",
+  };
+}
+
+/**
+ * Why a render can't be traced into line art, or "" when it can. Looks only at the product (pixels
+ * that differ from the border colour): too dark → no visible seams; too busy (mesh, sheer, heavy
+ * texture) → edges everywhere.
+ */
+export async function untraceable(render: Buffer): Promise<string> {
+  const { data, info } = await sharp(render).rotate().flatten({ background: "#ffffff" }).resize({ width: 400, height: 400, fit: "inside" }).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width,
+    H = info.height;
+  const border: number[] = [];
+  for (let x = 0; x < W; x++) border.push(data[x], data[(H - 1) * W + x]);
+  for (let y = 0; y < H; y++) border.push(data[y * W], data[y * W + W - 1]);
+  const bg = border.sort((a, b) => a - b)[border.length >> 1];
+  let n = 0,
+    sum = 0,
+    busy = 0;
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      if (Math.abs(data[i] - bg) < 30) continue;
+      n++;
+      sum += data[i];
+      const gx = data[i + 1] - data[i - 1],
+        gy = data[i + W] - data[i - W];
+      if (Math.abs(gx) + Math.abs(gy) > 60) busy++;
+    }
+  if (n < W * H * 0.02) return "no product found on it";
+  if (sum / n < 70) return "the product is too dark for its seams to show";
+  if (busy / n > 0.22) return "the material is sheer or heavily textured, so edges are everywhere";
+  return "";
 }
 
 async function asPng(render: Buffer) {

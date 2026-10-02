@@ -232,6 +232,10 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
 
   /* ---- Upload the render (a single image) and the colorway renders ---- */
   await page.getByTestId("upload-render").setInputFiles({ name: "PINK013-A.jpg", mimeType: "image/jpeg", buffer: a.renderBlack });
+  // Crop step: a clean render needs no crop — the auto-detected box is the whole image.
+  await expect(page.getByTestId("crop-canvas")).toBeVisible();
+  await page.getByTestId("crop-save").click();
+  await expect(page.getByTestId("crop-canvas")).toBeHidden();
   await expect(page.getByTestId("render-image")).toBeVisible();
   await page.getByTestId("upload-colorway_render").setInputFiles({ name: "PINK013-A.jpg", mimeType: "image/jpeg", buffer: a.renderBlack });
   await expect(page.locator("select[aria-label=Colorway]")).toHaveCount(1);

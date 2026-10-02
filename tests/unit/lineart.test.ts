@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { traceLineArt } from "@/lib/lineart/trace";
+import { untraceable } from "@/lib/lineart/generate";
 import { annotate, flatSvg, readDimensions, readMeta, replaceLayer, setDimMeta, splitContours, tracedLayers } from "@/lib/lineart/geometry";
 
 /** A 1000 × 700 "flat": a 2 px rectangle body with a dashed stitch line inside it. */
@@ -65,5 +66,20 @@ describe("line art", () => {
     expect(c).toHaveLength(2);
     expect(Math.sign(c[0].area)).not.toBe(Math.sign(c[1].area));
     expect(c[0].bbox).toEqual({ x: 0, y: 0, w: 10, h: 10 });
+  });
+});
+
+describe("trace fallback guard (round 3, item 6)", () => {
+  const board = (fill: string, defs = "") =>
+    sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><defs>${defs}</defs><rect width="600" height="600" fill="#fff"/><rect x="100" y="150" width="400" height="300" fill="${fill}" stroke="#555" stroke-width="3"/></svg>`)).png().toBuffer();
+  it("traces a light product", async () => {
+    expect(await untraceable(await board("#d9c7b0"))).toBe("");
+  });
+  it("refuses a dark product (traces as a solid blob)", async () => {
+    expect(await untraceable(await board("#151515"))).toMatch(/too dark/);
+  });
+  it("refuses a sheer / micro-mesh product", async () => {
+    const mesh = `<pattern id="m" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#ddd"/><circle cx="3" cy="3" r="1.6" fill="#222"/></pattern>`;
+    expect(await untraceable(await board("url(#m)", mesh))).toMatch(/sheer/);
   });
 });

@@ -26,7 +26,8 @@ import {
   type Question,
   type Section,
 } from "@/lib/questions";
-import { addPackFile, confirmAnswer, runPrefill, saveAnswer, updatePackSetup } from "@/app/actions/packs";
+import { addPackFile, confirmAnswer, saveAnswer, updatePackSetup } from "@/app/actions/packs";
+import { useJob } from "@/components/use-job";
 import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, cx, Eyebrow } from "@/components/ui";
 import { Toggle } from "@/components/chips";
@@ -38,6 +39,7 @@ import { SignOff } from "./signoff";
 import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
 import { PackAdmin } from "./pack-admin";
+import { CropEditor } from "./crop-editor";
 import { FactoryQA } from "./factory-qa";
 import { PhotoMarks } from "./photo-marks";
 
@@ -169,20 +171,30 @@ export function PackWorkspace(props: WorkspaceProps) {
   const render = props.files.find((f) => f.kind === "render");
 
 
-  const doPrefill = () => {
-    setPrefill({ running: true });
-    start(async () => {
-      const res = await runPrefill(pack.id);
-      if (!res.ok) setPrefill({ running: false, error: res.error });
+  const [cropOpen, setCropOpen] = useState(false);
+  // Pre-fill runs as a background job; the page polls it, so a dropped connection loses nothing.
+  const prefillJob = useJob(
+    pack.id,
+    (j) => j.kind === "PREFILL",
+    (j) => {
+      if (j.status === "ERROR") setPrefill({ running: false, error: j.error ?? "AI pre-fill didn't work this time. Try again." });
       else {
+        const r = (j.result ?? {}) as { filled?: number; skippedConfirmed?: number; fixture?: boolean };
+        const filled = r.filled ?? 0;
         setPrefill({
           running: false,
-          message: `${res.filled} answer${res.filled === 1 ? "" : "s"} pre-filled${res.skippedConfirmed ? ` · ${res.skippedConfirmed} confirmed answer(s) left untouched` : ""}${res.fixture ? " · fixture mode" : ""}. Confirm or change each one.`,
+          message: `${filled} answer${filled === 1 ? "" : "s"} pre-filled${r.skippedConfirmed ? ` · ${r.skippedConfirmed} confirmed answer(s) left untouched` : ""}${r.fixture ? " · fixture mode" : ""}. Confirm or change each one.`,
         });
         router.refresh();
       }
-    });
+    },
+  );
+  const doPrefill = async () => {
+    setPrefill({ running: true });
+    await prefillJob.start({ kind: "prefill" });
+    setPrefill((p) => (p.running ? { running: false } : p)); // could not start (startError says why)
   };
+  const prefillRunning = prefill.running || prefillJob.running;
 
   return (
     <LibraryProvider initial={props.library} brandId={brand.id}>
@@ -191,7 +203,13 @@ export function PackWorkspace(props: WorkspaceProps) {
         <div className="relative bg-white border border-hairline aspect-[4/3] flex items-center justify-center overflow-hidden">
           {render ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={render.url} alt={`${pack.styleNo} render`} className="w-full h-full object-contain" data-testid="render-image" />
+            <img
+              src={render.marks?.crop ? `/api/packs/${pack.id}/files/${render.id}?c=${Object.values(render.marks.crop).join("_")}` : render.url}
+              alt={`${pack.styleNo} render`}
+              className="w-full h-full object-contain"
+              data-testid="render-image"
+              data-cropped={render.marks?.crop ? "1" : "0"}
+            />
           ) : null}
           {render && canEdit ? (
             <PhotoMarks
@@ -204,6 +222,19 @@ export function PackWorkspace(props: WorkspaceProps) {
                 </button>
               )}
             />
+          ) : null}
+          {render && canEdit ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setCropOpen(true)}
+                className="absolute top-4 left-40 inline-flex h-8 px-4 items-center bg-ivory/90 border border-hairline-strong text-[10px] tracking-[0.18em] uppercase hover:border-ink"
+                data-testid="crop-render"
+              >
+                {render.marks?.crop ? "Cropped ●" : "Crop"}
+              </button>
+              <CropEditor key={`${render.id}-${cropOpen}`} packId={pack.id} file={render} open={cropOpen} onClose={() => setCropOpen(false)} />
+            </>
           ) : null}
           {render ? null : (
             <div className="text-center px-10">
@@ -232,6 +263,8 @@ export function PackWorkspace(props: WorkspaceProps) {
                     if (!res.ok) throw new Error(res.error);
                     setSave({ state: "saved", at: new Date().toISOString() });
                     router.refresh();
+                    // Crop step: check the auto-detected product box before anything reads the render.
+                    setCropOpen(true);
                   } catch (err) {
                     setSave({ state: "error", error: (err as Error).message });
                   }
@@ -357,13 +390,18 @@ export function PackWorkspace(props: WorkspaceProps) {
                   </p>
                 </div>
                 {canEdit && (
-                  <Button variant="gold" onClick={doPrefill} disabled={!render || prefill.running} data-testid="run-prefill">
-                    {prefill.running ? <span className="shimmer px-2">Reading render…</span> : pack.aiAnalysis ? "Re-read render" : "Pre-fill from render"}
+                  <Button variant="gold" onClick={doPrefill} disabled={!render || prefillRunning} data-testid="run-prefill">
+                    {prefillRunning ? <span className="shimmer px-2">{prefillJob.job?.step ? `${prefillJob.job.step}…` : "Reading render…"}</span> : pack.aiAnalysis ? "Re-read render" : "Pre-fill from render"}
                   </Button>
                 )}
               </div>
               {prefill.message && <p className="mt-4 text-[12px] text-ok" role="status">{prefill.message}</p>}
-              {prefill.error && <p className="mt-4 text-[12px] text-signal" role="alert">{prefill.error}</p>}
+              {prefillRunning && <p className="mt-4 text-[12px] text-taupe" data-testid="prefill-progress">Working in the background — you can keep going or leave this page; the answers appear when it&apos;s done.</p>}
+              {(prefill.error || prefillJob.startError) && (
+                <p className="mt-4 text-[12px] text-signal" role="alert">
+                  {prefill.error || prefillJob.startError}
+                </p>
+              )}
               {pack.aiAnalysis && (
                 <div className="grid sm:grid-cols-2 gap-6 mt-6 pt-6 border-t border-hairline text-[11.5px]">
                   <div>

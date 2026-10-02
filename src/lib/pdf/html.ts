@@ -58,8 +58,11 @@ body { font-family: "IconCond", "Helvetica Neue Condensed", "Arial Narrow", Aria
 .comments { display: flex; flex-direction: column; gap: 10px; font-size: 14pt; }
 .comments .c { display: flex; gap: 10px; align-items: flex-start; line-height: 1.25; }
 table { border-collapse: collapse; }
-.mast { border: 1.5px solid #111; font-size: 11pt; width: 9.1in; }
-.mast td { border: 1px solid #111; padding: 3px 6px; vertical-align: middle; line-height: 1.15; }
+.mast { border: 1.5px solid #111; font-size: 11pt; width: 9.1in; table-layout: fixed; }
+.mast tr { height: 0.27in; }
+.mast tr.last { height: 0.52in; }
+.mast td { border: 1px solid #111; padding: 2px 6px; vertical-align: middle; line-height: 1.12; overflow: hidden; white-space: nowrap; }
+.mast td.wrap { white-space: normal; }
 .mast .icon { background: #111; color: #fff; font-size: 10pt; text-align: center; }
 .mast .brand { font-size: 20pt; text-align: center; vertical-align: middle; }
 .mast b { font-weight: 700; }
@@ -176,6 +179,19 @@ function flatBox(f: { svg: string; inferred: boolean } | null, cls: string, labe
   return `<div style="display:flex;flex-direction:column;height:100%;min-height:0;text-align:center">${label ? `<div class="big-label">${esc(label)}</div>` : ""}${f.inferred ? `<div class="inferred">INFERRED — CONFIRM</div>` : ""}<div style="flex:1;min-height:0">${inlineFlat(f.svg, { className: `flat ${cls}` })}</div></div>`;
 }
 
+/**
+ * Largest type size (pt, max → min) at which text fits `w` inches on `lines` lines of condensed bold
+ * capitals — so a long description or style name shrinks instead of pushing the masthead down.
+ */
+function fitPt(text: string, w: number, lines = 1, max = 14, min = 7) {
+  const len = Math.max(1, text.length);
+  for (let pt = max; pt > min; pt -= 0.5) {
+    const perLine = Math.floor(w / ((pt / 72) * 0.56));
+    if (len <= perLine * lines * (lines > 1 ? 0.88 : 1)) return pt;
+  }
+  return min;
+}
+
 /** Date of the i-th revision (R1 = 0) for the masthead. */
 function rd(doc: PackDoc, i: number) {
   const r = doc.revision.dates[i];
@@ -185,21 +201,27 @@ function rd(doc: PackDoc, i: number) {
 /* ------------------------------ 1. MATERIALS / HARDWARE ------------------------------ */
 function materialsPage(doc: PackDoc, n: number) {
   const h = doc.header;
+  // Fixed-height masthead: each value shrinks to fit its cell (one line; two for the description).
+  const v = (text: unknown, w: number, cls = "", lines = 1) => {
+    const t = String(text ?? "").toUpperCase();
+    const pt = fitPt(t, w, lines);
+    return `<span class="v ${cls}" style="font-size:${pt}pt${lines === 1 ? ";white-space:nowrap" : ""}">${esc(t)}</span>`;
+  };
   const mast = `<table class="mast">
-    <tr><td class="icon" style="width:1.2in">ICON LUXURY GROUP</td>
+    <tr><td class="icon wrap" style="width:1.2in;font-size:8.5pt;line-height:1">ICON LUXURY GROUP</td>
       <td style="width:2.95in"><b>ATTN:</b> <span class="v">FTY</span></td>
-      <td style="width:2.05in;font-size:10pt"><b>ORIGINAL DATE SENT :</b> <span class="v">${esc(doc.revision.original)}</span></td>
-      <td style="width:2.9in"><b>SIZE :</b> <span class="red v">${esc(doc.sizeText)}</span>${upd(doc, "dims.")}</td></tr>
-    <tr><td rowspan="4" class="brand">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.1in;max-height:0.75in"/>` : `<span style="font-size:11pt">BRAND :</span><br/>${up(doc.brand.name)}`}</td>
-      <td><b>RETAILER :</b> <span class="v">${up(h.retailer)}</span></td><td><b>REVISED DATE(S) SENT :</b> R1${rd(doc, 0)} &nbsp; R2:${rd(doc, 1)}</td><td><b>SENT BY:</b> <span class="v">${up(h.sentBy)}</span></td></tr>
-    <tr><td><b>SEASON :</b> <span class="v">${up(h.season)}</span></td><td>R3:${rd(doc, 2)}</td><td><b>DUE DATE:</b> <span class="v red">${up(h.dueDate)}</span></td></tr>
-    <tr><td><b>REFERENCE SAMPLE:</b> <span class="v red">${up(h.referenceSample)}</span></td><td>R4:${rd(doc, 3)}${doc.revision.dates.slice(4).map((r) => ` &nbsp; ${esc(r.label)}: ${esc(r.date)}`).join("")}</td><td><b>PROTO :</b> <span class="v">${proto(doc)}</span></td></tr>
-    <tr><td colspan="2"><b>DESCRIPTION:</b> <span class="v">${up(h.description)}</span>${upd(doc, "header.description")}</td><td><b>BAG CATEGORY:</b> <span class="v">${up(h.category)}</span><br/><b>STYLE NAME:</b> <span class="v">${up(doc.pack.styleName)}</span></td></tr>
+      <td style="width:2.05in;font-size:9.5pt"><b>ORIGINAL DATE SENT :</b> ${v(doc.revision.original, 0.8)}</td>
+      <td style="width:2.9in"><b>SIZE :</b> ${v(doc.sizeText, 2.3, "red")}${upd(doc, "dims.")}</td></tr>
+    <tr><td rowspan="4" class="brand wrap">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.1in;max-height:0.75in"/>` : `<span style="font-size:11pt">BRAND :</span><br/><span style="font-size:${fitPt(doc.brand.name.toUpperCase(), 1.05, 2, 20)}pt">${up(doc.brand.name)}</span>`}</td>
+      <td><b>RETAILER :</b> ${v(h.retailer, 2.1)}</td><td class="wrap" style="font-size:8.5pt;line-height:1.1"><b>REVISED DATE(S) SENT :</b><br/>R1${rd(doc, 0)} &nbsp; R2:${rd(doc, 1)}</td><td><b>SENT BY:</b> ${v(h.sentBy, 2.2)}</td></tr>
+    <tr><td><b>SEASON :</b> ${v(h.season, 2.15)}</td><td>R3:${rd(doc, 2)}</td><td><b>DUE DATE:</b> ${v(h.dueDate, 2.15, "red")}</td></tr>
+    <tr><td><b>REFERENCE SAMPLE:</b> ${v(h.referenceSample, 1.6, "red")}</td><td style="font-size:${fitPt(`R4: ${doc.revision.dates[3]?.date ?? ""} ${doc.revision.dates.slice(4).map((r) => `${r.label}: ${r.date}`).join("  ")}`, 1.9, 1, 11)}pt">R4:${rd(doc, 3)}${doc.revision.dates.slice(4).map((r) => ` &nbsp; ${esc(r.label)}: ${esc(r.date)}`).join("")}</td><td><b>PROTO :</b> ${v(proto(doc), 2.3)}</td></tr>
+    <tr class="last"><td colspan="2" class="wrap"><b>DESCRIPTION:</b> ${v(h.description, 4.0, "", 2)}${upd(doc, "header.description")}</td><td><b>BAG CATEGORY:</b> ${v(h.category, 1.8)}<br/><b>STYLE NAME:</b> ${v(doc.pack.styleName, 1.95)}</td></tr>
   </table>`;
 
   const comments = commentsFor(doc, "MATERIALS / HARDWARE", n);
-  const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.3in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
-  const top = h.physicalSample ? 3.05 : 2.75;
+  const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.12in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
+  const top = h.physicalSample ? 2.9 : 2.25; // the masthead is a fixed 1.65in
   const callouts = doc.materials
     .map((m) => `<div style="display:flex;gap:10px;align-items:center;font-size:15pt;line-height:1.15"><span class="callout">${m.callout}</span><span>${up(m.name)}${m.locations.length ? `<br/><span style="font-size:11pt" class="muted">${up(m.locations.join(", "))}</span>` : ""}</span></div>`)
     .join("");

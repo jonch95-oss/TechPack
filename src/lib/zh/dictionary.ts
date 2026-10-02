@@ -254,6 +254,7 @@ export const TRADE_ZH: Record<string, string> = {
   "W/": "带",
   HOOK: "钩",
   "D-RING": "D环",
+  "SQUARE/RECTANGULAR RING": "方扣环",
   "O-RING": "O环",
   RING: "环",
   LOOP: "耳仔",

@@ -1,4 +1,5 @@
 import "server-only";
+import { readCroppedFile } from "@/lib/crop";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { flats, hardware, type Flat, type FlatView } from "@/db/schema";
@@ -69,7 +70,7 @@ export async function generateFlat(p: LoadedPack, view: FlatView, userId: string
   } else {
     const render = p.files.find((f) => f.kind === "render");
     if (!render) throw new Error("Upload the render first.");
-    const img = await readStoredFile(render.url);
+    const img = await readCroppedFile(render); // board text never gets traced
     const r = await generateFlatRaster(img.data, view, p.pack.category);
     png = r.png;
     source = r.source;

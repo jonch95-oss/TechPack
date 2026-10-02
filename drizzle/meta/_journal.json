@@ -50,6 +50,20 @@
       "when": 1790912348954,
       "tag": "0006_remove_smoke_test_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790914459300,
+      "tag": "0007_background_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790914608507,
+      "tag": "0008_remove_smoke_test_packs",
+      "breakpoints": true
     }
   ]
 }

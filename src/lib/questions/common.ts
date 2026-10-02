@@ -320,6 +320,7 @@ export const COMMON_SECTIONS: Section[] = [
           { key: "item", label: "Item", kind: "lib", lib: "hardware", required: true },
           { key: "qty", label: "Qty", kind: "stepper", unit: "qty", required: true },
           { key: "placement", label: "Placement", kind: "text" },
+          { key: "seen", label: "Seen on render", kind: "text" },
         ],
       },
     ],

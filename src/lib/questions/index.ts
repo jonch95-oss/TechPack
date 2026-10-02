@@ -122,12 +122,20 @@ export function hasZipper(ctx: EvalContext): boolean {
   if (!isEmpty(a["duf.zip_size"]) || !isEmpty(a["rduf.zip_size"])) return true;
   if (["Hardside luggage", "Softside luggage", "Duffels", "Rolling duffels", "Cosmetic bags", "Toiletry kits", "Packing cubes"].includes(ctx.category))
     return true;
-  const items = (a["hardware.items"] as { item?: { label?: string } }[] | undefined) ?? [];
-  return items.some((r) => /ZIPPER(?! PULL)/i.test(r.item?.label ?? ""));
+  const items = (a["hardware.items"] as { item?: { label?: string }; seen?: string }[] | undefined) ?? [];
+  return items.some((r) => /ZIPPER(?! PULL)|ZIP PULL|RING PULL/i.test(`${r.item?.label ?? ""} ${r.seen ?? ""}`));
+}
+
+/** Numbered materials are fabrics and leathers; hardware and zippers have their own rows and columns. */
+export const NOT_A_MATERIAL = /\b(ZIP|ZIPPER|ZIPS|HARDWARE|BUCKLE|RING|PULL|PULLER|PLATE|EYELET|GROMMET|RIVET|SNAP|HOOK|CLASP|TURNLOCK|STUD|SLIDER|FEET)\b/;
+
+/** The materials list without anything that is really hardware or a zipper. */
+export function bodyMaterials(list: MaterialEntry[] | undefined): MaterialEntry[] {
+  return (list ?? []).filter((m) => !NOT_A_MATERIAL.test(String(m.name ?? "").toUpperCase()));
 }
 
 export function matrixColumns(ctx: EvalContext): MatrixColumn[] {
-  const mats = (ctx.answers["materials.list"] as MaterialEntry[] | undefined) ?? [];
+  const mats = bodyMaterials(ctx.answers["materials.list"] as MaterialEntry[] | undefined);
   const cols: MatrixColumn[] = mats.map((m) => ({ key: `mat_${m.callout}`, label: m.name || `MATERIAL ${m.callout}`, lib: "material", callout: m.callout }));
   const interior = sectionsFor(ctx.category).some((s) => s.id === "interior" && evalCondition(s.showIf, ctx));
   if (interior) cols.push({ key: "lining", label: "LINING", lib: "print" });

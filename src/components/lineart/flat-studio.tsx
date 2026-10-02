@@ -6,6 +6,7 @@ import { deleteFlat } from "@/app/actions/flats";
 import { Badge, Button, Empty, cx } from "@/components/ui";
 import { FileButton } from "@/components/library/hardware-form";
 import { FlatEditor, type FlatData } from "./flat-editor";
+import { useJob } from "@/components/use-job";
 
 const VIEWS = ["FRONT", "BACK", "SIDE", "TOP"] as const;
 const VIEW_NOTE: Record<(typeof VIEWS)[number], string> = {
@@ -24,13 +25,42 @@ export function FlatStudio({ packId, flats, canEdit, hasRender, dims, initialVie
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const flat = list.find((f) => f.view === view);
 
+  // Generating a view runs as a background job (it can take a minute); uploads of the designer's own
+  // drawing are traced straight away.
+  const job = useJob(
+    packId,
+    (j) => j.kind === "FLAT",
+    async (j) => {
+      const v = j.view ?? "FRONT";
+      if (j.status === "ERROR") {
+        setMsg({ ok: false, text: j.error ?? "Drawing the flat didn't work this time. Try again." });
+        setBusy(null);
+        return;
+      }
+      const res = await fetch(`/api/packs/${packId}/flats?view=${v}`, { cache: "no-store" }).catch(() => null);
+      const json = res?.ok ? ((await res.json()) as { flat?: FlatData }) : {};
+      if (json.flat) setList((l) => [...l.filter((f) => f.view !== v), json.flat!]);
+      setView(v);
+      setMsg({ ok: true, text: String((j.result as { note?: string } | null)?.note || `${v.toLowerCase()} view ready.`) });
+      setBusy(null);
+      router.refresh();
+    },
+  );
+  const working = busy ?? (job.running ? (job.job?.view ?? null) : null);
+
   const generate = async (v: string, file?: File) => {
     setBusy(v);
     setMsg(null);
+    if (!file) {
+      await job.start({ kind: "flat", view: v }); // resolves when the job has finished (or couldn't start)
+      setBusy(null);
+      return;
+    }
     try {
-      const res = file
-        ? await fetch(`/api/packs/${packId}/flats`, { method: "POST", body: (() => { const fd = new FormData(); fd.append("view", v); fd.append("file", file); return fd; })() })
-        : await fetch(`/api/packs/${packId}/flats`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: v }) });
+      const fd = new FormData();
+      fd.append("view", v);
+      fd.append("file", file);
+      const res = await fetch(`/api/packs/${packId}/flats`, { method: "POST", body: fd });
       const json = (await res.json().catch(() => ({}))) as { flat?: FlatData; note?: string; error?: string };
       if (!res.ok || !json.flat) throw new Error(json.error ?? `Failed (${res.status})`);
       setList((l) => [...l.filter((f) => f.view !== v), json.flat!]);
@@ -38,7 +68,7 @@ export function FlatStudio({ packId, flats, canEdit, hasRender, dims, initialVie
       setMsg({ ok: true, text: json.note || `${v.toLowerCase()} view ready.` });
       router.refresh();
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      setMsg({ ok: false, text: (e as Error).message === "Failed to fetch" ? "Couldn't reach the studio — check your connection and try again." : (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -78,14 +108,16 @@ export function FlatStudio({ packId, flats, canEdit, hasRender, dims, initialVie
       </div>
 
       {msg && <p className={cx("text-[12px]", msg.ok ? "text-ok" : "text-signal")} role="status" data-testid="flat-msg">{msg.text}</p>}
+      {!msg && job.startError && <p className="text-[12px] text-signal" role="status" data-testid="flat-msg">{job.startError}</p>}
+      {working && <p className="text-[12px] text-taupe">Working in the background — you can leave this page; the drawing appears when it&apos;s done.</p>}
 
       {flat ? (
         <>
           <FlatEditor key={`${flat.id}-${flat.updatedAt}-${flat.status}`} flat={flat} canEdit={canEdit} onChange={(f) => setList((l) => l.map((x) => (x.id === f.id ? { ...x, status: f.status, svg: f.svg } : x)))} />
           {canEdit && (
             <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-hairline">
-              <Button size="sm" variant="ghost" disabled={!!busy || !hasRender} onClick={() => confirm(`Generate the ${view.toLowerCase()} view again? Your edits to it are replaced.`) && generate(view)}>
-                {busy === view ? "Generating…" : "Generate again"}
+              <Button size="sm" variant="ghost" disabled={!!working || !hasRender} onClick={() => confirm(`Generate the ${view.toLowerCase()} view again? Your edits to it are replaced.`) && generate(view)}>
+                {working === view ? `${job.job?.step || "Generating"}…` : "Generate again"}
               </Button>
               <FileButton label="Trace my own drawing" onFile={(f) => generate(view, f)} small />
               <button
@@ -107,8 +139,8 @@ export function FlatStudio({ packId, flats, canEdit, hasRender, dims, initialVie
           action={
             canEdit ? (
               <div className="flex flex-wrap items-center justify-center gap-4">
-                <Button onClick={() => generate(view)} disabled={!!busy || !hasRender} data-testid="generate-flat">
-                  {busy === view ? "Generating… (up to a minute)" : `Generate ${view.toLowerCase()} view`}
+                <Button onClick={() => generate(view)} disabled={!!working || !hasRender} data-testid="generate-flat">
+                  {working === view ? `${job.job?.step || "Generating"}… (up to a minute)` : `Generate ${view.toLowerCase()} view`}
                 </Button>
                 <FileButton label="Or trace my own drawing" onFile={(f) => generate(view, f)} testId="upload-flat" />
               </div>

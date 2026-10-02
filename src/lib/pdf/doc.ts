@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { flats as flatsTable, hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type Print } from "@/db/schema";
+import { flats as flatsTable, hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type FileMarks, type Print } from "@/db/schema";
 import sharp from "sharp";
 import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
 import { pantoneHex, repeatTileSvg, svgDataUri } from "./artwork";
@@ -9,9 +9,10 @@ import type { PageSection } from "@/lib/page-names";
 import { changeLine, revisionState } from "@/lib/revisions";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
+import { intoCrop, readCroppedFile } from "@/lib/crop";
 import { spellcheck } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
-import { contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
+import { bodyMaterials, contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, type Plan } from "./plan";
 
 export type Img = { src: string; w: number; h: number } | null;
@@ -79,6 +80,23 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     }
   };
 
+  /** A render / board as it prints: cropped to the product. */
+  const cropped = async (f?: { url: string; marks?: FileMarks | null } | null): Promise<Img> => {
+    if (!f || !withImages) return null;
+    if (!f.marks?.crop) return img(f.url);
+    const key = `${f.url}#${JSON.stringify(f.marks.crop)}`;
+    if (cache.has(key)) return cache.get(key)!;
+    try {
+      const c = await readCroppedFile(f);
+      const meta = await sharp(c.data).metadata();
+      const v = { src: `data:${c.contentType};base64,${c.data.toString("base64")}`, w: meta.width ?? 1, h: meta.height ?? 1 };
+      cache.set(key, v);
+      return v;
+    } catch {
+      return img(f.url);
+    }
+  };
+
   const render = p.files.find((f) => f.kind === "render");
   const cwRenders = p.pack.colorways.map((cw) => p.files.find((f) => f.kind === "colorway_render" && f.tag === cw)).filter(Boolean);
   const refs = p.files.filter((f) => f.kind === "reference" || f.kind === "construction");
@@ -89,7 +107,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
   }));
 
   /* ---------- materials & swatches ---------- */
-  const matList = (a["materials.list"] as MaterialEntry[] | undefined) ?? [];
+  const matList = bodyMaterials(a["materials.list"] as MaterialEntry[] | undefined);
   const matrix = (a["materials.matrix"] as MatrixValue | undefined) ?? {};
   const cols = matrixColumns(ctx);
   const names = (a["colorways.names"] as Record<string, string> | undefined) ?? {};
@@ -272,8 +290,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     },
     dims: { h: a["dims.h"] as number | undefined, w: a["dims.w"] as number | undefined, d: a["dims.d"] as number | undefined },
     sizeText: ["h", "w", "d"].every((k) => typeof a[`dims.${k}`] === "number") ? `${trim(a["dims.h"] as number)}${U} H X ${trim(a["dims.w"] as number)}${U} W X ${trim(a["dims.d"] as number)}${U} D`.replace(/ CM/g, " cm").replace(/"/g, '"') : "",
-    render: await img(render?.url),
-    colorwayRenders: await Promise.all(cwRenders.map(async (f) => ({ colorway: f!.tag, img: await img(f!.url) }))),
+    render: await cropped(render),
+    colorwayRenders: await Promise.all(cwRenders.map(async (f) => ({ colorway: f!.tag, img: await cropped(f) }))),
     references: await Promise.all(
       refs.map(async (r) => {
         const page = placeOf(r, comments);
@@ -281,7 +299,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
       }),
     ),
     /** Where the LOGO label's leader line points on the render (marked, or from the placement). */
-    logoPoint: render?.marks?.dot ?? defaultLogoPoint(String(a["branding.placement"] ?? "")),
+    logoPoint: render?.marks?.dot ? intoCrop(render.marks.dot, render.marks.crop) : defaultLogoPoint(String(a["branding.placement"] ?? "")),
     comments,
     materials: matList,
     matrixColumns: cols,
