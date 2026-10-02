@@ -107,6 +107,43 @@ function classify(q: Question): Row {
   return { source: "AI > BASE STYLE", stage: req(q), note: "" };
 }
 
+/* ---------------------- Round 6 decisions (Jon) ---------------------- */
+
+/** "never" is only for admin and presentation fields; everything else that describes the product is PROTO. */
+const ADMIN = new Set(["header.retailer", "header.season", "header.reference_sample", "header.due_date", "header.physical_sample", "header.description", "comments.list", "dims.unit", "dims.show_secondary"]);
+const isAdmin = (q: Question) => ADMIN.has(q.id) || q.id.startsWith("pages.");
+
+type Cond = NonNullable<Question["showIf"]>;
+function condText(c: Cond | undefined): string {
+  if (!c) return "";
+  if ("all" in c) return c.all.map((x) => condText(x as Cond)).filter(Boolean).join(" and ");
+  if ("any" in c) return c.any.map((x) => condText(x as Cond)).filter(Boolean).join(" or ");
+  if ("category" in c) return "";
+  if ("truthy" in c) return `\`${c.q}\` is yes`;
+  if ("eq" in c) return `\`${c.q}\` = ${String(c.eq)}`;
+  if ("in" in c) return `\`${c.q}\` is ${c.in.join(" / ")}`;
+  if ("includes" in c) return `\`${c.q}\` includes ${c.includes}`;
+  return "";
+}
+
+function decide(q: Question): Row {
+  const r = { ...classify(q) };
+  // A. The base style wins over the AI read (conflict chip when they differ); AI still beats HOUSE. Hidden fields
+  // already put BASE STYLE first (open point 4), so this applies to every field.
+  {
+    const before = r.source;
+    r.source = r.source.replace(/^AI > BASE STYLE/, "BASE STYLE > AI").replace(/^AI > HOUSE/, "BASE STYLE > AI > HOUSE");
+    if (r.source !== before) r.note = [r.note, "Conflict chip when the AI read differs from the base style."].filter(Boolean).join(" ");
+  }
+  // B. When a part exists on the product, its spec is PROTO; "never" only for admin / presentation fields.
+  if (r.stage === "never" && !isAdmin(q)) {
+    r.stage = "PROTO";
+    const when = condText(q.showIf as Cond | undefined);
+    r.note = [when && `When ${when}.`, r.note].filter(Boolean).join(" ");
+  }
+  return r;
+}
+
 /** The categories a section can ever show in (its category condition, if any). */
 function applies(section: { showIf?: unknown }, category: Category) {
   const s = section.showIf as { category?: string[] } | undefined;
@@ -128,7 +165,7 @@ for (const c of CATEGORIES)
 const esc = (s: string) => s.replace(/\|/g, "\\|");
 const today = (q: Question) => `${q.required ? "★" : "○"}${q.visibility === "inferred" ? " hidden" : ""}`;
 const row = (e: Entry, withCats: boolean) => {
-  const r = classify(e.q);
+  const r = decide(e.q);
   const cats = e.cats.length === CATEGORIES.length ? "all" : e.cats.length > 3 ? `${e.cats.length} categories` : e.cats.join(", ");
   return `| \`${e.q.id}\` | ${esc(e.q.label)} | ${e.q.kind} | ${today(e.q)} | ${r.source} | ${r.stage} | ${esc(r.note)}${withCats ? ` | ${cats}` : ""} |`;
 };
@@ -152,7 +189,7 @@ lines.push(
 lines.push("## Summary per category", "", "| Category | Questions | PROTO | PRODUCTION only | never | Settled without typing at PROTO¹ | AI proposes, designer confirms¹ | Designer types¹ |", "|---|---|---|---|---|---|---|---|");
 for (const c of CATEGORIES) {
   const mine = [...entries.values()].filter((e) => e.cats.includes(c));
-  const rs = mine.map((e) => classify(e.q));
+  const rs = mine.map((e) => decide(e.q));
   const proto = rs.filter((r) => r.stage === "PROTO");
   const settled = proto.filter((r) => /^(HOUSE|TEMPLATE|LIBRARY|DERIVED|BASE STYLE)/.test(r.source)).length;
   const types = proto.filter((r) => /^DESIGNER|^SPEC > DESIGNER/.test(r.source)).length;
@@ -160,7 +197,7 @@ for (const c of CATEGORIES) {
 }
 lines.push(
   "",
-  "¹ Counted over PROTO questions only, by the first source in the chain. Conditional questions (e.g. strap width only when there is a strap) are counted even though a given style shows fewer. \"Designer types\" includes measurements a spec sheet would fill, and SPEC > BASE STYLE chains count as AI-proposes.",
+  "¹ Counted over PROTO questions only, by the first source in the chain. Conditional questions (e.g. strap width only when there is a strap) are counted even though a given style shows fewer. \"Designer types\" includes measurements a spec sheet would fill, and SPEC > BASE STYLE chains count as AI-proposes. Since change A, \"settled\" includes BASE STYLE-first fields: settled when the style starts from a base style; with no base style the AI proposes them instead.",
   "",
 );
 
@@ -180,14 +217,11 @@ for (const c of CATEGORIES) {
 }
 
 lines.push(
-  "## Open points for your review",
+  "## Decisions (round 6)",
   "",
-  "1. **Construction rows and thread colour** are marked PROTO but settled by HOUSE / TEMPLATE, so they need no typing. Say if they should be \"never\" at proto instead.",
-  "2. **Points of measure and BOM** are DERIVED and PROTO (§6 says they must be complete). Tolerances stay off unless the admin turns the tolerances section on.",
-  "3. **Interior** follows the brand's house interior package for every category that has one. Categories without an interior (belts, hardware, print artwork) never see these questions.",
-  "4. **Hidden-on-render questions** (base, feet, lining, interior pockets …) come from BASE STYLE or HOUSE first. AI answers them only when back / side / interior photos are dropped.",
-  "5. **Hardware, Decorative hardware and Print artwork** are component packs. Their own questions are mostly LIBRARY or SPEC (supplier sheets), and their measurements are PROTO when required today.",
-  "6. **Cooler cold-hold claims** move to PRODUCTION, because they need test reports.",
+  "- Open points 1–6 of the first draft: approved as proposed — construction rows and thread colour stay PROTO (settled by TEMPLATE / HOUSE, no typing); POM and BOM are DERIVED and PROTO with tolerances off unless the admin switches them on; interior follows the house package; hidden-on-render questions come from BASE STYLE / HOUSE first; component packs take LIBRARY / SPEC; cooler cold claims are PRODUCTION.",
+  "- **A. BASE STYLE > AI** for every visible field, with a conflict chip when the AI read differs from the base style. AI still beats HOUSE.",
+  "- **B. Part specs are PROTO when the part exists.** \"never\" is only for admin and presentation fields (retailer, season, reference sample, due date, physical-sample banner, description, comments, pages, unit display). A conditional question is required at PROTO only when its parent is yes — the note says when.",
   "",
 );
 
