@@ -38,6 +38,7 @@ import { SignOff } from "./signoff";
 import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
 import { FactoryQA } from "./factory-qa";
+import { PhotoMarks } from "./photo-marks";
 
 export type WorkspaceProps = {
   pack: {
@@ -188,7 +189,20 @@ export function PackWorkspace(props: WorkspaceProps) {
           {render ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={render.url} alt={`${pack.styleNo} render`} className="w-full h-full object-contain" data-testid="render-image" />
-          ) : (
+          ) : null}
+          {render && canEdit ? (
+            <PhotoMarks
+              packId={pack.id}
+              mode="logo"
+              file={render}
+              trigger={(open) => (
+                <button type="button" onClick={open} className="absolute top-4 left-4 inline-flex h-8 px-4 items-center bg-ivory/90 border border-hairline-strong text-[10px] tracking-[0.18em] uppercase hover:border-ink" data-testid="mark-logo">
+                  {render.marks?.dot ? "Logo marked ●" : "Mark logo"}
+                </button>
+              )}
+            />
+          ) : null}
+          {render ? null : (
             <div className="text-center px-10">
               <div className="display italic text-3xl text-ink-soft">The render</div>
               <p className="text-taupe text-[12px] mt-3 max-w-xs mx-auto leading-relaxed">A single product render is all that&apos;s needed. The Technical Designer reads it and pre-answers what it can see.</p>

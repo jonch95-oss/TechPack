@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { flats as flatsTable, hardware, materials, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type Print } from "@/db/schema";
 import sharp from "sharp";
 import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
+import { pantoneHex, repeatTileSvg, svgDataUri } from "./artwork";
+import type { PageSection } from "@/lib/page-names";
 import { changeLine, revisionState } from "@/lib/revisions";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
@@ -12,7 +14,7 @@ import { validatePack, type RuleResult } from "@/lib/validation";
 import { contentLabel, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, type Plan } from "./plan";
 
-export type Img = { src: string } | null;
+export type Img = { src: string; w: number; h: number } | null;
 
 export type PackDoc = Awaited<ReturnType<typeof buildPackDoc>>;
 
@@ -67,7 +69,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     if (cache.has(url)) return cache.get(url)!;
     try {
       const f = await readStoredFile(url);
-      const v = { src: `data:${f.contentType};base64,${f.data.toString("base64")}` };
+      const meta = await sharp(f.data).metadata().catch(() => ({ width: 1, height: 1 }));
+      const v = { src: `data:${f.contentType};base64,${f.data.toString("base64")}`, w: meta.width ?? 1, h: meta.height ?? 1 };
       cache.set(url, v);
       return v;
     } catch {
@@ -201,7 +204,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     hasFeaturesOrRender: features.length > 0,
     hasExtraMeasurements: measures.length > 0 || pom.length > 0 || placements.length > 0 || !!flatOf("FRONT"),
     colorwayRenderCount: cwRenders.length + indicative.length,
-    referencePhotoCount: refs.filter((r) => !refOnMeasurements(r.tag, comments)).length,
+    referencePhotoCount: refs.filter((r) => placeOf(r, comments) === "REFERENCE PHOTOS FOR CONSTRUCTION").length,
     hasLiningArtwork: !!liningPrint,
     liningArtworkOnInterior: a["pages.lining_artwork"] === "ON INTERIOR PAGE",
     detailPanelCount: detail.length + (logoPanel ? 1 : 0),
@@ -271,7 +274,14 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
     sizeText: ["h", "w", "d"].every((k) => typeof a[`dims.${k}`] === "number") ? `${trim(a["dims.h"] as number)}${U} H X ${trim(a["dims.w"] as number)}${U} W X ${trim(a["dims.d"] as number)}${U} D`.replace(/ CM/g, " cm").replace(/"/g, '"') : "",
     render: await img(render?.url),
     colorwayRenders: await Promise.all(cwRenders.map(async (f) => ({ colorway: f!.tag, img: await img(f!.url) }))),
-    references: await Promise.all(refs.map(async (r) => ({ letter: r.tag, note: r.note, img: await img(r.url), onMeasurements: refOnMeasurements(r.tag, comments) }))),
+    references: await Promise.all(
+      refs.map(async (r) => {
+        const page = placeOf(r, comments);
+        return { letter: r.tag, note: r.note, img: await img(r.url), page, zoom: r.marks?.zoom ?? null, dot: r.marks?.dot ?? null, role: r.marks?.role ?? null, onMeasurements: page === "MEASUREMENTS SHEET" && r.marks?.role !== "SIDE_VIEW" };
+      }),
+    ),
+    /** Where the LOGO label's leader line points on the render (marked, or from the placement). */
+    logoPoint: render?.marks?.dot ?? defaultLogoPoint(String(a["branding.placement"] ?? "")),
     comments,
     materials: matList,
     matrixColumns: cols,
@@ -300,6 +310,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
       seamBinding: a["interior.seam_binding"] === true,
       padding: a["cos.padding"] === true ? `${a["cos.padding_mm"] ?? ""}MM PADDING ${a["cos.padding_where"] ?? ""}`.trim() : "",
     },
+    /** The wall the interior page is about (the first pocket's, else the back wall). */
+    interiorWall: (((a["interior.pockets"] as { wall?: string }[] | undefined) ?? []).find((x) => x.wall === "BACK WALL")?.wall ?? ((a["interior.pockets"] as { wall?: string }[] | undefined) ?? [])[0]?.wall ?? "BACK WALL") as string,
     lining: liningPrint
       ? {
           name: liningPrint.name,
@@ -312,6 +324,14 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
           colours: liningPrint.colours.map((c) => c.code),
           baseFabric: liningPrint.baseFabricId && matById.get(liningPrint.baseFabricId) ? materialLabel(matById.get(liningPrint.baseFabricId)!) : liningPrint.baseFabricText,
           img: await img(liningPrint.motifUrl),
+          // No artwork file: build the repeat from the motif text, colour and tile size.
+          generated: liningPrint.motifUrl
+            ? null
+            : (() => {
+                const t = repeatTileSvg({ motif: liningPrint.motif || liningPrint.name, brand: p.brand.name, colour: liningPrint.colours[0]?.code ?? "", tileW: Number(liningPrint.tileW) || 1, tileH: Number(liningPrint.tileH) || 1, repeat: liningPrint.repeatType });
+                return { src: svgDataUri(t.svg), w: t.w, h: t.h };
+              })(),
+          colourHex: liningPrint.colours.map((c) => pantoneHex(c.code)),
         }
       : null,
     detail: await Promise.all(
@@ -326,6 +346,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean } = {
         enamel: h.enamelPantone,
         construction: h.construction,
         notes: h.notes,
+        detailDims: h.detailDims ?? [],
         finishSpec: h.finishSpec ?? {},
         approval: h.approval?.status ?? "PENDING",
         views: { front: await img(h.views.front), side: await img(h.views.side), rear: await img(h.views.rear) },
@@ -413,6 +434,18 @@ async function chipColour(m: Material): Promise<string | null> {
 
 function trim(n: number) {
   return String(Math.round(n * 100) / 100);
+}
+
+/** The page a reference photo prints on: set explicitly, or from its comment letter. */
+function placeOf(r: { tag: string; page: string | null }, comments: { letter: string; pages: string[] }[]): PageSection {
+  if (r.page) return r.page as PageSection;
+  return refOnMeasurements(r.tag, comments) ? "MEASUREMENTS SHEET" : "REFERENCE PHOTOS FOR CONSTRUCTION";
+}
+
+function defaultLogoPoint(placement: string) {
+  if (/FLAP/.test(placement)) return { x: 0.5, y: 0.42 };
+  if (/BASE|BOTTOM/.test(placement)) return { x: 0.5, y: 0.82 };
+  return { x: 0.5, y: 0.58 };
 }
 
 function refOnMeasurements(letter: string, comments: { letter: string; pages: string[] }[]) {

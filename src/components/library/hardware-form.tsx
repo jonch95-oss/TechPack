@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { Hardware } from "@/db/schema";
 import { checkHardwareCode, saveHardware, type HardwareInput } from "@/app/actions/library";
 import type { CodeCheck } from "@/lib/codes";
@@ -45,6 +45,7 @@ export function HardwareForm({
     photoUrl: item?.photoUrl ?? null,
     notes: item?.notes ?? "",
     finishSpec: item?.finishSpec ?? {},
+    detailDims: item?.detailDims ?? [],
     approval: item?.approval ?? EMPTY_APPROVAL,
   });
   const [check, setCheck] = useState<CodeCheck | null>(null);
@@ -52,18 +53,27 @@ export function HardwareForm({
   const [pending, start] = useTransition();
   const set = <K extends keyof HardwareInput>(k: K, val: HardwareInput[K]) => setV((x) => ({ ...x, [k]: val }));
 
-  // Live code check (debounced): errors block saving, warnings are called out.
+  // Live code check (debounced): errors block saving, warnings are called out. A new component
+  // gets the brand's next free code pre-filled; the designer can type over it.
+  const autoCode = useRef<string | null>(null);
   useEffect(() => {
     if (!v.brandId) return;
     let live = true;
     const t = setTimeout(() => {
-      checkHardwareCode(v.brandId, v.code ?? "", v.id).then((c) => live && setCheck(c));
+      checkHardwareCode(v.brandId, v.code ?? "", v.id).then((c) => {
+        if (!live) return;
+        setCheck(c);
+        if (!item && c.suggestion && (!v.code || v.code === autoCode.current) && v.code !== c.suggestion) {
+          autoCode.current = c.suggestion;
+          setV((x) => ({ ...x, code: c.suggestion! }));
+        }
+      });
     }, 250);
     return () => {
       live = false;
       clearTimeout(t);
     };
-  }, [v.brandId, v.code, v.id]);
+  }, [v.brandId, v.code, v.id, item]);
 
   const upload = async (f: File, apply: (url: string) => void) => {
     try {
@@ -152,6 +162,18 @@ export function HardwareForm({
             <Label>Hollow or solid</Label>
             <ChipRow options={["HOLLOW", "SOLID"]} value={v.construction} onChange={(x) => set("construction", x)} disabled={!canEdit} />
           </div>
+        </div>
+        <div className="space-y-3" data-testid="detail-dims">
+          <div className="eyebrow">Detail dimensions — 100% drawing</div>
+          <p className="text-[11px] text-taupe">Every measurement the factory needs on the drawing (e.g. TOP WIDTH 10, THICKNESS 2.4). Notes without a number (HOLLOW) are fine.</p>
+          {(v.detailDims ?? []).map((d, k) => (
+            <div key={k} className="flex items-end gap-3">
+              <TextInput value={d.label} disabled={!canEdit} placeholder="TOP WIDTH" aria-label={`Detail ${k + 1} label`} className="flex-1 uppercase" onChange={(e) => set("detailDims", (v.detailDims ?? []).map((x, i) => (i === k ? { ...x, label: e.target.value.toUpperCase() } : x)))} />
+              <TextInput value={d.mm ?? ""} disabled={!canEdit} placeholder="MM" inputMode="decimal" aria-label={`Detail ${k + 1} mm`} className="w-24" onChange={(e) => set("detailDims", (v.detailDims ?? []).map((x, i) => (i === k ? { ...x, mm: e.target.value === "" ? null : Number(e.target.value) } : x)))} />
+              {canEdit && <button type="button" className="text-taupe hover:text-signal pb-2" aria-label={`Remove detail ${k + 1}`} onClick={() => set("detailDims", (v.detailDims ?? []).filter((_, i) => i !== k))}>✕</button>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="eyebrow hover:text-ink" onClick={() => set("detailDims", [...(v.detailDims ?? []), { label: "", mm: null }])}>+ Add dimension</button>}
         </div>
         <div className="border border-hairline bg-paper p-5 space-y-5">
           <div className="eyebrow">Finish spec</div>

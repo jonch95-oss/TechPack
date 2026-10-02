@@ -155,6 +155,7 @@ export type HardwareInput = {
   notes: string;
   finishSpec?: FinishSpec;
   approval?: Approval;
+  detailDims?: { label: string; mm?: number | null }[];
 };
 
 /** Live check while a designer types a code: errors block saving, warnings are called out. */
@@ -186,6 +187,7 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
     notes: up(input.notes),
     ...(input.finishSpec ? { finishSpec: { ...input.finishSpec, plating: up(input.finishSpec.plating), coating: up(input.finishSpec.coating), mouldNo: up(input.finishSpec.mouldNo), platingThickness: up(input.finishSpec.platingThickness) } } : {}),
     ...(input.approval ? { approval: cleanApproval(input.approval) } : {}),
+    ...(input.detailDims ? { detailDims: input.detailDims.map((d) => ({ label: up(d.label), mm: typeof d.mm === "number" && Number.isFinite(d.mm) ? d.mm : null })).filter((d) => d.label) } : {}),
     updatedBy: user.id,
     updatedAt: new Date(),
   };

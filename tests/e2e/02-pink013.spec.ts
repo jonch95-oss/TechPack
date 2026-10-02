@@ -25,6 +25,50 @@ test.skip(!assets, "reference/PINK013-A_B_JODIE_SATCHEL.pdf not present — ask 
 
 const q = (page: Page, id: string) => page.getByTestId(`q-${id}`);
 
+/** Click a point given as fractions of the mark-up canvas, in the open PhotoMarks drawer. */
+async function markAt(page: Page, fx: number, fy: number) {
+  const canvas = page.getByTestId("marks-canvas");
+  await expect(canvas.locator("img")).toBeVisible();
+  await page.waitForFunction(() => (document.querySelector("[data-testid=marks-canvas] img") as HTMLImageElement | null)?.complete === true);
+  await canvas.scrollIntoViewIfNeeded();
+  const b = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: b.width * fx, y: b.height * fy } });
+}
+
+/** Upload a construction photo and set its caption, letter, page slot and (optionally) mark-up. */
+async function construction(page: Page, name: string, buffer: Buffer, o: { caption: string; letter?: string; place?: string; zoom?: [number, number, number]; dot?: [number, number] }) {
+  await page.getByTestId("upload-construction").setInputFiles({ name, mimeType: "image/jpeg", buffer });
+  const cap = page.getByLabel(`Caption for ${name}`);
+  await expect(cap).toBeVisible();
+  const item = page.locator("li").filter({ has: cap });
+  await cap.fill(o.caption);
+  await cap.press("Enter");
+  await settled(page);
+  if (o.letter) {
+    await item.getByLabel("Comment letter").selectOption(o.letter);
+    await settled(page);
+  }
+  if (o.place) {
+    await page.getByLabel(`Prints on for ${name}`).selectOption(o.place);
+    await settled(page);
+  }
+  if (o.zoom || o.dot) {
+    await page.getByLabel(`Mark up ${name}`).click();
+    if (o.zoom) {
+      await page.getByRole("radio", { name: "Zoom circle" }).click();
+      await markAt(page, o.zoom[0], o.zoom[1]);
+      await page.getByLabel("Zoom circle size").fill(String(o.zoom[2]));
+    }
+    if (o.dot) {
+      await page.getByRole("radio", { name: "Red dot" }).click();
+      await markAt(page, o.dot[0], o.dot[1]);
+    }
+    await page.getByTestId("marks-save").click();
+    await expect(page.getByTestId("marks-canvas")).toBeHidden();
+    await expect(page.getByLabel(`Mark up ${name}`)).toHaveText(o.zoom ? "Zoom ●" : "Dot ●");
+  }
+}
+
 async function settled(page: Page) {
   await expect(page.getByText("Saving…")).toHaveCount(0);
 }
@@ -194,6 +238,16 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   await page.getByTestId("upload-colorway_render").setInputFiles({ name: "PINK013-B.jpg", mimeType: "image/jpeg", buffer: a.renderPink });
   await expect(page.locator("select[aria-label=Colorway]")).toHaveCount(2);
   await page.getByTestId("upload-construction").setInputFiles({ name: "strap-attachment.jpg", mimeType: "image/jpeg", buffer: a.strapDetail });
+
+  /* ---- Logo point on the render (the LOGO label's leader line), and the page-placed photos ---- */
+  await page.getByTestId("mark-logo").click();
+  await markAt(page, 0.52, 0.47);
+  await page.getByTestId("marks-save").click();
+  await expect(page.getByTestId("marks-canvas")).toBeHidden();
+  await construction(page, "side-view.png", a.sideView, { caption: "SIDE VIEW W/ SHOULDER STRAP ATTACHMENT LOOP", letter: "B", place: "MEASUREMENTS SHEET|SIDE_VIEW" });
+  await construction(page, "strap-zoom.jpg", a.zoomSource, { caption: "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE", letter: "B", place: "REFERENCE PHOTOS FOR CONSTRUCTION|", zoom: [0.78, 0.45, 20] });
+  await construction(page, "champion-lining.jpg", a.champion, { caption: "LINING IS TONAL HEAT STAMP REPEAT SAME AS CHAMPION EXAMPLE BELOW", place: "LINING / PRINT ARTWORK|APPLICATION", dot: [0.5, 0.4] });
+  await shot(page, "03b-photo-placements");
 
   /* ---- AI pre-fill: everything it can see is marked "AI-suggested — confirm" ---- */
   await page.getByTestId("run-prefill").click();

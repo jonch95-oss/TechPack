@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { TECHNICAL_DESIGNER_SYSTEM_PROMPT } from "./system-prompt";
 
-export const DEFAULT_MODEL = "claude-opus-5-5";
+/** Used only when ANTHROPIC_MODEL isn't set (Vercel sets it). */
+export const DEFAULT_MODEL = "claude-fable-5-1";
 
 export function aiModel() {
   return process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;

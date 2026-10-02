@@ -16,9 +16,16 @@ export function referenceAssets() {
   need("p2", 2, 2);
   need("p3", 3, 3);
   need("p4", 4, 4);
+  need("p6", 6, 6);
   need("p7", 7, 7);
   need("p8", 8, 8);
   const f = (n: string) => readFileSync(path.join(OUT, n));
+  // The side view on the measurements sheet is vector: crop it from a 150 dpi rendering.
+  const side = path.join(OUT, "side-view.png");
+  if (!existsSync(side)) {
+    execFileSync("pdftoppm", ["-r", "150", "-f", "2", "-l", "2", "-png", "-singlefile", PDF, path.join(OUT, "p2-page")]);
+    execFileSync("convert", [path.join(OUT, "p2-page.png"), "-crop", "600x705+1920+855", "+repage", side]);
+  }
   return {
     renderPink: f("p3-000.jpg"), // ENLARGED CAD, PINK013-B
     renderBlack: f("p3-001.jpg"), // ENLARGED CAD, PINK013-A
@@ -28,6 +35,9 @@ export function referenceAssets() {
     closureDetail: f("p2-004.jpg"), // MEASUREMENTS SHEET: front flap snap closure photo
     swatchBlack: f("p7-000.jpg"), // Junfa card, chip #2
     swatchPink: f("p8-000.jpg"), // Junfa card, chip #24
+    zoomSource: f("p4-001.jpg"), // REFERENCE PHOTOS: shoulder strap attachment, shown as a zoom circle
+    sideView: f("side-view.png"), // MEASUREMENTS SHEET side view (a flat in Phase 3; a photo slot until then)
+    champion: f("p6-000.jpg"), // LINING ARTWORK application reference (Champion tonal heat stamp)
   };
 }
 
@@ -61,5 +71,7 @@ export function tbAssets() {
     refs: [photo("x-000.jpg", "ref-1.jpg"), photo("x-001.jpg", "ref-2.jpg"), photo("x-002.jpg", "ref-3.jpg")],
     swatchBlackBrown: photo("x-013.jpg", "swatch-401-823.jpg"),
     swatchNavy: photo("x-015.jpg", "swatch-609.jpg"),
+    binding: photo("x-004.jpg", "binding.jpg"), // INTERIOR: "PLEASE MAKE SURE TO ADD INTERIOR BINDING"
+    teeth: photo("x-006.jpg", "teeth.jpg"), // HARDWARE: metal finish plastic teeth reference
   };
 }

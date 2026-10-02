@@ -6,6 +6,7 @@ import type { PackFile } from "@/db/schema";
 import { addPackFile, removePackFile, updatePackFile } from "@/app/actions/packs";
 import { uploadFile } from "@/lib/client/upload";
 import { CommentDot, Thumb, cx } from "@/components/ui";
+import { PLACEMENTS, PhotoMarks, placementValue } from "./photo-marks";
 
 type Kind = PackFile["kind"];
 
@@ -122,6 +123,35 @@ export function FilesPanel({ packId, files, colorways, canEdit }: { packId: stri
                         </button>
                       )}
                     </div>
+                    {(g.kind === "reference" || g.kind === "construction") && canEdit && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <select
+                          aria-label={`Prints on for ${f.name}`}
+                          value={placementValue(f.page, f.marks)}
+                          onChange={(e) => {
+                            const [page, role] = e.target.value.split("|");
+                            start(async () => {
+                              await updatePackFile(packId, f.id, { page: page || null, marks: { ...f.marks, role: (role || null) as never } });
+                              router.refresh();
+                            });
+                          }}
+                          className="flex-1 min-w-0 text-[10px] bg-transparent text-taupe"
+                        >
+                          {PLACEMENTS.map((p) => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                          ))}
+                        </select>
+                        <PhotoMarks
+                          packId={packId}
+                          file={f}
+                          trigger={(open) => (
+                            <button type="button" onClick={open} className={cx("text-[10px] tracking-[0.12em] uppercase", f.marks?.zoom || f.marks?.dot ? "text-signal" : "text-taupe hover:text-ink")} aria-label={`Mark up ${f.name}`}>
+                              {f.marks?.zoom ? "Zoom ●" : f.marks?.dot ? "Dot ●" : "Mark up"}
+                            </button>
+                          )}
+                        />
+                      </div>
+                    )}
                     {(g.kind === "reference" || g.kind === "construction") && (
                       <input
                         defaultValue={f.note}

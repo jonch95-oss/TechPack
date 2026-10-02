@@ -117,6 +117,8 @@ export const hardware = pgTable(
     construction: text("construction").notNull().default(""),
     photoUrl: text("photo_url"),
     notes: text("notes").notNull().default(""),
+    /** Detail dimensions for the 100% drawing panel, e.g. { label: "TOP WIDTH", mm: 10 } or a note like HOLLOW. */
+    detailDims: jsonb("detail_dims").$type<{ label: string; mm?: number | null }[]>().notNull().default([]),
     /** Plating / coating spec, nickel-free, mould number, new mould needed. */
     finishSpec: jsonb("finish_spec").$type<FinishSpec>().notNull().default({}),
     /** Plating sample / mould / sample approval. */
@@ -192,6 +194,15 @@ export const packs = pgTable(
   (t) => [uniqueIndex("packs_style_uq").on(t.styleNo)],
 );
 
+export type FileMarks = {
+  /** Zoom detail: circular crop (fractions of the photo), printed in a thick red ring. */
+  zoom?: { x: number; y: number; r: number } | null;
+  /** Red dot a leader line points to (on the render: the logo). */
+  dot?: { x: number; y: number } | null;
+  /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. */
+  role?: "SIDE_VIEW" | "APPLICATION" | null;
+};
+
 export const packFileKindEnum = pgEnum("pack_file_kind", [
   "render",
   "colorway_render",
@@ -212,6 +223,13 @@ export const packFiles = pgTable("pack_files", {
   /** For colorway renders: the suffix (e.g. "-B"). For references: the comment letter. */
   tag: text("tag").notNull().default(""),
   note: text("note").notNull().default(""),
+  /**
+   * Template page this photo prints on (e.g. a side view on the MEASUREMENTS SHEET, a binding photo
+   * on INTERIOR & LINING). Null = from its comment letter's pages, as before.
+   */
+  page: text("page"),
+  /** Mark-up: a circular zoom crop, a red dot (leader-line target) and / or the photo's role. */
+  marks: jsonb("marks").$type<FileMarks>().notNull().default({}),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

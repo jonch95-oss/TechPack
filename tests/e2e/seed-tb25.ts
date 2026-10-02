@@ -94,6 +94,16 @@ export async function seedTb25(a: Assets, adminEmail: string) {
     construction: "HOLLOW",
     notes: "EMBOSSED ENAMEL INLAY DTM TO THE TRIM W/ FRONT METALLIC LOGO INKED. BEVELLED. ETCHED DESIGN ON THE SIDE.",
     views: { front: file("pull-front.png", a.pullFront), side: file("pull-side.png", a.pullSide) },
+    detailDims: [
+      { label: "PULL WIDTH", mm: 10 },
+      { label: "PULL THICKNESS", mm: 2.4 },
+      { label: "PULL LENGTH", mm: 42 },
+      { label: "SLIDER LENGTH", mm: 22 },
+      { label: "LOGO PLATE WIDTH", mm: 8 },
+      { label: "LOGO PLATE LENGTH", mm: 14.5 },
+      { label: "SLOT LENGTH", mm: 5.5 },
+      { label: "HOLLOW" },
+    ],
   });
   const patch = await upsertHw("TB002", {
     type: "DEBOSS/EMBOSS PATCH",
@@ -210,6 +220,8 @@ export async function seedTb25(a: Assets, adminEmail: string) {
   await db.insert(packFiles).values([
     { packId: pack.id, kind: "render", url: file("render.png", a.render), name: "TB25_ACC0023.png", createdBy: user.id },
     ...a.refs.map((r, i) => ({ packId: pack.id, kind: "reference" as const, url: file(`ref-${i + 1}.jpg`, r), name: `ref-${i + 1}.jpg`, tag: String.fromCharCode(68 + i), note: "REFERENCE IMAGES", createdBy: user.id })),
+    { packId: pack.id, kind: "construction", url: file("binding.jpg", a.binding), name: "binding.jpg", tag: "C", note: "PLEASE MAKE SURE TO ADD INTERIOR BINDING", page: "INTERIOR & LINING", marks: { dot: { x: 0.5, y: 0.5 } }, createdBy: user.id },
+    { packId: pack.id, kind: "construction", url: file("teeth.jpg", a.teeth), name: "teeth.jpg", tag: "G", note: "METAL FINISH PLASTIC TEETH REFERENCE", page: "HARDWARE / BRANDING DETAIL", createdBy: user.id },
   ]);
   await sql.end();
   return pack.id;

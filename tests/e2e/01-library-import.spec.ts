@@ -44,6 +44,7 @@ test("hardware from a PDF: codes missing → called out → designer enters them
   // The component form checks codes live: duplicates block, other formats are called out.
   await page.goto("/library/hardware/new");
   await page.locator("select").first().selectOption({ label: "Ted Baker" });
+  await expect(page.getByLabel("Code")).toHaveValue("TB003"); // next free code pre-filled
   await page.getByLabel("Code").fill("TB001");
   await expect(page.getByTestId("code-check")).toContainText("already used by another component");
   await page.getByLabel("Code").fill("TB-PULL");

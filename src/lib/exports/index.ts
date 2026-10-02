@@ -1,6 +1,7 @@
 import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { zipSync, strToU8 } from "fflate";
+import sharp from "sharp";
 import { db } from "@/db";
 import { flats, prints, type Flat } from "@/db/schema";
 import type { LoadedPack } from "@/lib/data";
@@ -14,6 +15,7 @@ import { readStoredFile } from "@/lib/storage";
 import type { LibValue, MatrixValue } from "@/lib/questions";
 import { svgToEps } from "./eps";
 import { buildPsd } from "./psd";
+import { repeatTileSvg } from "@/lib/pdf/artwork";
 
 export type FlatFormat = "svg" | "ai" | "eps";
 
@@ -73,7 +75,14 @@ export async function packZip(p: LoadedPack): Promise<{ zip: Buffer; name: strin
   const matrix = (a["materials.matrix"] as MatrixValue | undefined) ?? {};
   const printId = (a["interior.lining_print"] as LibValue | undefined)?.id ?? Object.values(matrix).map((r) => r?.lining?.lib?.id).find(Boolean);
   const [print] = printId ? await db.select().from(prints).where(eq(prints.id, printId)) : [];
-  const repeat = print?.motifUrl ? { motif: (await readStoredFile(print.motifUrl)).data, tilePx: 320, label: print.tileW && print.tileH ? `${print.tileW} × ${print.tileH} ${print.tileUnit?.toUpperCase() ?? "CM"}` : "TILE" } : null;
+  const tileLabel = print?.tileW && print.tileH ? `${print.tileW} × ${print.tileH} ${print.tileUnit?.toUpperCase() ?? "CM"}` : "TILE";
+  // No artwork file: the same generated tile the PDF prints (motif text, colour, tile size).
+  const motif = print?.motifUrl
+    ? (await readStoredFile(print.motifUrl)).data
+    : print
+      ? await sharp(Buffer.from(repeatTileSvg({ motif: print.motif || print.name, brand: p.brand.name, colour: print.colours[0]?.code ?? "", tileW: Number(print.tileW) || 1, tileH: Number(print.tileH) || 1 }).svg)).png().toBuffer()
+      : null;
+  const repeat = motif ? { motif, tilePx: 320, label: tileLabel } : null;
   if (renders.length || repeat || rows.length) {
     files[`artwork/${base}_artwork.psd`] = new Uint8Array(await buildPsd({ renders, repeat, flats: rows.map((f) => ({ name: `${f.view} VIEW`, svg: standaloneSvg(f, f.view) })) }));
     notes.push(`Artwork: layered PSD (${[renders.length && "colourway renders", repeat && "lining repeat + tile box", rows.length && "line art"].filter(Boolean).join(", ")}).`);

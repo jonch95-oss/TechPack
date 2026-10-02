@@ -1,10 +1,11 @@
 "use server";
 
+import { PAGE_SECTIONS } from "@/lib/page-names";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { brands, hardware, packAnswers, packFiles, packs, type AnswerStatus } from "@/db/schema";
+import { brands, hardware, packAnswers, packFiles, packs, type AnswerStatus, type FileMarks } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { brandHardware, hardwareByCode, loadPack, rebuildLibraryUsage } from "@/lib/data";
@@ -262,11 +263,25 @@ export async function addPackFile(
   return { ok: true };
 }
 
-export async function updatePackFile(packId: string, fileId: string, patch: { tag?: string; note?: string }): Promise<ActionResult> {
+export async function updatePackFile(
+  packId: string,
+  fileId: string,
+  patch: { tag?: string; note?: string; page?: string | null; marks?: FileMarks },
+): Promise<ActionResult> {
   const user = await requireRole("designer");
   const set: Partial<typeof packFiles.$inferInsert> = {};
   if (patch.tag !== undefined) set.tag = patch.tag.toUpperCase();
   if (patch.note !== undefined) set.note = patch.note.toUpperCase();
+  if (patch.page !== undefined) set.page = patch.page && (PAGE_SECTIONS as readonly string[]).includes(patch.page) ? patch.page : null;
+  if (patch.marks !== undefined) {
+    const f = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
+    const m = patch.marks;
+    set.marks = {
+      zoom: m.zoom ? { x: f(m.zoom.x), y: f(m.zoom.y), r: Math.min(0.5, Math.max(0.03, Number(m.zoom.r) || 0.2)) } : null,
+      dot: m.dot ? { x: f(m.dot.x), y: f(m.dot.y) } : null,
+      role: m.role === "SIDE_VIEW" || m.role === "APPLICATION" ? m.role : null,
+    };
+  }
   await db.update(packFiles).set(set).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: `file:${fileId}`, after: set });
   revalidatePath(`/packs/${packId}`);
