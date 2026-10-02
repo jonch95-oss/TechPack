@@ -1,0 +1,89 @@
+{
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 \u2014 an Off-White-style micro-mesh shoulder bag on a design board.",
+ "answers": [
+  {
+   "question_id": "dims.h",
+   "value_json": "185",
+   "unit": "MM",
+   "note": "SPEC: TOTAL HEIGHT 185"
+  },
+  {
+   "question_id": "dims.w",
+   "value_json": "255",
+   "unit": "MM",
+   "note": "SPEC: TOTAL WIDTH 255"
+  },
+  {
+   "question_id": "dims.d",
+   "value_json": "70",
+   "unit": "MM",
+   "note": "SPEC: TOTAL DEPTH 70"
+  },
+  {
+   "question_id": "hb.strap.width",
+   "value_json": "38",
+   "unit": "MM",
+   "note": "SPEC: STRAP WIDTH 38"
+  },
+  {
+   "question_id": "hb.strap.length",
+   "value_json": "120",
+   "unit": "CM",
+   "note": "SPEC: STRAP LENGTH 120CM"
+  }
+ ],
+ "row_values": [
+  {
+   "question_id": "hb.ext_pockets",
+   "row": 0,
+   "column": "w",
+   "value_json": "160",
+   "unit": "MM",
+   "note": "SPEC: POCKET W 160"
+  },
+  {
+   "question_id": "hb.ext_pockets",
+   "row": 0,
+   "column": "h",
+   "value_json": "90",
+   "unit": "MM",
+   "note": "SPEC: POCKET H 90"
+  },
+  {
+   "question_id": "zippers.list",
+   "row": 0,
+   "column": "length",
+   "value_json": "140",
+   "unit": "MM",
+   "note": "SPEC: ZIP OPENING 140"
+  },
+  {
+   "question_id": "hardware.items",
+   "row": 1,
+   "column": "size",
+   "value_json": "\"INNER 38 MM\"",
+   "unit": "",
+   "note": "SPEC: BUCKLE 38MM"
+  }
+ ],
+ "new_rows": [],
+ "measurements": [
+  {
+   "point": "TOTAL HEIGHT",
+   "value": 185,
+   "unit": "MM",
+   "tolerance": 5,
+   "how": "CENTRE FRONT"
+  },
+  {
+   "point": "STRAP DROP",
+   "value": 550,
+   "unit": "MM",
+   "tolerance": 10,
+   "how": ""
+  }
+ ],
+ "hardware": [],
+ "board_notes": [],
+ "notes": ""
+}

@@ -21,7 +21,8 @@ export const roleEnum = pgEnum("role", ["admin", "designer", "viewer"]);
  * - inferred: not visible in a front render ("INFERRED — CONFIRM")
  * - confirmed: entered or confirmed by a designer
  */
-export const answerStatusEnum = pgEnum("answer_status", ["ai", "est", "inferred", "confirmed"]);
+/** sourced = read by the AI from an uploaded spec sheet / photo / supplier sheet (packAnswers.source says which). */
+export const answerStatusEnum = pgEnum("answer_status", ["ai", "est", "inferred", "confirmed", "sourced"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -203,6 +204,8 @@ export type FileMarks = {
   zoom?: { x: number; y: number; r: number } | null;
   /** Red dot a leader line points to (on the render: the logo). */
   dot?: { x: number; y: number } | null;
+  /** Render / board: text written around the product, read by the AI at upload ("REFER TO SPEC" …). */
+  board?: { text: string[]; refersToSpec: boolean; reference: string } | null;
   /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. */
   role?: "SIDE_VIEW" | "APPLICATION" | null;
 };
@@ -214,6 +217,11 @@ export const packFileKindEnum = pgEnum("pack_file_kind", [
   "construction",
   "reference_sample",
   "swatch_photo",
+  // Sources the AI reads to pre-fill the pack (tag: view for view_photo, "callout|colorway" for swatch_photo).
+  "spec_sheet",
+  "view_photo",
+  "scale_photo",
+  "hardware_sheet",
 ]);
 
 export const packFiles = pgTable("pack_files", {
@@ -251,6 +259,8 @@ export const packAnswers = pgTable(
     aiNote: text("ai_note").notNull().default(""),
     /** The AI's original value, kept when a designer overrides it. */
     aiValue: jsonb("ai_value").$type<unknown>(),
+    /** Where an AI answer came from when it wasn't the render: "SPEC SHEET", "BACK PHOTO", "SAMPLE PHOTO" … */
+    source: text("source").notNull().default(""),
     updatedBy: uuid("updated_by").references(() => users.id),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -441,7 +451,7 @@ export type Revision = typeof revisions.$inferSelect;
  * Background jobs: AI pre-fill and line-art generation run after the request returns; the studio polls
  * the job, so a dropped connection never loses (or repeats) the work.
  */
-export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT"]);
+export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT", "SOURCE", "BOARD"]);
 export const jobStatusEnum = pgEnum("job_status", ["QUEUED", "RUNNING", "DONE", "ERROR"]);
 export const jobs = pgTable(
   "jobs",
@@ -451,7 +461,7 @@ export const jobs = pgTable(
       .notNull()
       .references(() => packs.id, { onDelete: "cascade" }),
     kind: jobKindEnum("kind").notNull(),
-    params: jsonb("params").$type<{ view?: FlatView }>().notNull().default({}),
+    params: jsonb("params").$type<{ view?: FlatView; fileId?: string }>().notNull().default({}),
     status: jobStatusEnum("status").notNull().default("QUEUED"),
     step: text("step").notNull().default(""),
     result: jsonb("result").$type<Record<string, unknown> | null>(),

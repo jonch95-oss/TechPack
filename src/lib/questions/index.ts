@@ -211,6 +211,7 @@ function statusProblem(st: string) {
   if (st === "ai") return "AI-SUGGESTED — CONFIRM";
   if (st === "est") return "EST — CONFIRM";
   if (st === "inferred") return "INFERRED — CONFIRM";
+  if (st === "sourced") return "FROM UPLOAD — CONFIRM";
   return "UNCONFIRMED";
 }
 

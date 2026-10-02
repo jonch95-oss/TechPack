@@ -194,7 +194,7 @@ export function normaliseAiAnswers(
   return { answers, materials, dropped };
 }
 
-function coerce(q: Question, v: unknown, hw: Map<string, { id: string; label: string }>): unknown {
+export function coerce(q: Question, v: unknown, hw: Map<string, { id: string; label: string }>): unknown {
   switch (q.kind) {
     case "chips": {
       if (typeof v !== "string" || !v.trim()) return undefined;

@@ -28,20 +28,25 @@ export type AICallResult<T> = { output: T; model: string; fixture: boolean };
  * Never set it in Vercel.
  */
 export async function callTechnicalDesigner<T>(opts: {
-  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "build_pack" | "validate" | "diff_revision" | "translate";
+  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "read_source" | "read_board" | "build_pack" | "validate" | "diff_revision" | "translate";
   instructions: string;
   images: AIImage[];
   /** PDFs sent as document blocks (spec sheets, catalogues, scanned swatch cards). */
   pdfs?: Buffer[];
   schema: Record<string, unknown>;
-  fixtureName?: string;
+  /** Fixture file(s) to try, most specific first; the task name is the last fallback. */
+  fixtureName?: string | string[];
   /** Reasoning effort; translation and other light tasks use "low". */
   effort?: "low" | "medium" | "high";
 }): Promise<AICallResult<T>> {
   const fixtureDir = process.env.AI_FIXTURE_DIR;
   if (fixtureDir) {
-    const file = path.join(fixtureDir, `${opts.fixtureName ?? opts.task}.json`);
-    return { output: JSON.parse(await readFile(file, "utf8")) as T, model: "fixture", fixture: true };
+    const names = [...(Array.isArray(opts.fixtureName) ? opts.fixtureName : opts.fixtureName ? [opts.fixtureName] : []), opts.task];
+    for (const n of names) {
+      const text = await readFile(path.join(fixtureDir, `${n}.json`), "utf8").catch(() => null);
+      if (text) return { output: JSON.parse(text) as T, model: "fixture", fixture: true };
+    }
+    throw new Error(`No AI fixture for ${names.join(" / ")}`);
   }
   if (!process.env.ANTHROPIC_API_KEY) throw new AIUnavailableError("ANTHROPIC_API_KEY is not set");
 

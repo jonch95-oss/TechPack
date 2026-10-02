@@ -21,6 +21,7 @@ import {
   unitLabel as unitLabelFor,
   visibleQuestions,
   type AnswerMap,
+  type MaterialEntry,
   type Category,
   type EvalContext,
   type Question,
@@ -40,6 +41,8 @@ import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
 import { PackAdmin } from "./pack-admin";
 import { CropEditor } from "./crop-editor";
+import { SourcesPanel } from "./sources-panel";
+import { neededFromYou, type NeededItem } from "@/lib/needed";
 import { FactoryQA } from "./factory-qa";
 import { PhotoMarks } from "./photo-marks";
 
@@ -67,7 +70,7 @@ export type WorkspaceProps = {
   sentBy: string;
   answers: AnswerMap;
   statuses: Record<string, AnswerStatus>;
-  meta: Record<string, { aiNote: string; aiValue: unknown }>;
+  meta: Record<string, { aiNote: string; aiValue: unknown; source?: string }>;
   files: PackFile[];
   library: LibraryOptions;
   canEdit: boolean;
@@ -80,7 +83,18 @@ const STATUS_BADGE: Record<string, { tone: "ai" | "est" | "inferred"; text: stri
   ai: { tone: "ai", text: "AI-suggested — confirm" },
   est: { tone: "est", text: "EST — confirm" },
   inferred: { tone: "inferred", text: "Inferred — confirm" },
+  sourced: { tone: "ai", text: "From upload — confirm" },
 };
+
+/** "From spec sheet — confirm", "EST from sample photo — confirm" … for answers read from an upload. */
+function sourceBadge(status: string, source?: string) {
+  const base = STATUS_BADGE[status];
+  if (!base || !source) return base ?? null;
+  const from = source.toLowerCase();
+  if (status === "est") return { ...base, text: `EST from ${from} — confirm` };
+  if (status === "inferred") return { ...base, text: `Inferred from ${from} — confirm` };
+  return { ...base, text: `From ${from} — confirm` };
+}
 
 export function PackWorkspace(props: WorkspaceProps) {
   const router = useRouter();
@@ -106,6 +120,7 @@ export function PackWorkspace(props: WorkspaceProps) {
     setAnswers(props.answers);
     setStatuses(props.statuses);
     setMeta(props.meta);
+    setColorways(pack.colorways); // pre-fill can set the colourway count from the render
   }
 
   const ctx: EvalContext = useMemo(() => ({ category: pack.category, answers, brand }), [pack.category, answers, brand]);
@@ -154,8 +169,8 @@ export function PackWorkspace(props: WorkspaceProps) {
     });
   };
 
-  const jump = (questionId: string) => {
-    const el = document.getElementById(`q-${questionId}`);
+  const jump = (questionId: string, row?: number) => {
+    const el = (row !== undefined ? document.querySelector<HTMLElement>(`[data-testid="${questionId}-row-${row}"]`) : null) ?? document.getElementById(`q-${questionId}`);
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     setFlash(questionId);
@@ -172,6 +187,26 @@ export function PackWorkspace(props: WorkspaceProps) {
 
 
   const [cropOpen, setCropOpen] = useState(false);
+  const [sourceFocus, setSourceFocus] = useState<"spec_sheet" | null>(null);
+  const needed = useMemo(
+    () =>
+      neededFromYou({
+        category: pack.category,
+        answers,
+        statuses,
+        colorways,
+        hardwareDims: Object.fromEntries(props.library.hardware.filter((h) => h.dims).map((h) => [h.id, h.dims])),
+      }),
+    [pack.category, answers, statuses, colorways, props.library.hardware],
+  );
+  // The board's own notes are read in the background right after upload ("REFER TO SPEC" …).
+  const boardJob = useJob(pack.id, (j) => j.kind === "BOARD", () => router.refresh());
+  const board = render?.marks?.board;
+  const specAsked = !!board?.refersToSpec && !props.files.some((f) => f.kind === "spec_sheet");
+  const goToSources = () => {
+    setSourceFocus("spec_sheet");
+    document.getElementById("sec-sources")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   // Pre-fill runs as a background job; the page polls it, so a dropped connection loses nothing.
   const prefillJob = useJob(
     pack.id,
@@ -265,6 +300,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                     router.refresh();
                     // Crop step: check the auto-detected product box before anything reads the render.
                     setCropOpen(true);
+                    boardJob.resume(); // the server is reading the board's notes ("REFER TO SPEC" …)
                   } catch (err) {
                     setSave({ state: "error", error: (err as Error).message });
                   }
@@ -402,6 +438,19 @@ export function PackWorkspace(props: WorkspaceProps) {
                   {prefill.error || prefillJob.startError}
                 </p>
               )}
+              {specAsked && (
+                <div className="mt-5 border border-signal bg-signal-soft/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3" role="alert" data-testid="spec-prompt">
+                  <p className="text-[12px] leading-relaxed">
+                    The render says <b>{board!.reference || "REFER TO SPEC"}</b>. Upload that spec sheet now — its measurements fill the pack instead of estimates.
+                  </p>
+                  {canEdit && (
+                    <Button variant="gold" onClick={goToSources} data-testid="spec-prompt-upload">
+                      Upload the spec sheet
+                    </Button>
+                  )}
+                </div>
+              )}
+              {pack.aiAnalysis && needed.items.length > 0 && <NeededList needed={needed} onJump={jump} />}
               {pack.aiAnalysis && (
                 <div className="grid sm:grid-cols-2 gap-6 mt-6 pt-6 border-t border-hairline text-[11.5px]">
                   <div>
@@ -426,6 +475,20 @@ export function PackWorkspace(props: WorkspaceProps) {
           </div>
         </div>
       </section>
+
+      {/* ------------------------------ Sources the AI reads ------------------------------ */}
+      {(canEdit || props.files.some((f) => ["spec_sheet", "view_photo", "scale_photo", "swatch_photo", "hardware_sheet"].includes(f.kind))) && (
+        <section id="sec-sources" className="scroll-mt-28 pt-10 pb-2 border-b border-hairline">
+          <SourcesPanel
+            packId={pack.id}
+            files={props.files}
+            canEdit={canEdit}
+            materials={((answers["materials.list"] as MaterialEntry[] | undefined) ?? []).map((m) => ({ callout: m.callout, name: m.name }))}
+            colorways={colorways}
+            highlight={sourceFocus}
+          />
+        </section>
+      )}
 
       {/* ------------------------------ Body ------------------------------ */}
       <div className="grid xl:grid-cols-[220px_minmax(0,1fr)_300px] lg:grid-cols-[200px_minmax(0,1fr)] gap-12 pt-12">
@@ -669,7 +732,7 @@ function QuestionRow({
   q: Question;
   value: unknown;
   status?: AnswerStatus;
-  meta?: { aiNote: string; aiValue: unknown };
+  meta?: { aiNote: string; aiValue: unknown; source?: string };
   flash: boolean;
   canEdit: boolean;
   onChange: (v: unknown) => void;
@@ -679,7 +742,7 @@ function QuestionRow({
   unitLabel: (u: string) => string;
   extra?: React.ReactNode;
 }) {
-  const badge = status && status !== "confirmed" ? STATUS_BADGE[status] : null;
+  const badge = status && status !== "confirmed" ? sourceBadge(status, meta?.source) : null;
   const wide = ["rows", "materials", "colorway_matrix", "per_colorway_text"].includes(q.kind);
   const overridden = status === "confirmed" && meta?.aiValue !== undefined && meta?.aiValue !== null && JSON.stringify(meta.aiValue) !== JSON.stringify(value);
   return (
@@ -784,4 +847,45 @@ function QuestionHelpers({ qid, category, answers, colorways, onCommit }: { qid:
   if (qid === "opt.labels.types") return <ContentLabelPreview answers={answers} colorways={colorways} />;
   if (qid === "bom.list") return helper("Build from answers", () => onCommit(qid, bomFromAnswers(answers, (answers["bom.list"] as BomRow[] | undefined) ?? [])), "bom-build");
   return null;
+}
+
+/** "Needed from you": what the render can't give, one line each, jumping to the field (and row). */
+function NeededList({ needed, onJump }: { needed: { items: NeededItem[]; counts: Record<NeededItem["group"], number> }; onJump: (q: string, row?: number) => void }) {
+  const groups: { key: NeededItem["group"]; title: string }[] = [
+    { key: "measurement", title: "Measurements" },
+    { key: "material", title: "Materials" },
+    { key: "hardware", title: "Hardware" },
+  ];
+  return (
+    <div className="mt-6 pt-6 border-t border-hairline" data-testid="needed">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div className="eyebrow text-ink">Needed from you</div>
+        <div className="text-[11px] text-taupe" data-testid="needed-counts">
+          {needed.counts.measurement} measurement{needed.counts.measurement === 1 ? "" : "s"} · {needed.counts.material} material{needed.counts.material === 1 ? "" : "s"} · {needed.counts.hardware} hardware still needed
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-3 gap-5 mt-3">
+        {groups
+          .filter((g) => needed.counts[g.key])
+          .map((g) => (
+            <div key={g.key}>
+              <div className="text-[10px] tracking-[0.18em] uppercase text-taupe mb-1.5">
+                {g.title} · {needed.counts[g.key]}
+              </div>
+              <ul className="space-y-1">
+                {needed.items
+                  .filter((i) => i.group === g.key)
+                  .map((i, k) => (
+                    <li key={k}>
+                      <button type="button" onClick={() => onJump(i.questionId, i.row)} className="text-left text-[11.5px] leading-snug hover:text-signal underline decoration-hairline-strong underline-offset-2" data-testid="needed-item">
+                        {i.label}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
 }

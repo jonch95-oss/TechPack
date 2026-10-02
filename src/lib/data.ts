@@ -28,11 +28,11 @@ export async function loadPack(id: string) {
   const files = await db.select().from(packFiles).where(eq(packFiles.packId, id)).orderBy(asc(packFiles.createdAt));
   const answers: AnswerMap = {};
   const statuses: Record<string, AnswerStatus> = {};
-  const meta: Record<string, { aiNote: string; aiValue: unknown; updatedAt: string; updatedBy: string | null }> = {};
+  const meta: Record<string, { aiNote: string; aiValue: unknown; source: string; updatedAt: string; updatedBy: string | null }> = {};
   for (const a of answerRows) {
     answers[a.questionId] = a.value;
     statuses[a.questionId] = a.status;
-    meta[a.questionId] = { aiNote: a.aiNote, aiValue: a.aiValue, updatedAt: a.updatedAt.toISOString(), updatedBy: a.updatedBy };
+    meta[a.questionId] = { aiNote: a.aiNote, aiValue: a.aiValue, source: a.source, updatedAt: a.updatedAt.toISOString(), updatedBy: a.updatedBy };
   }
   const sentBy = row.pack.sentBy
     ? (await db.select({ name: users.name }).from(users).where(eq(users.id, row.pack.sentBy)))[0]?.name ?? ""
@@ -138,6 +138,7 @@ export async function libraryOptions() {
       label: h.code,
       sub: [h.type, h.name, h.dimsMm && `${h.dimsMm} MM`, h.finish].filter(Boolean).join(" · "),
       type: h.type,
+      dims: h.dimsMm,
       brandId: h.brandId,
       photo: h.photoUrl,
     })),

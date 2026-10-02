@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { flatViewEnum, packs, type FlatView } from "@/db/schema";
+import { flatViewEnum, packFiles, packs, type FlatView } from "@/db/schema";
+import { SOURCE_KINDS } from "@/lib/sources";
 import { can, getCurrentUser } from "@/lib/auth/dal";
 import { activeJobs, startJob } from "@/lib/jobs";
 
 /** The job itself runs after this response, within this route's limit. */
 export const maxDuration = 300;
 
-/** POST /api/packs/:id/jobs  { kind: "prefill" } | { kind: "flat", view } — starts a background job. */
+/** POST /api/packs/:id/jobs  { kind: "prefill" } | { kind: "flat", view } | { kind: "source", fileId } — starts a background job. */
 export async function POST(req: Request, ctx: RouteContext<"/api/packs/[id]/jobs">) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -18,9 +19,14 @@ export async function POST(req: Request, ctx: RouteContext<"/api/packs/[id]/jobs
   const [p] = await db.select({ archivedAt: packs.archivedAt }).from(packs).where(eq(packs.id, id));
   if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (p.archivedAt) return NextResponse.json({ error: "This pack is archived and read-only." }, { status: 409 });
-  const body = (await req.json().catch(() => ({}))) as { kind?: string; view?: string };
+  const body = (await req.json().catch(() => ({}))) as { kind?: string; view?: string; fileId?: string };
   if (body.kind === "prefill") return NextResponse.json({ job: await startJob(id, "PREFILL", {}, user.id) });
   if (body.kind === "flat" && flatViewEnum.enumValues.includes(body.view as FlatView)) return NextResponse.json({ job: await startJob(id, "FLAT", { view: body.view as FlatView }, user.id) });
+  if (body.kind === "source" && /^[0-9a-f-]{36}$/i.test(body.fileId ?? "")) {
+    const [f] = await db.select({ kind: packFiles.kind }).from(packFiles).where(and(eq(packFiles.id, body.fileId!), eq(packFiles.packId, id)));
+    if (!f || !(SOURCE_KINDS as readonly string[]).includes(f.kind)) return NextResponse.json({ error: "Not an upload the AI reads." }, { status: 400 });
+    return NextResponse.json({ job: await startJob(id, "SOURCE", { fileId: body.fileId }, user.id) });
+  }
   return NextResponse.json({ error: "Unknown job" }, { status: 400 });
 }
 

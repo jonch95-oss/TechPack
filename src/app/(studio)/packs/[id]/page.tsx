@@ -64,7 +64,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
         sentBy={p.sentBy}
         answers={p.answers}
         statuses={p.statuses}
-        meta={Object.fromEntries(Object.entries(p.meta).map(([k, m]) => [k, { aiNote: m.aiNote, aiValue: m.aiValue }]))}
+        meta={Object.fromEntries(Object.entries(p.meta).map(([k, m]) => [k, { aiNote: m.aiNote, aiValue: m.aiValue, source: m.source }]))}
         files={p.files}
         library={library}
         canEdit={can(user, "designer") && !p.pack.archivedAt}

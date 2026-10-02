@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, can } from "@/lib/auth/dal";
 import { storeFile, usingBlob, contentTypeFor } from "@/lib/storage";
 
-const FOLDERS = new Set(["renders", "references", "swatches", "hardware", "prints", "brands", "misc"]);
+const FOLDERS = new Set(["renders", "references", "specs", "swatches", "hardware", "prints", "brands", "misc"]);
 const MAX_BYTES = 25 * 1024 * 1024;
 
 /** Server-side upload (local dev, and small files in Blob mode). Large files go through /api/blob client uploads. */

@@ -4,16 +4,48 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type JobState = {
   id: string;
-  kind: "PREFILL" | "FLAT";
+  kind: "PREFILL" | "FLAT" | "SOURCE" | "BOARD";
   status: "QUEUED" | "RUNNING" | "DONE" | "ERROR";
   step: string;
   result: Record<string, unknown> | null;
   error: string | null;
   view: string | null;
+  fileId?: string | null;
 };
 
 const POLL_MS = 1500;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Polls one job until it finishes (several can run at once, e.g. one per uploaded source). */
+export async function pollJob(packId: string, job: JobState, onUpdate: (j: JobState) => void, alive: () => boolean = () => true): Promise<JobState> {
+  let cur = job;
+  let misses = 0;
+  while (alive() && (cur.status === "QUEUED" || cur.status === "RUNNING")) {
+    await wait(POLL_MS);
+    try {
+      const res = await fetch(`/api/packs/${packId}/jobs/${cur.id}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      cur = ((await res.json()) as { job: JobState }).job;
+      misses = 0;
+      onUpdate(cur);
+    } catch {
+      if (++misses > 400) break;
+      await wait(POLL_MS * 2);
+    }
+  }
+  return cur;
+}
+
+/** Starts a job; resolves to it (or an error message). */
+export async function startJobRequest(packId: string, body: Record<string, string>): Promise<JobState | string> {
+  try {
+    const res = await fetch(`/api/packs/${packId}/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const json = (await res.json().catch(() => ({}))) as { job?: JobState; error?: string };
+    return res.ok && json.job ? json.job : (json.error ?? "Couldn't start — try again.");
+  } catch {
+    return "Couldn't reach the studio — check your connection and try again.";
+  }
+}
 
 /**
  * Starts a background job and polls it until it finishes. A dropped request or a page reload never
@@ -54,9 +86,9 @@ export function useJob(packId: string, match: (j: JobState) => boolean, onFinish
     [packId],
   );
 
-  // Resume a job that is still running (page reloaded, or started from another tab).
-  useEffect(() => {
-    alive.current = true;
+  // Picks up a job that is running without this page having started it (reload, another tab, or a
+  // job the server started itself, e.g. reading the board after a render upload).
+  const resume = useCallback(() => {
     fetch(`/api/packs/${packId}/jobs`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { jobs: [] }))
       .then((d: { jobs: JobState[] }) => {
@@ -64,10 +96,14 @@ export function useJob(packId: string, match: (j: JobState) => boolean, onFinish
         if (j && alive.current) void poll(j);
       })
       .catch(() => {});
+  }, [packId, poll]);
+  useEffect(() => {
+    alive.current = true;
+    resume();
     return () => {
       alive.current = false;
     };
-  }, [packId, poll]);
+  }, [resume]);
 
   const start = useCallback(
     async (body: { kind: "prefill" } | { kind: "flat"; view: string }) => {
@@ -85,5 +121,5 @@ export function useJob(packId: string, match: (j: JobState) => boolean, onFinish
   );
 
   const running = !!job && (job.status === "QUEUED" || job.status === "RUNNING");
-  return { job, running, start, startError };
+  return { job, running, start, startError, resume };
 }

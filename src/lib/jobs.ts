@@ -7,21 +7,23 @@ import { audit } from "@/lib/audit";
 import { loadPack } from "@/lib/data";
 import { prefillPack } from "@/lib/prefill";
 import { generateFlat } from "@/lib/lineart/service";
+import { readSource } from "@/lib/sources";
+import { readBoard } from "@/lib/board";
 
 /** A job still RUNNING this long after its last progress update has died with its function. */
 const STALE_MS = 6 * 60 * 1000;
 
-export type JobView = { id: string; kind: Job["kind"]; status: Job["status"]; step: string; result: Record<string, unknown> | null; error: string | null; view: FlatView | null };
+export type JobView = { id: string; kind: Job["kind"]; status: Job["status"]; step: string; result: Record<string, unknown> | null; error: string | null; view: FlatView | null; fileId: string | null };
 
-const viewOf = (j: Job): JobView => ({ id: j.id, kind: j.kind, status: j.status, step: j.step, result: j.result ?? null, error: j.error, view: j.params?.view ?? null });
+const viewOf = (j: Job): JobView => ({ id: j.id, kind: j.kind, status: j.status, step: j.step, result: j.result ?? null, error: j.error, view: j.params?.view ?? null, fileId: j.params?.fileId ?? null });
 
 /**
  * Queues a job and runs it after the response is sent (Vercel keeps the function alive for the
  * route's maxDuration). One live job per pack and kind/view: starting again returns the running one.
  */
-export async function startJob(packId: string, kind: Job["kind"], params: { view?: FlatView }, userId: string): Promise<JobView> {
+export async function startJob(packId: string, kind: Job["kind"], params: { view?: FlatView; fileId?: string }, userId: string): Promise<JobView> {
   const live = await activeJobs(packId);
-  const same = live.find((j) => j.kind === kind && (kind !== "FLAT" || j.view === (params.view ?? null)));
+  const same = live.find((j) => j.kind === kind && (kind !== "FLAT" || j.view === (params.view ?? null)) && (j.fileId ?? null) === (params.fileId ?? null));
   if (same) return same;
   const [job] = await db.insert(jobs).values({ packId, kind, params, createdBy: userId }).returning();
   after(() => runJob(job.id));
@@ -43,6 +45,13 @@ export async function runJob(id: string) {
       const res = await prefillPack(job.packId, user, progress);
       if (!res.ok) await update(id, { status: "ERROR", error: res.error, step: "" });
       else await update(id, { status: "DONE", step: "", result: { filled: res.filled, skippedConfirmed: res.skippedConfirmed, dropped: res.dropped, fixture: res.fixture } });
+    } else if (job.kind === "SOURCE") {
+      const res = await readSource(job.packId, job.params.fileId ?? "", user, progress);
+      await update(id, { status: "DONE", step: "", result: res });
+    } else if (job.kind === "BOARD") {
+      const p = await loadPack(job.packId);
+      const board = p ? await readBoard(job.packId, job.params.fileId ?? "", p.pack.styleNo) : null;
+      await update(id, { status: "DONE", step: "", result: { board } });
     } else {
       const p = await loadPack(job.packId);
       if (!p) throw new Error("Pack not found.");

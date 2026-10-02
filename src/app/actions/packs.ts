@@ -14,6 +14,7 @@ import { readStoredFile } from "@/lib/storage";
 import { CATEGORIES, findQuestion, isEmpty, optionalToggleId, sectionsFor, type Category } from "@/lib/questions";
 import type { ActionResult } from "./admin";
 import { prefillPack, type PrefillResult } from "@/lib/prefill";
+import { startJob } from "@/lib/jobs";
 import { suffixesFor } from "@/lib/codes";
 
 export type CreatePackState = { error?: string } | undefined;
@@ -176,7 +177,7 @@ export async function runPrefill(packId: string): Promise<PrefillResult> {
 
 export async function addPackFile(
   packId: string,
-  file: { kind: "render" | "colorway_render" | "reference" | "construction" | "reference_sample" | "swatch_photo"; url: string; name: string; tag?: string; note?: string },
+  file: { kind: (typeof packFiles.$inferInsert)["kind"]; url: string; name: string; tag?: string; note?: string },
 ): Promise<ActionResult & { id?: string; crop?: CropBox | null }> {
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
@@ -194,6 +195,8 @@ export async function addPackFile(
     .values({ packId, kind: file.kind, url: file.url, name: file.name, tag: tag.toUpperCase(), note: (file.note ?? "").toUpperCase(), marks: crop ? { crop } : {}, createdBy: user.id })
     .returning({ id: packFiles.id });
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "create", field: `file:${file.kind}`, after: { id: f.id, name: file.name, tag } });
+  // Read the board's own notes ("REFER TO SPEC" …) straight away, in the background.
+  if (file.kind === "render") await startJob(packId, "BOARD", { fileId: f.id }, user.id);
   revalidatePath(`/packs/${packId}`);
   return { ok: true, id: f.id, crop };
 }
@@ -216,6 +219,7 @@ export async function updatePackFile(
     set.marks = {
       // The crop is kept unless this patch sets it (null = whole image).
       crop: "crop" in m ? cleanCrop(m.crop) : (cur?.marks?.crop ?? null),
+      board: cur?.marks?.board ?? null, // set only by the board reader
       zoom: m.zoom ? { x: f(m.zoom.x), y: f(m.zoom.y), r: Math.min(0.5, Math.max(0.03, Number(m.zoom.r) || 0.2)) } : null,
       dot: m.dot ? { x: f(m.dot.x), y: f(m.dot.y) } : null,
       role: m.role === "SIDE_VIEW" || m.role === "APPLICATION" ? m.role : null,

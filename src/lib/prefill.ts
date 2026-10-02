@@ -66,10 +66,10 @@ export async function prefillPack(packId: string, user: { id: string }, progress
     }
     await db
       .insert(packAnswers)
-      .values({ packId, questionId, value, status, aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now })
+      .values({ packId, questionId, value, status, source: "", aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now })
       .onConflictDoUpdate({
         target: [packAnswers.packId, packAnswers.questionId],
-        set: { value, status, aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now },
+        set: { value, status, source: "", aiNote: note, aiValue: value, updatedBy: user.id, updatedAt: now },
       });
     filled++;
   };
