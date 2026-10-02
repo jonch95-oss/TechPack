@@ -1,16 +1,16 @@
 import "server-only";
 import { cache } from "react";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions, users, type Role, type User } from "@/db/schema";
-import { SESSION_COOKIE, decrypt } from "./session";
+import { auth } from "@/auth";
 
-/** Verifies the session cookie against the database. Memoised per request. */
+/** Verifies the Auth.js session against the database (revocable). Memoised per request. */
 export const getCurrentUser = cache(async (): Promise<User | null> => {
-  const payload = await decrypt((await cookies()).get(SESSION_COOKIE)?.value);
-  if (!payload) return null;
+  const session = (await auth()) as { sid?: string } | null;
+  if (!session?.sid) return null;
+  const payload = { sessionId: session.sid };
   const rows = await db
     .select({ user: users })
     .from(sessions)

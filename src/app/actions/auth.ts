@@ -2,32 +2,33 @@
 
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
+import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { sessions, users } from "@/db/schema";
-import { clearSessionCookie, decrypt, sessionExpiry, setSessionCookie, SESSION_COOKIE } from "@/lib/auth/session";
-import { cookies } from "next/headers";
+import { auth, signIn, signOut } from "@/auth";
 
 export type LoginState = { error?: string } | undefined;
 
+/** Email + password sign-in through Auth.js (credentials provider). */
 export async function login(_prev: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const password = String(form.get("password") ?? "");
   if (!email || !password) return { error: "Enter your email and password." };
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash)))
-    return { error: "That email and password don't match." };
-  const expiresAt = sessionExpiry();
-  const [s] = await db.insert(sessions).values({ userId: user.id, expiresAt }).returning({ id: sessions.id });
-  await setSessionCookie({ sessionId: s.id, userId: user.id, role: user.role, expiresAt: expiresAt.toISOString() });
+  try {
+    await signIn("credentials", { email, password, redirect: false });
+  } catch (e) {
+    if (e instanceof AuthError) return { error: "That email and password don't match." };
+    throw e;
+  }
   const next = String(form.get("next") ?? "/");
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }
 
 export async function logout() {
-  const payload = await decrypt((await cookies()).get(SESSION_COOKIE)?.value);
-  if (payload) await db.delete(sessions).where(eq(sessions.id, payload.sessionId));
-  await clearSessionCookie();
+  const session = (await auth()) as { sid?: string } | null;
+  if (session?.sid) await db.delete(sessions).where(eq(sessions.id, session.sid));
+  await signOut({ redirect: false });
   redirect("/login");
 }
 
