@@ -170,6 +170,7 @@ export const COMMON_SECTIONS: Section[] = [
         kind: "toggle",
         help: 'Prints the red banner "YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL".',
       },
+      { id: "header.instruction", label: "Headline instruction", kind: "text", placeholder: "e.g. PLEASE SAMPLE IN THE MEDIUM SIZE", help: "Printed large on page 1 (the overview)." },
       {
         id: "header.licensor",
         label: "Licensor",
@@ -548,9 +549,9 @@ export const COMMON_SECTIONS: Section[] = [
     questions: [
       {
         id: "pages.product_features",
-        label: "Product features page",
+        label: "Product features",
         kind: "toggle",
-        help: "Front 3/4 render with overall dimensions in red and a bulleted feature list (Ted Baker style). On unless you turn it off.",
+        help: "A bulleted feature list in a box on the overview page. On unless you turn it off.",
       },
       {
         id: "pages.features",

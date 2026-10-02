@@ -95,3 +95,28 @@ Working notes for `docs/V2-SEAMLESS-BRIEF.md`, one section per §12 step: what w
   - PINK013 / TB25_ACC0023 from the e2e database, snapshotted to `.data/golden/`;
   - `reference/real-packs/golden-entry.json` (gitignored): the fields each original answers by reference.
   - It prints counts and question ids only.
+
+### Step 3 — standard layout and markup
+Jon's decisions (§13): one standard layout for every brand; packaging pages are off by default for every brand.
+- **Page order** (`src/lib/page-names.ts`, `src/lib/pdf/plan.ts`):
+  OVERVIEW · MEASUREMENTS · REFERENCE IMAGES · COLOURWAYS · TRIMS & HARDWARE · INTERIOR & LINING · LINING / PRINT ARTWORK · CONSTRUCTION DETAILS · BILL OF MATERIALS · SWATCH CARDS · SAMPLE COMMENTS · CHANGE LOG.
+  - Empty pages are skipped.
+  - Old page names in stored comments, revisions and photo placements are rewritten by migration 0016. `normalizePage()` maps any left over.
+- **Standard header** on every page:
+  - a style box with STYLE CODE, the date in red followed by the latest revision, and ITEM in bold;
+  - a brand box with "BRAND:" and the logo;
+  - `P{n} · TITLE` at the bottom right, with *UPDATED* when something on the page changed.
+- **Overview** replaces the materials/hardware and product-features pages:
+  - the front (and back) flat, or the render with red dimension arrows;
+  - the size line, e.g. "16 CM H X 20 CM W X 8 CM D";
+  - the headline instruction (new question `header.instruction`);
+  - the features box (`pages.product_features` now switches only this box);
+  - comments and reference answers, the material callouts, and the facts list (description, category, retailer, season, due date, reference sample, sent by, licensor, hardware, logo, keychain).
+- **Colourways** replaces the enlarged CAD page:
+  - the material / colour breakdown, showing only the columns in use; the materials are headed by yellow callouts and the logo column is red;
+  - an SKU block under each colourway render: SKU#, COLOR, FABRIC, LINING, ZIPPER.
+- **Markup:** reference photos sit in a red frame with red captions.
+- **Re-laid packs:**
+  - PINK013 prints 8 pages (12 once construction, BOM, flats and the change log are added).
+  - TB25_ACC0023 prints 6 pages.
+  - `tests/e2e/03-phase2-pdf.spec.ts` checks every fact of each original page on the standard page that now carries it.

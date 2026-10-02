@@ -94,7 +94,7 @@ describe("validation gate (Part 5)", () => {
   });
 
   it("every comment letter must be placed on a page", () => {
-    const r = validatePack({ ...base, answers: { "comments.list": [{ text: "A", pages: ["MATERIALS / HARDWARE"] }, { text: "B" }] } });
+    const r = validatePack({ ...base, answers: { "comments.list": [{ text: "A", pages: ["OVERVIEW"] }, { text: "B" }] } });
     expect(find(r, "Comment B isn't on any page")?.status).toBe("fail");
     expect(find(r, "Comment A isn't on any page")).toBeUndefined();
   });

@@ -5,7 +5,7 @@ import { flats as flatsTable, hardware, materials, packs, prints, sampleComments
 import sharp from "sharp";
 import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
 import { pantoneHex, repeatTileSvg, svgDataUri } from "./artwork";
-import type { PageSection } from "@/lib/page-names";
+import { normalizePage, type PageSection } from "@/lib/page-names";
 import { changeLine, revisionState } from "@/lib/revisions";
 import { materialLabel, type LoadedPack } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
@@ -121,7 +121,7 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean; stag
   const comments = ((a["comments.list"] as { text?: string; pages?: string[] }[] | undefined) ?? []).map((c, i) => ({
     letter: String.fromCharCode(65 + i),
     text: c.text ?? "",
-    pages: c.pages ?? [],
+    pages: (c.pages ?? []).map(normalizePage),
   }));
 
   /* ---------- materials & swatches ---------- */
@@ -257,14 +257,13 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean; stag
     ...(rev.latest && rev.pending.length ? [{ label: rev.flagLabel, date: "", by: "", lines: rev.pending.map(changeLine), sent: false }] : []),
   ];
 
-  const features = ((a["pages.features"] as { text?: string }[] | undefined) ?? []).map((f) => f.text ?? "").filter(Boolean);
+  const features = a["pages.product_features"] === false ? [] : ((a["pages.features"] as { text?: string }[] | undefined) ?? []).map((f) => f.text ?? "").filter(Boolean);
   const plan: Plan = planPages({
     hasInterior,
-    productFeaturesOn: a["pages.product_features"] !== false,
-    hasFeaturesOrRender: features.length > 0,
+    hasColourways: p.pack.colorways.length > 0 && (cols.length > 0 || matList.length > 0),
     hasExtraMeasurements: measures.length > 0 || pom.length > 0 || placements.length > 0 || !!flatOf("FRONT"),
     colorwayRenderCount: cwRenders.length + indicative.length,
-    referencePhotoCount: refs.filter((r) => placeOf(r, comments) === "REFERENCE PHOTOS FOR CONSTRUCTION").length,
+    referencePhotoCount: refs.filter((r) => placeOf(r, comments) === "REFERENCE IMAGES").length,
     hasLiningArtwork: !!liningPrint,
     liningArtworkOnInterior: a["pages.lining_artwork"] === "ON INTERIOR PAGE",
     detailPanelCount: detail.length + (logoPanel ? 1 : 0),
@@ -322,6 +321,8 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean; stag
 
   return {
     refNotes,
+    /** Every style # in the pack (one today; multi-style packs come with V2.1 §4). */
+    styleCodes: [p.pack.styleNo],
     pack: p.pack,
     brand: { name: p.brand.name, logo: await img(p.brand.logoUrl) },
     unit,
@@ -335,16 +336,22 @@ export async function buildPackDoc(p: LoadedPack, opts: { images?: boolean; stag
       dueDate: (a["header.due_date"] as string) ?? "",
       category: String(a["hb.silhouette"] ?? a["slg.type"] ?? a["men.type"] ?? a["cos.shape"] ?? a["cool.type"] ?? p.pack.category).toUpperCase(),
       physicalSample: a["header.physical_sample"] === true,
+      instruction: (a["header.instruction"] as string) ?? "",
       licensor: a["header.licensor"] ? `${a["header.licensor"]} · ${a["header.licensor_submission"] ?? ""} · ${a["header.licensor_status"] ?? ""}` : "",
     },
     dims: { h: a["dims.h"] as number | undefined, w: a["dims.w"] as number | undefined, d: a["dims.d"] as number | undefined },
-    sizeText: ["h", "w", "d"].every((k) => typeof a[`dims.${k}`] === "number") ? `${trim(a["dims.h"] as number)}${U} H X ${trim(a["dims.w"] as number)}${U} W X ${trim(a["dims.d"] as number)}${U} D`.replace(/ CM/g, " cm").replace(/"/g, '"') : "",
+    // Overall size on one line, from whatever the product gives (V2.1 §5: a flat bag has no depth).
+    sizeText: (["h", "w", "d"] as const)
+      .filter((k) => typeof a[`dims.${k}`] === "number")
+      .map((k) => `${trim(a[`dims.${k}`] as number)}${U} ${k.toUpperCase()}`)
+      .join(" X ")
+      .replace(/ CM/g, " cm"),
     render: await cropped(render),
     colorwayRenders: await Promise.all(cwRenders.map(async (f) => ({ colorway: f!.tag, img: await cropped(f) }))),
     references: await Promise.all(
       refs.map(async (r) => {
         const page = placeOf(r, comments);
-        return { letter: r.tag, note: r.note, img: await img(r.url), page, zoom: r.marks?.zoom ?? null, dot: r.marks?.dot ?? null, role: r.marks?.role ?? null, onMeasurements: page === "MEASUREMENTS SHEET" && r.marks?.role !== "SIDE_VIEW" };
+        return { letter: r.tag, note: r.note, img: await img(r.url), page, zoom: r.marks?.zoom ?? null, dot: r.marks?.dot ?? null, role: r.marks?.role ?? null, onMeasurements: page === "MEASUREMENTS" && r.marks?.role !== "SIDE_VIEW" };
       }),
     ),
     /** Where the LOGO label's leader line points on the render (marked, or from the placement). */
@@ -505,8 +512,8 @@ function trim(n: number) {
 
 /** The page a reference photo prints on: set explicitly, or from its comment letter. */
 function placeOf(r: { tag: string; page: string | null }, comments: { letter: string; pages: string[] }[]): PageSection {
-  if (r.page) return r.page as PageSection;
-  return refOnMeasurements(r.tag, comments) ? "MEASUREMENTS SHEET" : "REFERENCE PHOTOS FOR CONSTRUCTION";
+  if (r.page) return normalizePage(r.page) as PageSection;
+  return refOnMeasurements(r.tag, comments) ? "MEASUREMENTS" : "REFERENCE IMAGES";
 }
 
 function defaultLogoPoint(placement: string) {
@@ -516,7 +523,7 @@ function defaultLogoPoint(placement: string) {
 }
 
 function refOnMeasurements(letter: string, comments: { letter: string; pages: string[] }[]) {
-  return comments.some((c) => c.letter === letter && c.pages.includes("MEASUREMENTS SHEET") && !c.pages.includes("REFERENCE PHOTOS FOR CONSTRUCTION"));
+  return comments.some((c) => c.letter === letter && c.pages.includes("MEASUREMENTS") && !c.pages.includes("REFERENCE IMAGES"));
 }
 
 function closureText(a: AnswerMap) {

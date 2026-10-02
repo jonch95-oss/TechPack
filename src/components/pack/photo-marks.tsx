@@ -4,22 +4,23 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updatePackFile } from "@/app/actions/packs";
 import type { FileMarks } from "@/db/schema";
+import { normalizePage } from "@/lib/page-names";
 import { Drawer } from "@/components/drawer";
 import { Button, cx } from "@/components/ui";
 
 /** Where a reference photo prints: its own template page, or a slot on one. Value = "PAGE|ROLE". */
 export const PLACEMENTS: { value: string; label: string }[] = [
   { value: "", label: "Auto — from its comment" },
-  { value: "MEASUREMENTS SHEET|SIDE_VIEW", label: "Measurements — side view" },
-  { value: "MEASUREMENTS SHEET|", label: "Measurements — detail photo" },
-  { value: "REFERENCE PHOTOS FOR CONSTRUCTION|", label: "Reference photos" },
+  { value: "MEASUREMENTS|SIDE_VIEW", label: "Measurements — side view" },
+  { value: "MEASUREMENTS|", label: "Measurements — detail photo" },
+  { value: "REFERENCE IMAGES|", label: "Reference images" },
   { value: "INTERIOR & LINING|", label: "Interior & lining" },
   { value: "LINING / PRINT ARTWORK|APPLICATION", label: "Lining artwork — application photo" },
-  { value: "HARDWARE / BRANDING DETAIL|", label: "Hardware / branding detail" },
+  { value: "TRIMS & HARDWARE|", label: "Trims & hardware" },
 ];
 
 export function placementValue(page: string | null, marks: FileMarks) {
-  return page ? `${page}|${marks.role ?? ""}` : "";
+  return page ? `${normalizePage(page)}|${marks.role ?? ""}` : "";
 }
 
 /**

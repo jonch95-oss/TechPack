@@ -4,8 +4,8 @@
  *  CLOURE, RECIEVE, IRRIDESCENT, INGRAIVED."
  *
  * Runs after 02-pink013 (which enters PINK013 through the UI). TB25_ACC0023 is seeded from its
- * reference pack. Each generated PDF is compared page by page with the content of the reference
- * page it corresponds to (text extracted with pdftotext). Spelling in the expectations is the
+ * reference pack. Both print in the standard layout (V2.1 §2.4); each generated page is checked for
+ * every fact of the reference page(s) it carries (text extracted with pdftotext). Spelling in the expectations is the
  * corrected spelling — the app fixes CLOURE etc.
  *
  * Flats (line art) arrive in Phase 3: until then the CAD render stands in for front-view flats
@@ -24,75 +24,82 @@ const SHOTS = process.env.SHOTS_DIR;
 
 type PageExpect = { reference: string; contains: string[] };
 
-/** PINK013 reference pages 1–8 (same order in the Icon template). */
+/**
+ * PINK013 in the standard layout (V2.1 §2.4, §12.3): every fact the reference carries, original
+ * page → standard page. `reference` names the original page(s) each standard page carries.
+ */
 const PINK013: PageExpect[] = [
   {
-    reference: "1/8 MATERIALS / HARDWARE",
+    reference: "1/8 MATERIALS / HARDWARE (header, drawing, comments)",
     contains: [
-      "PAGE 1/8", "MATERIALS / HARDWARE", "ICON LUXURY GROUP", "ATTN: FTY", "RETAILER : PINK", "REFERENCE SAMPLE: BETSY JOHNSON",
-      "SENT BY: EMILY", "DUE DATE: ASAP", "PROTO : PINK013-A, B", "BAG CATEGORY: SATCHEL", "STYLE NAME: JODIE",
-      "16 CM H X 20 CM W X 8 CM D", "SHOULDER BAG SATCHEL W/ FLAP & LONG SHOULDER STRAP",
+      "P1 · OVERVIEW", "STYLE CODE: PINK013", "ITEM: JODIE", "BRAND:", "RETAILER: PINK", "REFERENCE SAMPLE: BETSY JOHNSON",
+      "SENT BY: EMILY", "DUE DATE: ASAP", "CATEGORY: SATCHEL",
+      "16 CM H X 20 CM W X 8 CM D", "DESCRIPTION: SHOULDER BAG SATCHEL W/ FLAP & LONG SHOULDER STRAP",
       "OVERALL EXTERIOR DIMENSIONS: 16 CM HEIGHT X 20 CM WIDTH X 8 CM DEPTH", "SHOULDER STRAP THAT IS NOT REMOVABLE",
-      "YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR", "FRONT VIEW", "LOGO (CENTERED", "PINK003 INCLUDED",
-      "MATERIAL / COLOR BREAKDOWN", "MAIN BODY MTL", "(SEE PG 7/8 FOR SWATCH CARD REFERENCE)", "(SEE PG 8/8 FOR SWATCH CARD REFERENCE)",
-      "JUNFA LEATHER SMOOTH PU / #2 IRIDESCENT BLACK", "JUNFA LEATHER SMOOTH PU / #24 IRIDESCENT PINK",
-      "TONAL HEAT STAMP CUSTOM ARTWORK", "SEE DETAIL SHEET PG 6/8", "EDGE PAINT", "DTM", "SHINY CHAMPAGNE GOLD", "TPU", "REF TO PINK005",
-      "PINK013-A", "PINK013-B",
+      "YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR", "FRONT VIEW", "LOGO (CENTERED", "PINK003 INCLUDED", "MAIN BODY MTL",
+      "HARDWARE: SHINY CHAMPAGNE GOLD",
     ],
   },
   {
     reference: "2/8 MEASUREMENTS SHEET",
     contains: [
-      "PAGE 2/8", "MEASUREMENTS SHEET", "TOP HANDLE DROP HEIGHT: 6.5 CM", "FRONT FLAP HAS SNAP CLOSURE", "2 SNAPS TOTAL, SPACED EVENLY UNDER FLAP",
+      "P2 · MEASUREMENTS", "TOP HANDLE DROP HEIGHT: 6.5 CM", "FRONT FLAP HAS SNAP CLOSURE", "2 SNAPS TOTAL, SPACED EVENLY UNDER FLAP",
       "7.5 CM", "1.5 CM", "16 CM TOTAL HEIGHT", "20 CM TOTAL WIDTH", "8 CM TOTAL DEPTH", "LOGO (CENTERED)", "FRONT FLAP SNAP CLOSURE",
       "STANDARD GUSSET", "SHOULDER STRAP",
     ],
   },
-  { reference: "3/8 ENLARGED CAD", contains: ["PAGE 3/8", "ENLARGED CAD", "PINK013-A", "PINK013-B"] },
-  { reference: "4/8 REFERENCE PHOTOS FOR CONSTRUCTION", contains: ["PAGE 4/8", "REFERENCE PHOTOS FOR CONSTRUCTION", "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE"] },
+  { reference: "4/8 REFERENCE PHOTOS FOR CONSTRUCTION", contains: ["P3 · REFERENCE IMAGES", "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE"] },
+  {
+    reference: "3/8 ENLARGED CAD + 1/8 material / colour breakdown",
+    contains: [
+      "P4 · COLOURWAYS", "MATERIAL / COLOUR BREAKDOWN", "COLOURWAY", "MAIN BODY MTL", "SEE P7 SWATCH CARD", "SEE P8 SWATCH CARD",
+      "JUNFA LEATHER SMOOTH PU / #2 IRIDESCENT BLACK", "JUNFA LEATHER SMOOTH PU / #24 IRIDESCENT PINK",
+      "TONAL HEAT STAMP CUSTOM ARTWORK", "SEE P6", "EDGE PAINT", "DTM", "SHINY CHAMPAGNE GOLD", "REF TO PINK005",
+      "SKU#: PINK013-A", "SKU#: PINK013-B", "COLOR: IRIDESCENT BLACK", "COLOR: IRIDESCENT PINK",
+    ],
+  },
   {
     reference: "5/8 INTERIOR & LINING",
     contains: [
-      "PAGE 5/8", "INTERIOR & LINING", "ADD PINK004 PINK LONDON WOVEN LABEL (CENTERED)", "INTERIOR MAIN COMPARTMENT BACK WALL", "(PKT IS CENTERED)",
+      "P5 · INTERIOR & LINING", "ADD PINK004 PINK LONDON WOVEN LABEL (CENTERED)", "INTERIOR MAIN COMPARTMENT BACK WALL", "(PKT IS CENTERED)",
       "W/ LINING", "BINDING", "2.5 CM", "14 CM", "1.5 CM", "2 CM", "4 CM", "REMAINING HEIGHT",
     ],
   },
-  { reference: "6/8 LINING ARTWORK", contains: ["PAGE 6/8", "LINING ARTWORK", "LINING IS TONAL HEAT STAMP REPEAT", "10 CM", "PANTONE 203 C"] },
-  { reference: "7/8 MAIN BODY #1 MTL (-A)", contains: ["PAGE 7/8", "MAIN BODY #1 MTL", "FOR REFERENCE PINK013-A ONLY", "JUNFA LEATHER", "SWATCH CARD", "SMOOTH PU / #2", "IRIDESCENT BLACK"] },
-  { reference: "8/8 MAIN BODY #1 MTL (-B)", contains: ["PAGE 8/8", "MAIN BODY #1 MTL", "FOR REFERENCE PINK013-B ONLY", "JUNFA LEATHER", "SWATCH CARD", "SMOOTH PU / #24", "IRIDESCENT PINK"] },
+  { reference: "6/8 LINING ARTWORK", contains: ["P6 · LINING / PRINT ARTWORK", "LINING ARTWORK", "LINING IS TONAL HEAT STAMP REPEAT", "10 CM", "PANTONE 203 C"] },
+  { reference: "7/8 MAIN BODY #1 MTL (-A)", contains: ["P7 · MAIN BODY #1 MTL", "FOR REFERENCE PINK013-A ONLY", "JUNFA LEATHER", "SWATCH CARD", "SMOOTH PU / #2", "IRIDESCENT BLACK"] },
+  { reference: "8/8 MAIN BODY #1 MTL (-B)", contains: ["P8 · MAIN BODY #1 MTL", "FOR REFERENCE PINK013-B ONLY", "JUNFA LEATHER", "SWATCH CARD", "SMOOTH PU / #24", "IRIDESCENT PINK"] },
 ];
 
 /**
- * TB25_ACC0023 reference pages, in the order the Icon template prints them. The reference itself
- * is in Ted Baker's order (features, references, materials, interior, hardware, fabric) — the
- * `reference` label gives the reference page each one corresponds to.
+ * TB25_ACC0023 in the standard layout. The reference is in Ted Baker's order (features,
+ * references, materials, interior, hardware, fabric); `reference` names the original page(s).
  */
 const TB25: PageExpect[] = [
   {
+    reference: "TB p1 product features + p3 header and comments",
+    contains: [
+      "P1 · OVERVIEW", "STYLE CODE: TB25_ACC0023", "ITEM: GINGHAM PU MEN'S DOPP KIT", "DOUBLED PU 22MM HANDLE. PLEASE EDGE PAINT ALL PU IN BLACK.",
+      "GINGHAM EFFECT PU LEATHER", "SMOOTH PU LEATHER TRIM", "PRODUCT FEATURES", "ZIPPERED MAIN COMPARTMENT", "BACK ZIPPERED POCKET", "PU TRIM",
+      "GINGHAM EFFECT PU BODY", "PU DEBOSSED LOGO", "GUNMETAL HARDWARE", "INTERIOR ORG", "PRINTED LINING", "1MM PADDING ALL OVER", '5.25"', '4.25"', '10.25"',
+    ],
+  },
+  { reference: "TB p2 — reference images", contains: ["P2 · REFERENCE IMAGES", "REFERENCE"] },
+  {
     reference: "TB p3 — materials / colour breakdown",
     contains: [
-      "PAGE 1/6", "MATERIALS / HARDWARE", "TB25_ACC0023", "GINGHAM PU MEN'S DOPP KIT", "DOUBLED PU 22MM HANDLE. PLEASE EDGE PAINT ALL PU IN BLACK.",
-      "GINGHAM EFFECT PU LEATHER", "SMOOTH PU LEATHER TRIM", "ZIPPER", "#8 PLASTIC W/ METAL FINISH", "BLACK TAPE", "DTM TAPE", "GUNMETAL COLOR TEETH",
-      "SWATCH CARD REFERENCE", "BLACK", "BROWN", "NAVY", "PU DEBOSSED LOGO PATCH WITH GUNMETAL FILLING",
+      "P3 · COLOURWAYS", "MATERIAL / COLOUR BREAKDOWN", "GINGHAM EFFECT PU LEATHER", "SMOOTH PU LEATHER TRIM", "ZIPPER", "#8 PLASTIC W/ METAL FINISH",
+      "BLACK TAPE", "DTM TAPE", "GUNMETAL COLOR TEETH", "SEE P6 SWATCH CARD", "BLACK", "BROWN", "NAVY", "PU DEBOSSED LOGO PATCH WITH GUNMETAL FILLING",
     ],
-  },
-  {
-    reference: "TB p1 — product features",
-    contains: [
-      "PAGE 2/6", "PRODUCT FEATURES", "GINGHAM PU MEN'S DOPP KIT", "ZIPPERED MAIN COMPARTMENT", "BACK ZIPPERED POCKET", "PU TRIM", "GINGHAM EFFECT PU BODY",
-      "PU DEBOSSED LOGO", "GUNMETAL HARDWARE", "INTERIOR ORG", "PRINTED LINING", "1MM PADDING ALL OVER", '5.25"', '4.25"', '10.25"',
-    ],
-  },
-  { reference: "TB p2 — reference images", contains: ["PAGE 3/6", "REFERENCE", "REFERENCE IMAGES"] },
-  {
-    reference: "TB p4 — interior + lining repeat",
-    contains: ["PAGE 4/6", "INTERIOR & LINING", "#5 NYLON COIL ZIPPERED POCKET", "INTERIOR SIDE 1", "REPEAT", "190D POLY HEAT SEAL TEXTURE", "BLACK", "17-3914 TCX SHARKSKIN", "20.8 MM", "PLEASE MAKE SURE TO ADD INTERIOR BINDING"],
   },
   {
     reference: "TB p5 — hardware / branding detail",
-    contains: ["PAGE 5/6", "HARDWARE / BRANDING DETAIL", "ZIPPER PULL", "16 X 42 MM", "SIZE 100%", "GUNMETAL", "HOLLOW", "INKED METALLIC LOGO", "EMBOSSED ENAMEL INLAY", "55MM", "21.8MM", "LOGO DEBOSS WITH GUNMETAL"],
+    contains: ["P4 · TRIMS & HARDWARE", "ZIPPER PULL", "16 X 42 MM", "SIZE 100%", "GUNMETAL", "HOLLOW", "INKED METALLIC LOGO", "EMBOSSED ENAMEL INLAY", "55MM", "21.8MM", "LOGO DEBOSS WITH GUNMETAL"],
   },
-  { reference: "TB p6 — fabric reference", contains: ["PAGE 6/6", "FABRIC REFERENCE", "BLACK", "BROWN", "NAVY", "JINXIN", "AH316HB-P"] },
+  {
+    reference: "TB p4 — interior + lining repeat",
+    contains: ["P5 · INTERIOR & LINING", "#5 NYLON COIL ZIPPERED POCKET", "INTERIOR SIDE 1", "REPEAT", "190D POLY HEAT SEAL TEXTURE", "BLACK", "17-3914 TCX SHARKSKIN", "20.8 MM", "PLEASE MAKE SURE TO ADD INTERIOR BINDING"],
+  },
+  { reference: "TB p6 — fabric reference", contains: ["P6 · SWATCH CARDS", "FABRIC REFERENCE", "BLACK", "BROWN", "NAVY", "JINXIN", "AH316HB-P"] },
 ];
 
 const norm = (s: string) => s.toUpperCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim();
@@ -137,11 +144,11 @@ test("Phase 2: PDFs page for page, validation gate, spell-check", async ({ page 
   const settled = () => expect(page.getByText("Saving…")).toHaveCount(0);
 
   // Comment letters → pages (A, B on page 1; C, D on the measurements sheet, as on the reference).
-  for (const [i, where] of [[0, "MATERIALS / HARDWARE"], [1, "MATERIALS / HARDWARE"], [2, "MEASUREMENTS SHEET"], [3, "MEASUREMENTS SHEET"]] as const) {
+  for (const [i, where] of [[0, "OVERVIEW"], [1, "OVERVIEW"], [2, "MEASUREMENTS"], [3, "MEASUREMENTS"]] as const) {
     await page.getByTestId(`comments.list-row-${i}`).getByRole("checkbox", { name: where, exact: true }).click();
     await settled();
   }
-  // Product features page: off for PINK013 (the reference has none).
+  // Product features: off for PINK013 (the reference has none).
   await q("pages.product_features").getByRole("radio", { name: "No" }).click();
   await settled();
 

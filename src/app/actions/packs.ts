@@ -1,7 +1,7 @@
 "use server";
 
 import { cleanCrop, detectProductBox, type CropBox } from "@/lib/crop";
-import { PAGE_SECTIONS } from "@/lib/page-names";
+import { normalizePage, PAGE_SECTIONS } from "@/lib/page-names";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -289,7 +289,7 @@ export async function updatePackFile(
   const set: Partial<typeof packFiles.$inferInsert> = {};
   if (patch.tag !== undefined) set.tag = patch.tag.toUpperCase();
   if (patch.note !== undefined) set.note = patch.note.toUpperCase();
-  if (patch.page !== undefined) set.page = patch.page && (PAGE_SECTIONS as readonly string[]).includes(patch.page) ? patch.page : null;
+  if (patch.page !== undefined) set.page = patch.page && (PAGE_SECTIONS as readonly string[]).includes(normalizePage(patch.page)) ? normalizePage(patch.page) : null;
   if (patch.marks !== undefined) {
     const f = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
     const m = patch.marks;

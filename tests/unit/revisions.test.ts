@@ -20,7 +20,7 @@ describe("revision change log", () => {
     const ch = diffSnapshots(base, after, "Handbags");
     expect(ch).toHaveLength(1);
     expect(changeLine(ch[0])).toBe("LOGO TYPE: METAL PLATE → TPU / RUBBER PATCH");
-    expect(ch[0].sections).toEqual(expect.arrayContaining(["MATERIALS / HARDWARE", "MEASUREMENTS SHEET"]));
+    expect(ch[0].sections).toEqual(expect.arrayContaining(["OVERVIEW", "MEASUREMENTS"]));
   });
 
   it("numbers carry units; tables are reported row by row; due date is not a change", () => {
@@ -46,7 +46,7 @@ describe("revision change log", () => {
 
   it("maps questions to the pages that show them", () => {
     expect(sectionsForQuestion("interior.pockets")).toEqual(["INTERIOR & LINING"]);
-    expect(sectionsForQuestion("pom.list")).toEqual(["MEASUREMENTS SHEET"]);
-    expect(sectionsForQuestion("comments.list", { "comments.list": [{ pages: ["REFERENCE PHOTOS FOR CONSTRUCTION"] }] })).toEqual(["REFERENCE PHOTOS FOR CONSTRUCTION"]);
+    expect(sectionsForQuestion("pom.list")).toEqual(["MEASUREMENTS"]);
+    expect(sectionsForQuestion("comments.list", { "comments.list": [{ pages: ["REFERENCE IMAGES"] }] })).toEqual(["REFERENCE IMAGES"]);
   });
 });

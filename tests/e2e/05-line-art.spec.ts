@@ -126,7 +126,7 @@ test("Phase 3: Jodie front flat is editable and its dimension lines read 16 × 2
   expect(text(1)).toContain("BACKVIEW");
   expect(text(1)).toContain("INFERRED—CONFIRM");
   expect(text(1)).toContain("LOGOPINK005");
-  expect(text(2)).toContain("MEASUREMENTSSHEET");
+  expect(text(2)).toContain("P2·MEASUREMENTS");
   expect(text(2)).toContain("20CM");
   expect(text(2)).toContain("16CM");
   expect(text(2)).toContain("HANDLEDROP6.5CM");

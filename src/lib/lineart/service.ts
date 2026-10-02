@@ -1,3 +1,4 @@
+import { normalizePage } from "@/lib/page-names";
 import "server-only";
 import { readCroppedFile } from "@/lib/crop";
 import { and, eq } from "drizzle-orm";
@@ -18,8 +19,8 @@ export async function annotationInput(p: LoadedPack, view: View, meta: { w: numb
   const logoHw = logoId ? (await db.select({ code: hardware.code }).from(hardware).where(eq(hardware.id, logoId)))[0] : undefined;
   const logoSize = a["branding.logo_size"] as Dims2Value | undefined;
   const comments = ((a["comments.list"] as { pages?: string[] }[] | undefined) ?? [])
-    .map((c, i) => ({ letter: String.fromCharCode(65 + i), pages: c.pages ?? [] }))
-    .filter((c) => c.pages.includes("MATERIALS / HARDWARE") || c.pages.includes("MEASUREMENTS SHEET"));
+    .map((c, i) => ({ letter: String.fromCharCode(65 + i), pages: (c.pages ?? []).map(normalizePage) }))
+    .filter((c) => c.pages.includes("OVERVIEW") || c.pages.includes("MEASUREMENTS"));
   return {
     view,
     unit: a["dims.unit"] === "INCHES" ? "in" : "cm",

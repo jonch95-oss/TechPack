@@ -28,7 +28,13 @@ export const DEFAULT_GLOSSARY: [string, string][] = [
 ];
 
 export const TRADE_ZH: Record<string, string> = {
-  // pages & masthead
+  // pages & header (standard layout, V2.1 §2)
+  OVERVIEW: "总览",
+  "REFERENCE IMAGES": "参考图片",
+  COLOURWAYS: "配色",
+  "TRIMS & HARDWARE": "辅料及五金",
+  "STYLE CODE": "款号",
+  ITEM: "品名",
   "MATERIALS / HARDWARE": "材料 / 五金",
   "PRODUCT FEATURES": "产品特点",
   "MEASUREMENTS SHEET": "尺寸表",

@@ -6,8 +6,8 @@ import type { PackDoc } from "./doc";
 import { inlineFlat } from "@/lib/lineart/geometry";
 
 /**
- * ICON template pages (BRIEF Part 4) as print HTML: 17 × 11 in landscape, condensed bold type,
- * everything in CAPITALS, PAGE n/N + section tag at top right. Vector where possible (text, tables,
+ * The standard tech pack pages (V2.1 §2–3, one layout for every brand) as print HTML: 17 × 11 in
+ * landscape, condensed bold type, everything in CAPITALS, the standard header on every page. Vector where possible (text, tables,
  * dimension diagrams are HTML/SVG; renders and photos are embedded images).
  */
 
@@ -100,15 +100,40 @@ ul.feat li::before { content: "-  "; }
 .cap { font-size: 16pt; line-height: 1.2; }
 .zoomcap { display: flex; gap: 10px; align-items: center; justify-content: center; font-size: 17pt; margin-bottom: 8px; }
 .redbox { border: 3px solid #e2231a; }
+/* Standard header (V2.1 §2.2): style box top-left, brand box top-right, page tag bottom-right. */
+.stylebox { position: absolute; left: 0.4in; top: 0.3in; width: 4.4in; border: 1.5px solid #111; padding: 6px 10px; font-size: 12pt; line-height: 1.3; }
+.stylebox .k { font-size: 10pt; }
+.stylebox .item { font-size: 16pt; font-weight: 900; }
+.brandbox { position: absolute; right: 0.4in; top: 0.3in; width: 2.2in; height: 1in; border: 1.5px solid #111; padding: 4px 8px; text-align: center; }
+.brandbox .k { font-size: 9pt; text-align: left; }
+.ptag { position: absolute; right: 0.4in; bottom: 0.06in; font-size: 11pt; background: #fff; padding: 0 4px; z-index: 20; }
+.cyan { color: #0aa0d0; }
+.frame { border: 1.5px solid #e2231a; }
+.variant { width: 100%; border: 2px solid #111; font-size: 12pt; table-layout: auto; }
+.variant th, .variant td { border: 1px solid #111; padding: 5px 7px; text-align: center; vertical-align: middle; }
+.variant th { font-size: 11pt; }
+.variant td.cw { font-size: 18pt; line-height: 1.05; white-space: nowrap; }
+.variant .ref { color: #e2231a; font-size: 9pt; display: block; margin-top: 2px; }
+.chip { display: inline-block; width: 0.32in; height: 0.22in; border: 1px solid #666; vertical-align: middle; margin-right: 4px; }
+.sku { font-size: 11.5pt; line-height: 1.35; text-align: left; }
+.sku b { font-weight: 900; }
 `;
 
-function tag(doc: PackDoc, n: number, section: string) {
-  return `<div class="tag">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}${pageUpd(doc, section)}${doc.brand.logo ? `<br/><img class="logo" src="${doc.brand.logo.src}"/>` : ""}</div>`;
-}
-
+/**
+ * The standard header on every page (V2.1 §2.2): STYLE CODE (every style # in the pack), the date in
+ * red with the revision after it, ITEM in bold; the brand box with its logo; "P3 · COLOURWAYS" at the
+ * bottom right (with *UPDATED* when something on the page changed).
+ */
 function head(doc: PackDoc, n: number, section: string) {
   const sec = /^SWATCH|MTL$/.test(section) ? "SWATCH CARDS" : section;
-  return `<div class="style-head">${up(doc.pack.styleNo)}</div><div class="style-sub">PAGE ${n}/${doc.plan.total}<br/>${esc(section)}${pageUpd(doc, sec, true)}</div>${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="position:absolute;top:0.32in;right:0.4in;max-height:0.5in;max-width:2.4in"/>` : `<div style="position:absolute;top:0.32in;right:0.4in;font-size:16pt">${up(doc.brand.name)}</div>`}`;
+  const rev = doc.revision.dates.length ? doc.revision.dates[doc.revision.dates.length - 1] : null;
+  const date = rev?.date || doc.revision.original || new Date().toISOString().slice(0, 10);
+  return `<div class="stylebox"><div><span class="k">STYLE CODE:</span> ${up(doc.styleCodes.join(", "))}</div>
+      <div class="red">${esc(date)}${rev ? ` &nbsp;${esc(rev.label)}` : ""}</div>
+      <div><span class="k">ITEM:</span> <span class="item">${up(doc.pack.styleName)}</span></div></div>
+    <div class="brandbox"><div class="k">BRAND:</div>${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.9in;max-height:0.62in;margin-top:2px"/>` : `<div style="font-size:${fitPt(doc.brand.name.toUpperCase(), 1.9, 2, 20)}pt;margin-top:4px">${up(doc.brand.name)}</div>`}</div>
+    <div class="ptag">P${n} · ${esc(section)}${pageUpd(doc, sec, true)}</div>
+    <div style="height:1.15in"></div>`; // pages laid out in flow start under the header
 }
 
 function commentsFor(doc: PackDoc, section: string, n?: number) {
@@ -126,7 +151,7 @@ function crossRef(doc: PackDoc, c: { letter: string; text: string; pages: string
   const nums = new Set<number>();
   const add = (section: string) => doc.plan.pages.filter((p) => p.section === section).forEach((p) => nums.add(p.n));
   for (const r of doc.references) if (r.letter === c.letter) add(r.page);
-  for (const sec of c.pages) if (sec !== "MATERIALS / HARDWARE") add(sec);
+  for (const sec of c.pages) if (sec !== "OVERVIEW") add(sec);
   const list = [...nums].filter((x) => x !== n).sort((a, b) => a - b);
   if (!list.length) return c.text;
   return c.text.replace(/(SEE REFERENCE PHOTOS?)/i, `$1 ON PAGE${list.length > 1 ? "S" : ""} ${list.join(", ")}`);
@@ -199,132 +224,80 @@ function rd(doc: PackDoc, i: number) {
   return r ? ` <span class="red">${esc(r.date)}</span>` : "";
 }
 
-/* ------------------------------ 1. MATERIALS / HARDWARE ------------------------------ */
-function materialsPage(doc: PackDoc, n: number) {
+/* ------------------------------ P1. OVERVIEW ------------------------------ */
+/**
+ * Page 1 (V2.1 §2.3): the front flat (or render) with red dimension lines, the overall size on one
+ * line, the headline instruction in large type, PRODUCT FEATURES, and the red lettered comments (plus
+ * reference answers, as written). The header facts that used to fill the masthead sit under them.
+ */
+function overviewPage(doc: PackDoc, n: number) {
   const h = doc.header;
-  // Fixed-height masthead: each value shrinks to fit its cell (one line; two for the description).
-  const v = (text: unknown, w: number, cls = "", lines = 1) => {
-    const t = String(text ?? "").toUpperCase();
-    const pt = fitPt(t, w, lines);
-    return `<span class="v ${cls}" style="font-size:${pt}pt${lines === 1 ? ";white-space:nowrap" : ""}">${esc(t)}</span>`;
-  };
-  const mast = `<table class="mast">
-    <tr><td class="icon wrap" style="width:1.2in;font-size:8.5pt;line-height:1">ICON LUXURY GROUP</td>
-      <td style="width:2.95in"><b>ATTN:</b> <span class="v">FTY</span></td>
-      <td style="width:2.05in;font-size:9.5pt"><b>ORIGINAL DATE SENT :</b> ${v(doc.revision.original, 0.8)}</td>
-      <td style="width:2.9in"><b>SIZE :</b> ${v(doc.sizeText, 2.3, "red")}${upd(doc, "dims.")}</td></tr>
-    <tr><td rowspan="4" class="brand wrap">${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.1in;max-height:0.75in"/>` : `<span style="font-size:11pt">BRAND :</span><br/><span style="font-size:${fitPt(doc.brand.name.toUpperCase(), 1.05, 2, 20)}pt">${up(doc.brand.name)}</span>`}</td>
-      <td><b>RETAILER :</b> ${v(h.retailer, 2.1)}</td><td class="wrap" style="font-size:8.5pt;line-height:1.1"><b>REVISED DATE(S) SENT :</b><br/>R1${rd(doc, 0)} &nbsp; R2:${rd(doc, 1)}</td><td><b>SENT BY:</b> ${v(h.sentBy, 2.2)}</td></tr>
-    <tr><td><b>SEASON :</b> ${v(h.season, 2.15)}</td><td>R3:${rd(doc, 2)}</td><td><b>DUE DATE:</b> ${v(h.dueDate, 2.15, "red")}</td></tr>
-    <tr><td><b>REFERENCE SAMPLE:</b> ${v(h.referenceSample, 1.6, "red")}</td><td style="font-size:${fitPt(`R4: ${doc.revision.dates[3]?.date ?? ""} ${doc.revision.dates.slice(4).map((r) => `${r.label}: ${r.date}`).join("  ")}`, 1.9, 1, 11)}pt">R4:${rd(doc, 3)}${doc.revision.dates.slice(4).map((r) => ` &nbsp; ${esc(r.label)}: ${esc(r.date)}`).join("")}</td><td><b>PROTO :</b> ${v(proto(doc), 2.3)}</td></tr>
-    <tr class="last"><td colspan="2" class="wrap"><b>DESCRIPTION:</b> ${v(h.description, 4.0, "", 2)}${upd(doc, "header.description")}</td><td><b>BAG CATEGORY:</b> ${v(h.category, 1.8)}<br/><b>STYLE NAME:</b> ${v(doc.pack.styleName, 1.95)}</td></tr>
-  </table>`;
-
-  // Reference answers print as written ("WEBBING SAME AS <STYLE #>", "PLEASE FOLLOW SAMPLE IMAGES FOR …").
-  const refNotes = doc.refNotes.length
-    ? `<div class="comments" data-ref-notes>${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>`
-    : "";
-  const comments = commentsFor(doc, "MATERIALS / HARDWARE", n) + refNotes;
-  const banner = h.physicalSample ? `<div class="banner abs" style="left:2.6in;top:2.12in;width:7.6in;text-align:center">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR<br/>SIZE AND SIMILAR MATERIAL.</div>` : "";
-  const top = h.physicalSample ? 2.9 : 2.25; // the masthead is a fixed 1.65in
-  const callouts = doc.materials
-    .map((m) => `<div style="display:flex;gap:10px;align-items:center;font-size:15pt;line-height:1.15"><span class="callout">${m.callout}</span><span>${up(m.name)}${m.locations.length ? `<br/><span style="font-size:11pt" class="muted">${up(m.locations.join(", "))}</span>` : ""}</span></div>`)
-    .join("");
-  const charm = doc.charm
-    ? `<div class="abs" style="left:0.4in;top:${top}in;width:2.1in;text-align:center">${doc.charm.photo ? `<div style="position:relative;height:2.9in">${imgIn(doc.charm.photo, { x: 0, y: 0, w: 2.1, h: 2.9 })}</div>` : ""}<div class="label" style="font-size:15pt;line-height:1.15;margin-top:4px">CUSTOM HARDWARE<br/>KEYCHAIN:<br/>${up(doc.charm.code)} INCLUDED</div></div>`
-    : "";
-
-  /* drawing: flats (Phase 3) or the render with a red leader line from LOGO to the logo */
-  // The breakdown fills the bottom of the page; more colourways start it higher.
-  const bt = Math.max(5.9, 10.68 - 1.0 - doc.rows.length * 1.15);
-  const box: R = { x: 2.65, y: top + 0.45, w: 7.5, h: bt - 0.37 - top - 0.45 };
+  const box: R = { x: 0.4, y: 1.55, w: 10.2, h: h.instruction ? 7.15 : 7.75 };
   let drawing = "";
   let lines = "";
   if (doc.flats.front) {
-    drawing = `<div class="abs" style="${at({ ...box, y: top, h: box.h + 0.45 })}display:flex;gap:0.2in"><div style="flex:1;min-width:0">${flatBox(doc.flats.front, "flat-mat", "FRONT VIEW")}</div>${doc.flats.back ? `<div style="flex:1;min-width:0">${flatBox(doc.flats.back, "flat-mat", "BACK VIEW")}</div>` : ""}</div>`;
+    drawing = `<div class="abs" style="${at(box)}display:flex;gap:0.2in"><div style="flex:1;min-width:0">${flatBox(doc.flats.front, "flat", "FRONT VIEW")}</div>${doc.flats.back ? `<div style="flex:1;min-width:0">${flatBox(doc.flats.back, "flat-mat", "BACK VIEW")}</div>` : ""}</div>`;
   } else if (doc.render) {
-    const r = fit(doc.render, box);
-    drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(top)}in;width:${box.w}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, box)}`;
+    // Red dimension lines on the render: W under it, H up the right side, D across the near corner.
+    const inner: R = { x: box.x + 0.9, y: box.y + 0.5, w: box.w - 2.2, h: box.h - 1.3 };
+    const r = fit(doc.render, inner);
+    const d = doc.dims;
+    const v = (x?: number) => (typeof x === "number" ? `${x}${doc.U}` : "");
+    drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(box.y)}in;width:${box.w}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, inner)}`;
+    lines += [
+      d.w != null ? lead(r.x, r.y + r.h + 0.3, r.x + r.w, r.y + r.h + 0.3, { arrow: "both", w: 0.03 }) + plate(r.x + r.w / 2, r.y + r.h + 0.3, v(d.w), 20) : "",
+      d.h != null ? lead(r.x + r.w + 0.35, r.y + r.h, r.x + r.w + 0.35, r.y, { arrow: "both", w: 0.03 }) + plate(r.x + r.w + 0.35, r.y + r.h / 2, v(d.h), 20) : "",
+      d.d != null ? lead(r.x - 0.35, r.y + r.h, r.x - 0.05, r.y + r.h * 0.8, { arrow: "both", w: 0.03 }) + plate(r.x - 0.5, r.y + r.h + 0.15, v(d.d), 20) : "",
+    ].join("");
     if (doc.logo.type) {
       const px = r.x + doc.logoPoint.x * r.w,
         py = r.y + doc.logoPoint.y * r.h;
-      const lx = Math.min(box.x + box.w - 0.2, r.x + r.w + 0.1),
-        ly = top + 0.95; // below the FRONT VIEW title
-      drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:15pt;line-height:1.1;z-index:6">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>`;
+      const lx = box.x + box.w - 0.1,
+        ly = box.y + 0.9;
+      drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:14pt;line-height:1.1;z-index:6">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>`;
       lines += lead(lx - 0.15, ly, px, py, { dot: true });
     }
   }
-  const side = `<div class="abs" style="left:10.35in;top:${top + 0.1}in;width:3.3in;display:flex;flex-direction:column;gap:14px">
-      ${doc.flats.front && doc.logo.type ? `<div class="red" style="font-size:15pt">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>` : ""}
-      ${callouts}
-      ${doc.hardwareFinish ? `<div style="font-size:14pt">HARDWARE: ${up(doc.hardwareFinish)}</div>` : ""}
-    </div>`;
-  const k = doc.colorwayRenders.length;
-  const th = k ? Math.min(2.2, (bt - 0.4 - 2.0 - k * 0.32) / k) : 0;
-  const thumbs = k
-    ? `<div class="abs" style="left:13.85in;top:1.95in;width:2.75in;display:flex;flex-direction:column;gap:6px">${doc.colorwayRenders
-        .map((cr) => `<div style="text-align:center"><div style="font-size:16pt">${up(doc.pack.styleNo)}${esc(cr.colorway)}</div><div style="position:relative;height:${r2(th)}in">${imgIn(cr.img, { x: 0, y: 0, w: 2.75, h: th })}</div></div>`)
-        .join("")}</div>`
+  const size = doc.sizeText ? `<div class="abs" style="left:0.4in;top:${r2(box.y + box.h + 0.1)}in;width:${box.w}in;text-align:center;font-size:20pt"><span class="red">${esc(doc.sizeText.toUpperCase())}</span>${upd(doc, "dims.")}</div>` : "";
+  const instruction = h.instruction ? `<div class="abs red" style="left:0.4in;top:${r2(box.y + box.h + 0.6)}in;width:${box.w}in;text-align:center;font-size:${fitPt(h.instruction.toUpperCase(), box.w, 1, 30, 16)}pt">${up(h.instruction)}${upd(doc, "header.instruction")}</div>` : "";
+  const banner = h.physicalSample ? `<div class="banner" style="margin-bottom:10px">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL.</div>` : "";
+  const features = doc.features.length
+    ? `<div class="box" style="padding:10px 14px;margin-bottom:12px"><div style="font-size:13pt;margin-bottom:6px">PRODUCT FEATURES</div><ul class="feat" style="font-size:13pt;line-height:1.4">${doc.features.map((f) => `<li>${up(f)}</li>`).join("")}</ul></div>`
     : "";
-
-  /* breakdown: a fixed column per numbered material (at least three), blank when unused */
-  const cols = doc.matrixColumns;
-  const matCols = cols.filter((c) => c.key.startsWith("mat_")).length;
-  const spare = Math.max(0, 3 - matCols);
-  const lastMat = cols.map((c) => c.key.startsWith("mat_")).lastIndexOf(true);
-  const headCell = (c: (typeof cols)[number]) => {
-    if (c.key.startsWith("mat_")) return `<th style="text-align:left">${c.key === "mat_1" ? "BODY<br/>" : ""}MATERIAL: <span class="callout" style="width:26px;height:26px;font-size:13pt">${c.callout}</span><br/>${up(c.label)}</th>`;
-    if (c.key === "logo") return `<th class="red">LOGO:<br/>${up(doc.logo.type.split(" ")[0] ?? "")}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.finish", "branding.fill")}</th>`;
-    return `<th>${esc(c.label).replace(" &amp; ", "<br/>&amp; ")}</th>`;
-  };
-  const spareTh = Array.from({ length: spare }, () => `<th style="width:0.9in"></th>`).join("");
-  const spareTd = Array.from({ length: spare }, () => `<td></td>`).join("");
-  const rows = doc.rows
-    .map(
-      (r) =>
-        `<tr><td class="cwy">${/^[A-Z]+\d+$/.test(doc.pack.styleNo) ? `${up(doc.pack.styleNo.replace(/^[A-Z]+/, ""))}<br/>` : ""}${esc(r.code)}${r.name ? `<div style="font-size:10pt;margin-top:3px">${up(r.name)}</div>` : ""}</td>${r.cells
-          .map((c, i) => {
-            const ref = c.ref ? (c.refKind === "swatch" ? `<span class="ref">(SEE PG ${c.ref} FOR SWATCH CARD REFERENCE)</span>` : "") : "";
-            const after = c.ref && c.refKind === "artwork" ? `<br/>SEE DETAIL SHEET PG ${c.ref}` : "";
-            return `<td style="${c.key.startsWith("mat_") ? "text-align:left" : ""}">${ref}${up(c.text)}${after}</td>${i === lastMat ? spareTd : ""}`;
-          })
-          .join("")}</tr>`,
-    )
+  // Reference answers print as written ("WEBBING SAME AS <STYLE #>", "PLEASE FOLLOW SAMPLE IMAGES FOR …").
+  const refNotes = doc.refNotes.length
+    ? `<div class="comments" data-ref-notes style="margin-top:8px">${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>`
+    : "";
+  const comments = commentsFor(doc, "OVERVIEW", n);
+  const callouts = doc.materials
+    .map((m) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5pt;line-height:1.15"><span class="callout" style="width:26px;height:26px;font-size:13pt">${m.callout}</span><span>${up(m.name)}</span></div>`)
     .join("");
-  const table = `<table class="breakdown" style="height:${r2(10.68 - bt)}in;${doc.rows.length > 2 ? "font-size:11.5pt" : ""}"><tr><th>CWY</th>${cols.map((c, i) => headCell(c) + (i === lastMat ? spareTh : "")).join("")}</tr>${rows}</table>`;
-
+  const facts = [
+    ["DESCRIPTION", h.description, "header.description"],
+    ["CATEGORY", h.category, ""],
+    ["RETAILER", h.retailer, "header.retailer"],
+    ["SEASON", h.season, "header.season"],
+    ["DUE DATE", h.dueDate, "header.due_date"],
+    ["REFERENCE SAMPLE", h.referenceSample, "header.reference_sample"],
+    ["SENT BY", h.sentBy, ""],
+    ["LICENSOR", h.licensor, "header.licensor"],
+    ["HARDWARE", doc.hardwareFinish, "hardware.finish"],
+    ["LOGO", doc.logo.type ? `${doc.logo.placement ? `(${doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement}) ` : ""}${doc.logo.type}` : "", "branding."],
+    ["CUSTOM HARDWARE KEYCHAIN", doc.charm ? `${doc.charm.code} INCLUDED` : "", "hb.charm."],
+  ]
+    .filter(([, v]) => v)
+    .map(([k, v, q]) => `<div><span style="font-size:10pt">${k}:</span> ${up(v)}${q ? upd(doc, q) : ""}</div>`)
+    .join("");
   return `<section class="page">
-    ${tag(doc, n, "MATERIALS / HARDWARE")}
-    <div class="abs" style="left:0.4in;top:0.32in">${mast}</div>
-    <div class="abs" style="left:9.7in;top:0.32in;width:4.35in"><div class="label" style="background:#111;color:#fff;display:inline-block;padding:1px 8px;margin-bottom:8px">COMMENTS:</div>${comments}</div>
-    ${banner}${charm}${drawing}${side}${thumbs}
-    <div class="small abs" style="left:0.4in;top:${r2(bt - 0.3)}in">MATERIAL / COLOR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish")}</div>
-    <div class="abs" style="left:0.4in;right:0.4in;top:${r2(bt)}in">${table}</div>
-    ${overlay(lines)}
-  </section>`;
-}
-
-/* ------------------------------ 2. PRODUCT FEATURES ------------------------------ */
-function featuresPage(doc: PackDoc, n: number) {
-  const d = doc.dims;
-  const v = (x?: number) => (typeof x === "number" ? `${x}${doc.U}` : "");
-  const box: R = { x: 0.9, y: 1.9, w: 10.2, h: 7.4 };
-  const r = fit(doc.render, box);
-  // Red dimension arrows along the product: W under it, H up the right side, D across the near corner.
-  const arrows = [
-    d.w != null ? lead(r.x + r.w * 0.22, r.y + r.h + 0.3, r.x + r.w * 0.98, r.y + r.h + 0.05, { arrow: "both", w: 0.03 }) + plate(r.x + r.w * 0.6, r.y + r.h + 0.5, v(d.w), 24) : "",
-    d.h != null ? lead(r.x + r.w + 0.3, r.y + r.h * 0.85, r.x + r.w + 0.3, r.y + r.h * 0.12, { arrow: "both", w: 0.03 }) + plate(r.x + r.w + 0.75, r.y + r.h * 0.48, v(d.h), 24) : "",
-    d.d != null ? lead(r.x - 0.05, r.y + r.h * 0.72, r.x + r.w * 0.2, r.y + r.h + 0.3, { arrow: "both", w: 0.03 }) + plate(r.x - 0.05, r.y + r.h + 0.3, v(d.d), 24) : "",
-  ].join("");
-  return `<section class="page">
-    ${head(doc, n, "PRODUCT FEATURES")}
-    <div class="abs" style="left:0.4in;top:1.4in;font-size:17pt">ITEM: ${up(doc.header.description || doc.pack.styleName)}</div>
-    ${doc.render ? imgIn(doc.render, box) : ""}
-    <div class="box abs" style="right:0.4in;top:1.9in;width:4.4in;min-height:4.2in;padding:16px 20px">
-      <div style="font-size:14pt;margin-bottom:12px">PRODUCT<br/>FEATURES</div>
-      <ul class="feat">${doc.features.map((f) => `<li>${up(f)}</li>`).join("")}</ul>
+    ${head(doc, n, "OVERVIEW")}
+    ${drawing}${size}${instruction}
+    <div class="abs" style="left:10.9in;top:1.55in;width:5.7in;max-height:9.2in;overflow:hidden">
+      ${banner}${features}
+      ${comments || refNotes ? `<div style="margin-bottom:12px"><div class="label" style="background:#111;color:#fff;display:inline-block;padding:1px 8px;margin-bottom:8px">COMMENTS:</div>${comments}${refNotes}</div>` : ""}
+      ${callouts ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">${callouts}</div>` : ""}
+      <div style="font-size:12pt;line-height:1.45">${facts}</div>
     </div>
-    ${overlay(arrows)}
+    ${overlay(lines)}
   </section>`;
 }
 
@@ -345,7 +318,7 @@ function measurementsPage(doc: PackDoc, n: number) {
   const listW = (hasSide ? 11.55 : 12.6) - listX;
 
   const drawing = doc.flats.front ? `<div class="abs" style="${at(box)}">${flatBox(doc.flats.front, "flat-measure")}</div>` : imgIn(doc.render, box);
-  const list = `<div class="abs" style="left:${r2(listX)}in;top:${closureRef ? 4.6 : tables ? 2.35 : 4.6}in;width:${r2(listW)}in;font-size:15pt;line-height:1.45">
+  const list = `<div class="abs" style="left:${r2(listX)}in;top:${closureRef ? 4.6 : tables ? 2.35 : 4.6}in;width:${r2(listW)}in;font-size:${closureRef && tables ? 11.5 : 15}pt;line-height:${closureRef && tables ? 1.3 : 1.45}">
       ${overall.map((o) => `<div class="red">${esc(o.t)}${upd(doc, o.k)}</div>`).join("")}
       ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}${upd(doc, m.key)}</div>`).join("")}
       ${doc.logo.type ? `<div style="margin-top:6px">LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)}) ${up(doc.logo.type)}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
@@ -401,24 +374,77 @@ function measurementsPage(doc: PackDoc, n: number) {
     : "";
 
   return `<section class="page">
-    ${head(doc, n, "MEASUREMENTS SHEET")}
-    <div class="abs" style="left:0.4in;top:1.3in;width:9.6in">${commentsFor(doc, "MEASUREMENTS SHEET", n)}</div>
+    ${head(doc, n, "MEASUREMENTS")}
+    <div class="abs" style="left:0.4in;top:1.3in;width:9.6in">${commentsFor(doc, "MEASUREMENTS", n)}</div>
     ${drawing}${list}${closure}${side}
     ${tables ? `<div class="abs" style="left:0.4in;top:7.2in;width:${hasSide ? 11.1 : 16.2}in">${pomTable}${placementTable}</div>` : ""}
     ${overlay(lines)}
   </section>`;
 }
 
-/* ------------------------------ 4. ENLARGED CAD ------------------------------ */
-function cadPage(doc: PackDoc, n: number) {
-  const k = doc.colorwayRenders.length + doc.flats.indicative.length;
-  const w = k <= 2 ? 7.9 : 5.2;
+/* ------------------------------ P4. COLOURWAYS ------------------------------ */
+/**
+ * The variant table (V2.1 §3): one row per colourway, one column per component the pack actually
+ * uses — numbered materials carry their yellow callout, and there is no EDGE PAINT (or any other)
+ * column unless a cell uses it. Below it, each colourway's render with its SKU block.
+ */
+function colourwaysPage(doc: PackDoc, n: number) {
+  const used = doc.matrixColumns.filter((c, i) => c.key.startsWith("mat_") || doc.rows.some((r) => String(r.cells[i]?.text ?? "").trim()));
+  const idx = used.map((c) => doc.matrixColumns.indexOf(c));
+  const headCell = (c: (typeof used)[number]) =>
+    c.key.startsWith("mat_")
+      ? `<th><span class="callout" style="width:26px;height:26px;font-size:13pt">${c.callout}</span><br/>${up(c.label)}</th>`
+      : c.key === "logo"
+        ? `<th class="red">LOGO${doc.logo.type ? `<br/>${up(doc.logo.type)}` : ""}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.finish", "branding.fill")}</th>`
+        : `<th>${up(c.label)}</th>`;
+  const rows = doc.rows
+    .map((r) => {
+      const cells = idx
+        .map((i) => {
+          const c = r.cells[i];
+          const ref = c?.ref ? (c.refKind === "swatch" ? `<span class="ref">SEE P${c.ref.split("/")[0]} SWATCH CARD</span>` : c.refKind === "artwork" ? `<span class="ref">SEE P${c.ref.split("/")[0]}</span>` : "") : "";
+          return `<td>${up(c?.text ?? "")}${ref}</td>`;
+        })
+        .join("");
+      return `<tr><td class="cw">${up(doc.pack.styleNo)}${esc(r.code)}${r.name ? `<div style="font-size:11pt;margin-top:3px">${up(r.name)}</div>` : ""}</td>${cells}</tr>`;
+    })
+    .join("");
+  const table = `<table class="variant"><tr><th>COLOURWAY</th>${used.map(headCell).join("")}</tr>${rows}</table>`;
+  // SKU blocks: each colourway's render (or the pack render for a single colourway) with its facts.
+  const cell = (cw: string, key: string) => {
+    const r = doc.rows.find((x) => x.code === cw);
+    const i = doc.matrixColumns.findIndex((c) => c.key === key);
+    return r && i >= 0 ? String(r.cells[i]?.text ?? "") : "";
+  };
+  const renders = doc.colorwayRenders.length ? doc.colorwayRenders : doc.render && doc.pack.colorways.length === 1 ? [{ colorway: doc.pack.colorways[0], img: doc.render }] : [];
+  const k = renders.length + doc.flats.indicative.length;
+  const tableH = 0.55 + doc.rows.length * 0.75;
+  const top = 1.55 + tableH + 0.35;
+  const w = k ? Math.min(5.2, (16.2 - (k - 1) * 0.3) / k) : 0;
+  const ih = Math.max(1.6, 10.6 - top - 1.5);
+  const block = (cw: string) => {
+    const name = doc.rows.find((x) => x.code === cw)?.name;
+    const facts = [
+      ["SKU#", `${doc.pack.styleNo}${cw}`],
+      ["COLOR", name ?? ""],
+      ["FABRIC", cell(cw, doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "")],
+      ["LINING", cell(cw, "lining")],
+      ["ZIPPER", cell(cw, "zipper")],
+    ].filter(([, v]) => v);
+    return `<div class="sku">${facts.map(([kk, v]) => `<div><b>${kk}:</b> ${up(v)}</div>`).join("")}</div>`;
+  };
+  const gallery = k
+    ? `<div class="abs" style="left:0.4in;top:${r2(top)}in;width:16.2in;display:flex;gap:0.3in;justify-content:center">
+        ${renders.map((r) => `<div style="width:${r2(w)}in"><div style="position:relative;height:${r2(ih)}in">${imgIn(r.img, { x: 0, y: 0, w, h: ih })}</div>${block(r.colorway)}</div>`).join("")}
+        ${doc.flats.indicative.map((r) => `<div style="width:${r2(w)}in"><div style="height:${r2(ih)}in">${r.svg}</div><div class="red" style="font-size:12pt">COLOUR INDICATIVE</div>${block(r.colorway)}</div>`).join("")}
+      </div>`
+    : "";
   return `<section class="page">
-    ${head(doc, n, "ENLARGED CAD")}
-    <div style="display:flex;flex-wrap:wrap;gap:0.25in;justify-content:center;margin-top:0.35in">
-      ${doc.colorwayRenders.map((r) => `<div style="text-align:center;width:${w}in"><div style="font-size:24pt;margin-bottom:8px">${up(doc.pack.styleNo)}${esc(r.colorway)}</div>${r.img ? `<img class="img" src="${r.img.src}" style="width:${w}in;height:${k <= 2 ? 6.6 : 3.6}in"/>` : ""}</div>`).join("")}
-      ${doc.flats.indicative.map((r) => `<div style="text-align:center;width:${w}in"><div style="font-size:24pt;margin-bottom:8px">${up(doc.pack.styleNo)}${esc(r.colorway)}</div><div style="width:${w}in;height:${k <= 2 ? 6.2 : 3.3}in">${r.svg}</div><div class="red" style="font-size:14pt;margin-top:6px">COLOUR INDICATIVE</div></div>`).join("")}
-    </div>
+    ${head(doc, n, "COLOURWAYS")}
+    <div class="small abs" style="left:5in;top:0.4in">MATERIAL / COLOUR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish", "colorways.")}</div>
+    <div class="abs" style="left:5in;top:0.75in;width:9.1in">${commentsFor(doc, "COLOURWAYS", n)}</div>
+    <div class="abs" style="left:0.4in;right:0.4in;top:1.55in">${table}</div>
+    ${gallery}
   </section>`;
 }
 
@@ -438,7 +464,7 @@ function zoomSvg(r: RefPhoto, d: number) {
 /** Caption row: red comment bubble + caption. */
 function refCaption(r: RefPhoto) {
   if (!r.letter && !r.note) return "";
-  return `<div class="zoomcap">${r.letter ? `<span class="bubble" style="width:36px;height:36px;font-size:17pt">${esc(r.letter)}</span>` : ""}<span>${up(r.note)}</span></div>`;
+  return `<div class="zoomcap red">${r.letter ? `<span class="bubble" style="width:36px;height:36px;font-size:17pt">${esc(r.letter)}</span>` : ""}<span>${up(r.note)}</span></div>`;
 }
 
 /** Lays photos out to fill a box: picks the column count that gives the largest photos. */
@@ -469,19 +495,19 @@ function photoGrid(items: RefPhoto[], box: R) {
       const body: R = { x: cell.x, y: cell.y + top, w: cell.w, h: cell.h - top };
       const d = Math.min(body.w, body.h);
       return `<div class="abs" style="${at({ ...cell, h: top || 0.01 })}">${hasCap ? refCaption(it) : ""}</div>${
-        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : imgIn(it.img, body)
+        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : imgIn(it.img, body, "border:1.5px solid #e2231a;")
       }`;
     })
     .join("");
 }
 
 function referencePage(doc: PackDoc, n: number) {
-  const refs = doc.references.filter((r) => r.page === "REFERENCE PHOTOS FOR CONSTRUCTION");
+  const refs = doc.references.filter((r) => r.page === "REFERENCE IMAGES");
   // Main photos first, zoom details after them (as on PINK013 p4: the bag, then the circled strap clip).
   const ordered = [...refs.filter((r) => !r.zoom), ...refs.filter((r) => r.zoom)];
   return `<section class="page">
-    ${head(doc, n, "REFERENCE PHOTOS FOR CONSTRUCTION")}
-    <div class="abs" style="left:5in;top:0.4in;width:9.5in">${commentsFor(doc, "REFERENCE PHOTOS FOR CONSTRUCTION", n)}</div>
+    ${head(doc, n, "REFERENCE IMAGES")}
+    <div class="abs" style="left:5in;top:0.4in;width:9.5in">${commentsFor(doc, "REFERENCE IMAGES", n)}</div>
     ${photoGrid(ordered, { x: 0.4, y: 1.5, w: 16.2, h: 9.3 })}
   </section>`;
 }
@@ -746,7 +772,7 @@ function sideDims(dims: string, k: "side" | "rear" | "top") {
 }
 
 function detailPage(doc: PackDoc, n: number) {
-  const photos = doc.references.filter((r) => r.page === "HARDWARE / BRANDING DETAIL");
+  const photos = doc.references.filter((r) => r.page === "TRIMS & HARDWARE");
   const panelH = doc.detail.length > 1 ? 3.9 : 5.4;
   const panels = doc.detail
     .map((h) => {
@@ -806,11 +832,11 @@ function detailPage(doc: PackDoc, n: number) {
     .map((ph) => `<div style="border:1.5px solid #111;width:2.9in;text-align:center"><div style="position:relative;height:2in">${imgIn(ph.img, { x: 0, y: 0, w: 2.9, h: 2 })}</div><div style="font-size:14pt;padding:6px 8px;line-height:1.2">${ph.letter ? `<span class="bubble" style="margin-right:6px">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div></div>`)
     .join("");
   return `<section class="page">
-    ${head(doc, n, "HARDWARE / BRANDING DETAIL")}
+    ${head(doc, n, "TRIMS & HARDWARE")}
     <div class="abs" style="left:0.4in;right:0.4in;top:1.35in">${panels}
       <div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.25in">${logo}<div style="display:flex;gap:0.4in">${photoBoxes}</div></div>
     </div>
-    <div class="abs" style="right:0.4in;top:0.35in;width:7in">${commentsFor(doc, "HARDWARE / BRANDING DETAIL", n)}</div>
+    <div class="abs" style="right:0.4in;top:0.35in;width:7in">${commentsFor(doc, "TRIMS & HARDWARE", n)}</div>
   </section>`;
 }
 
@@ -932,7 +958,7 @@ function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialC
     const s = items[0];
     // The caption goes on the chip's side of the card, its leader running to the chip box.
     const right = !!s.chipBox && s.chipBox.x + s.chipBox.w / 2 > 0.5;
-    const { html, chip, pr } = swatchCard(s, right ? { x: 2.4, y: 0.25, w: 9.4, h: 10.55 } : { x: 3.6, y: 0.25, w: 10.4, h: 10.55 }, 6);
+    const { html, chip, pr } = swatchCard(s, right ? { x: 2.4, y: 1.5, w: 9.4, h: 9.3 } : { x: 3.6, y: 1.5, w: 10.4, h: 9.3 }, 6);
     const cy = chip ? Math.min(Math.max(chip.y + chip.h / 2 - 1.2, 2.3), 8.6) : 2.6;
     const capX = right ? pr.x + pr.w + 0.25 : 0.4,
       capW = right ? Math.min(3.4, 16.6 - capX) : pr.x - 0.25 - 0.4;
@@ -992,21 +1018,19 @@ export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
   const pages = doc.plan.pages
     .map((p) => {
       switch (p.section) {
-        case "MATERIALS / HARDWARE":
-          return materialsPage(doc, p.n);
-        case "PRODUCT FEATURES":
-          return featuresPage(doc, p.n);
-        case "MEASUREMENTS SHEET":
+        case "OVERVIEW":
+          return overviewPage(doc, p.n);
+        case "MEASUREMENTS":
           return measurementsPage(doc, p.n);
-        case "ENLARGED CAD":
-          return cadPage(doc, p.n);
-        case "REFERENCE PHOTOS FOR CONSTRUCTION":
+        case "COLOURWAYS":
+          return colourwaysPage(doc, p.n);
+        case "REFERENCE IMAGES":
           return referencePage(doc, p.n);
         case "INTERIOR & LINING":
           return interiorPage(doc, p.n, p.withArtwork);
         case "LINING / PRINT ARTWORK":
           return artworkPage(doc, p.n);
-        case "HARDWARE / BRANDING DETAIL":
+        case "TRIMS & HARDWARE":
           return detailPage(doc, p.n);
         case "SWATCH CARDS":
           return swatchPage(doc, p.n, p.swatches);

@@ -243,7 +243,7 @@ export const packFiles = pgTable("pack_files", {
   tag: text("tag").notNull().default(""),
   note: text("note").notNull().default(""),
   /**
-   * Template page this photo prints on (e.g. a side view on the MEASUREMENTS SHEET, a binding photo
+   * Template page this photo prints on (e.g. a side view on the MEASUREMENTS page, a binding photo
    * on INTERIOR & LINING). Null = from its comment letter's pages, as before.
    */
   page: text("page"),

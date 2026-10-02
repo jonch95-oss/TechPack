@@ -69,11 +69,11 @@ describe("BOM and content label", () => {
 describe("plan pages for the new sections", () => {
   it("adds construction, BOM and sample pages in order", () => {
     const p = planPages({
-      hasInterior: false, productFeaturesOn: false, hasFeaturesOrRender: false, hasExtraMeasurements: false, colorwayRenderCount: 1, referencePhotoCount: 0,
+      hasInterior: false, hasExtraMeasurements: false, colorwayRenderCount: 1, referencePhotoCount: 0,
       hasLiningArtwork: false, liningArtworkOnInterior: false, detailPanelCount: 1, swatches: [{ colorway: "-A", materialCallout: 1 }], swatchesOnOnePage: true,
       revisionCount: 1, hasConstruction: true, hasBom: true, hasSampleComments: true,
     });
-    expect(p.pages.map((x) => x.section)).toEqual(["MATERIALS / HARDWARE", "HARDWARE / BRANDING DETAIL", "CONSTRUCTION DETAILS", "BILL OF MATERIALS", "SWATCH CARDS", "CHANGE LOG", "SAMPLE COMMENTS"]);
-    expect(p.ref("BILL OF MATERIALS")).toBe("4/7");
+    expect(p.pages.map((x) => x.section)).toEqual(["OVERVIEW", "COLOURWAYS", "TRIMS & HARDWARE", "CONSTRUCTION DETAILS", "BILL OF MATERIALS", "SWATCH CARDS", "SAMPLE COMMENTS", "CHANGE LOG"]);
+    expect(p.ref("BILL OF MATERIALS")).toBe("5/8");
   });
 });

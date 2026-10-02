@@ -3,7 +3,7 @@
  * template pages each change appears on (for the red *UPDATED* flags). Pure — no database.
  */
 import { findQuestion, unitLabel, type AnswerMap, type Category, type Question } from "@/lib/questions";
-import type { PageSection } from "@/lib/page-names";
+import { normalizePage, type PageSection } from "@/lib/page-names";
 import type { RevisionChange } from "@/db/schema";
 
 export type Snapshot = { answers: AnswerMap; flats: Record<string, string> };
@@ -14,27 +14,27 @@ const IGNORE = /^(optional\.|pages\.features$|header\.due_date$)/;
 /** Which pages show a question's value. */
 export function sectionsForQuestion(qid: string, a: AnswerMap = {}): PageSection[] {
   const p = (...s: PageSection[]) => s;
-  if (qid.startsWith("flat:")) return qid === "flat:SIDE" ? p("MEASUREMENTS SHEET") : qid === "flat:BACK" ? p("MATERIALS / HARDWARE") : p("MATERIALS / HARDWARE", "MEASUREMENTS SHEET");
-  if (qid.startsWith("dims.")) return p("MATERIALS / HARDWARE", "PRODUCT FEATURES", "MEASUREMENTS SHEET");
-  if (qid.startsWith("header.") || qid.startsWith("colorways.")) return p("MATERIALS / HARDWARE");
+  if (qid.startsWith("flat:")) return qid === "flat:SIDE" ? p("MEASUREMENTS") : qid === "flat:BACK" ? p("OVERVIEW") : p("OVERVIEW", "MEASUREMENTS");
+  if (qid.startsWith("dims.")) return p("OVERVIEW", "MEASUREMENTS");
+  if (qid.startsWith("header.") || qid.startsWith("colorways.")) return p("OVERVIEW");
   if (qid.startsWith("branding.")) {
-    if (qid === "branding.offset" || qid === "branding.offset_edge") return p("MEASUREMENTS SHEET");
-    if (qid === "branding.logo_size" || qid === "branding.tool_depth" || qid === "branding.artwork" || qid === "branding.new_tooling") return p("HARDWARE / BRANDING DETAIL");
-    return p("MATERIALS / HARDWARE", "MEASUREMENTS SHEET");
+    if (qid === "branding.offset" || qid === "branding.offset_edge") return p("MEASUREMENTS");
+    if (qid === "branding.logo_size" || qid === "branding.tool_depth" || qid === "branding.artwork" || qid === "branding.new_tooling") return p("TRIMS & HARDWARE");
+    return p("OVERVIEW", "MEASUREMENTS");
   }
-  if (qid.startsWith("materials.")) return p("MATERIALS / HARDWARE", "SWATCH CARDS");
-  if (qid.startsWith("hardware.")) return p("MATERIALS / HARDWARE", "HARDWARE / BRANDING DETAIL");
-  if (qid.startsWith("edge.")) return p("MATERIALS / HARDWARE", "CONSTRUCTION DETAILS");
+  if (qid.startsWith("materials.")) return p("COLOURWAYS", "SWATCH CARDS");
+  if (qid.startsWith("hardware.")) return p("COLOURWAYS", "TRIMS & HARDWARE");
+  if (qid.startsWith("edge.")) return p("COLOURWAYS", "CONSTRUCTION DETAILS");
   if (qid.startsWith("construction.")) return p("CONSTRUCTION DETAILS");
   if (qid.startsWith("interior.")) return p("INTERIOR & LINING");
-  if (qid.startsWith("pom.") || qid.startsWith("placements.")) return p("MEASUREMENTS SHEET");
+  if (qid.startsWith("pom.") || qid.startsWith("placements.")) return p("MEASUREMENTS");
   if (qid.startsWith("zippers.") || qid.startsWith("bom.") || qid.startsWith("opt.labels")) return p("BILL OF MATERIALS");
   if (qid === "comments.list") {
-    const pages = ((a["comments.list"] as { pages?: string[] }[] | undefined) ?? []).flatMap((c) => c.pages ?? []);
+    const pages = ((a["comments.list"] as { pages?: string[] }[] | undefined) ?? []).flatMap((c) => (c.pages ?? []).map(normalizePage));
     return [...new Set(pages)] as PageSection[];
   }
-  if (/\.(drop|flap_height|flap_overhang|gusset|closure|strap|top_handle|handle_length|handle_drop|size_)/.test(qid) || /\.strap\.|\.top_handle\./.test(qid)) return p("MEASUREMENTS SHEET", "MATERIALS / HARDWARE");
-  return p("MATERIALS / HARDWARE");
+  if (/\.(drop|flap_height|flap_overhang|gusset|closure|strap|top_handle|handle_length|handle_drop|size_)/.test(qid) || /\.strap\.|\.top_handle\./.test(qid)) return p("MEASUREMENTS", "OVERVIEW");
+  return p("OVERVIEW");
 }
 
 const isLib = (v: unknown): v is { id: string; label: string } => !!v && typeof v === "object" && "label" in (v as object) && "id" in (v as object);

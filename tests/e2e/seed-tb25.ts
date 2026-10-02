@@ -197,7 +197,7 @@ export async function seedTb25(a: Assets, adminEmail: string) {
     "interior.pockets": [{ type: "ZIP POCKET", wall: "SIDE 1", zip_size: "#5" }],
     "interior.seam_binding": true,
     "comments.list": [
-      { text: "DOUBLED PU 22MM HANDLE. PLEASE EDGE PAINT ALL PU IN BLACK.", pages: ["MATERIALS / HARDWARE"] },
+      { text: "DOUBLED PU 22MM HANDLE. PLEASE EDGE PAINT ALL PU IN BLACK.", pages: ["OVERVIEW"] },
       { text: "#5 NYLON COIL ZIPPERED POCKET ON INTERIOR SIDE 1.", pages: ["INTERIOR & LINING"] },
       { text: "PLEASE MAKE SURE TO ADD INTERIOR BINDING.", pages: ["INTERIOR & LINING"] },
     ],
@@ -221,7 +221,7 @@ export async function seedTb25(a: Assets, adminEmail: string) {
     { packId: pack.id, kind: "render", url: file("render.png", a.render), name: "TB25_ACC0023.png", marks: { dot: { x: 0.69, y: 0.73 } }, createdBy: user.id },
     ...a.refs.map((r, i) => ({ packId: pack.id, kind: "reference" as const, url: file(`ref-${i + 1}.jpg`, r), name: `ref-${i + 1}.jpg`, tag: String.fromCharCode(68 + i), note: "REFERENCE IMAGES", createdBy: user.id })),
     { packId: pack.id, kind: "construction", url: file("binding.jpg", a.binding), name: "binding.jpg", tag: "C", note: "PLEASE MAKE SURE TO ADD INTERIOR BINDING", page: "INTERIOR & LINING", marks: { dot: { x: 0.5, y: 0.5 } }, createdBy: user.id },
-    { packId: pack.id, kind: "construction", url: file("teeth.jpg", a.teeth), name: "teeth.jpg", tag: "G", note: "METAL FINISH PLASTIC TEETH REFERENCE", page: "HARDWARE / BRANDING DETAIL", createdBy: user.id },
+    { packId: pack.id, kind: "construction", url: file("teeth.jpg", a.teeth), name: "teeth.jpg", tag: "G", note: "METAL FINISH PLASTIC TEETH REFERENCE", page: "TRIMS & HARDWARE", createdBy: user.id },
   ]);
   await sql.end();
   return pack.id;

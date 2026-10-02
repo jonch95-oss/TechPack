@@ -248,8 +248,8 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   await markAt(page, 0.52, 0.47);
   await page.getByTestId("marks-save").click();
   await expect(page.getByTestId("marks-canvas")).toBeHidden();
-  await construction(page, "side-view.png", a.sideView, { caption: "SIDE VIEW W/ SHOULDER STRAP ATTACHMENT LOOP", letter: "B", place: "MEASUREMENTS SHEET|SIDE_VIEW" });
-  await construction(page, "strap-zoom.jpg", a.zoomSource, { caption: "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE", letter: "B", place: "REFERENCE PHOTOS FOR CONSTRUCTION|", zoom: [0.78, 0.45, 20] });
+  await construction(page, "side-view.png", a.sideView, { caption: "SIDE VIEW W/ SHOULDER STRAP ATTACHMENT LOOP", letter: "B", place: "MEASUREMENTS|SIDE_VIEW" });
+  await construction(page, "strap-zoom.jpg", a.zoomSource, { caption: "SHOULDER STRAP ATTACHMENT DETAIL REFERENCE", letter: "B", place: "REFERENCE IMAGES|", zoom: [0.78, 0.45, 20] });
   await construction(page, "champion-lining.jpg", a.champion, { caption: "LINING IS TONAL HEAT STAMP REPEAT SAME AS CHAMPION EXAMPLE BELOW", place: "LINING / PRINT ARTWORK|APPLICATION", dot: [0.5, 0.4] });
   await shot(page, "03b-photo-placements");
 

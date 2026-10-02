@@ -3,8 +3,6 @@ import { planPages, type PlanInput } from "@/lib/pdf/plan";
 
 const base: PlanInput = {
   hasInterior: false,
-  productFeaturesOn: true,
-  hasFeaturesOrRender: false,
   hasExtraMeasurements: false,
   colorwayRenderCount: 0,
   referencePhotoCount: 0,
@@ -16,11 +14,10 @@ const base: PlanInput = {
   revisionCount: 0,
 };
 
-describe("page plan (Part 4 order, empty pages skipped)", () => {
-  it("PINK013 → 8 pages in the reference order with correct cross-references", () => {
+describe("page plan (V2.1 §2.4 standard order, empty pages skipped)", () => {
+  it("PINK013 → 8 pages in the standard order with correct cross-references", () => {
     const plan = planPages({
       ...base,
-      productFeaturesOn: false,
       hasExtraMeasurements: true,
       colorwayRenderCount: 2,
       referencePhotoCount: 1,
@@ -32,10 +29,10 @@ describe("page plan (Part 4 order, empty pages skipped)", () => {
       ],
     });
     expect(plan.pages.map((p) => p.section)).toEqual([
-      "MATERIALS / HARDWARE",
-      "MEASUREMENTS SHEET",
-      "ENLARGED CAD",
-      "REFERENCE PHOTOS FOR CONSTRUCTION",
+      "OVERVIEW",
+      "MEASUREMENTS",
+      "REFERENCE IMAGES",
+      "COLOURWAYS",
       "INTERIOR & LINING",
       "LINING / PRINT ARTWORK",
       "SWATCH CARDS",
@@ -46,10 +43,10 @@ describe("page plan (Part 4 order, empty pages skipped)", () => {
     expect(plan.artworkRef()).toBe("6/8");
   });
 
-  it("TB25_ACC0023 → 6 pages: features, references, interior with artwork, hardware detail, one swatch page", () => {
+  it("TB25_ACC0023 → 6 pages: overview (with features), references, colourways, trims, interior with artwork, one swatch page", () => {
     const plan = planPages({
       ...base,
-      hasFeaturesOrRender: true,
+      hasColourways: true,
       referencePhotoCount: 3,
       hasInterior: true,
       hasLiningArtwork: true,
@@ -60,14 +57,14 @@ describe("page plan (Part 4 order, empty pages skipped)", () => {
     });
     expect(plan.total).toBe(6);
     expect(plan.pages.map((p) => p.section)).toEqual([
-      "MATERIALS / HARDWARE",
-      "PRODUCT FEATURES",
-      "REFERENCE PHOTOS FOR CONSTRUCTION",
+      "OVERVIEW",
+      "REFERENCE IMAGES",
+      "COLOURWAYS",
+      "TRIMS & HARDWARE",
       "INTERIOR & LINING",
-      "HARDWARE / BRANDING DETAIL",
       "SWATCH CARDS",
     ]);
-    expect(plan.artworkRef()).toBe("4/6");
+    expect(plan.artworkRef()).toBe("5/6");
     expect(plan.swatchRef("-C", 1)).toBe("6/6");
   });
 

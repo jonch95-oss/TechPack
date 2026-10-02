@@ -110,7 +110,7 @@ test("Phase 4: R1 with *UPDATED* flags and change log, bilingual EN/中文, AI/E
   await signOff(page, blair, pink.id);
   const original = pdfText(await download(page, `/api/packs/${pink.id}/pdf`, "PINK013-original.pdf"));
   const today = new Date().toISOString().slice(0, 10);
-  expect(original[0]).toContain(`ORIGINALDATESENT:${today}`);
+  expect(original[0]).toContain(`STYLECODE:PINK013${today}ITEM:`); // standard header: date in red, no revision yet
   expect(original.join("")).not.toContain("*UPDATED*");
   expect(original.join("")).not.toContain("CHANGELOG");
 
@@ -125,12 +125,13 @@ test("Phase 4: R1 with *UPDATED* flags and change log, bilingual EN/中文, AI/E
 
   const r1File = await download(page, `/api/packs/${pink.id}/pdf`, "PINK013-R1.pdf");
   const r1 = pdfText(r1File);
-  expect(r1[0]).toContain("*UPDATED*R1"); // page 1 tag
-  expect(r1[0]).toContain("LOGO:TPU*UPDATED*");
-  expect(r1[0]).toContain(`R1${today}`);
-  expect(r1[1]).toContain("MEASUREMENTSSHEET");
+  expect(r1[0]).toContain("P1·OVERVIEW*UPDATED*R1"); // page 1 tag
+  expect(r1[0]).toContain("LOGO:(CENTERED)TPU/RUBBERPATCH*UPDATED*");
+  expect(r1[0]).toContain(`${today}R1`); // the header date carries the latest revision
+  expect(r1[1]).toContain("P2·MEASUREMENTS");
   expect(r1[1]).toContain("*UPDATED*");
-  expect(r1[2]).not.toContain("*UPDATED*"); // ENLARGED CAD: nothing changed there
+  expect(r1[2]).toContain("P3·REFERENCEIMAGES");
+  expect(r1[2]).not.toContain("*UPDATED*"); // nothing changed there
   const log = r1.find((t) => t.includes("CHANGELOG"))!;
   expect(log).toBeTruthy();
   expect(log).toContain("*UPDATED*LOGOTYPE:METALLOGOPLATE→TPU/RUBBERPATCH");
@@ -154,14 +155,15 @@ test("Phase 4: R1 with *UPDATED* flags and change log, bilingual EN/中文, AI/E
   const zh = pdfText(zhFile);
   const cjk = /[㐀-鿿]/;
   zh.forEach((t, i) => expect(cjk.test(t), `page ${i + 1} has Chinese`).toBe(true));
-  expect(zh[0]).toContain("材料/五金"); // section name
-  expect(zh[0]).toContain("边油"); // EDGE PAINT (glossary)
-  expect(zh[0]).toContain("里布"); // LINING (glossary)
-  expect(zh[1]).toContain("尺寸表");
+  expect(zh[0]).toContain("总览"); // section name
+  const zhColourways = zh.find((t) => t.includes("COLOURWAYS"))!;
+  expect(zhColourways).toContain("边油"); // EDGE PAINT (glossary)
+  expect(zhColourways).toContain("里布"); // LINING (glossary)
+  expect(zh[1]).toContain("尺寸");
   expect(execFileSync("pdffonts", [zhFile]).toString()).toMatch(/NotoSansSC|Noto Sans SC|IconSC/i);
   // Every English line has its Chinese: the final export refuses otherwise, and it went through.
   const html = await (await page.request.get(`/api/packs/${pink.id}/pdf?draft=1&format=html`)).text();
-  expect(html).toContain("MATERIAL / COLOR BREAKDOWN");
+  expect(html).toContain("MATERIAL / COLOUR BREAKDOWN");
   if (SHOTS) execFileSync("pdftoppm", ["-r", "60", "-f", "1", "-l", "2", "-png", zhFile, path.join(SHOTS, "PINK013-zh")]);
   expect((await db.select().from(revisions).where(eq(revisions.packId, pink.id))).length).toBe(2); // language isn't a revision
 
