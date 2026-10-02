@@ -46,7 +46,7 @@ export function RowsEditor({
                 <div key={c.key} className={cx(c.kind === "chips" && c.options.length > 4 && "md:col-span-2")}>
                   <div className="eyebrow mb-2">
                     {c.label}
-                    {c.required && <span className="text-signal ml-1">★</span>}
+                    {c.required && !c.requiredWithSection && <span className="text-signal ml-1">★</span>}
                   </div>
                   <Cell c={c} v={r[c.key]} onChange={(v) => setCell(i, c.key, v)} disabled={disabled} unitLabel={unitLabel} />
                 </div>

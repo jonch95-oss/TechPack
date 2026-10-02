@@ -493,7 +493,8 @@ export const COMMON_SECTIONS: Section[] = [
         columns: [
           { key: "point", label: "Point", kind: "chips", options: POM_POINTS, required: true },
           { key: "value", label: "Value", kind: "stepper", unit: "dim", required: true },
-          { key: "tol", label: "Tolerance ±", kind: "stepper", unit: "dim", required: true },
+          // Tolerances are the admin's call: required only while the Tolerances section is on.
+          { key: "tol", label: "Tolerance ±", kind: "stepper", unit: "dim", required: true, requiredWithSection: "opt.tolerances" },
           { key: "how", label: "How to measure", kind: "text", required: true },
         ],
       },

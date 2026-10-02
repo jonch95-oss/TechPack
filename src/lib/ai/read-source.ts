@@ -79,14 +79,17 @@ export const READ_SOURCE_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["type", "description", "supplier_code", "dims_mm", "material", "finish"],
+        required: ["type", "description", "supplier_code", "dims_mm", "material", "finish", "finish_stated", "qty", "location"],
         properties: {
           type: { type: "string", description: "A hardware library type, e.g. BUCKLE, SQUARE RING, EYELET, LOGO PLATE, ZIPPER PULL." },
           description: { type: "string" },
           supplier_code: { type: "string" },
           dims_mm: { type: "string", description: 'Main size in mm, e.g. "25 X 18" or "INNER 25" or "DIA 8".' },
           material: { type: "string" },
-          finish: { type: "string" },
+          finish: { type: "string", description: "The finish name only (e.g. GUNMETAL, BLACK NICKEL) — never a note. Empty if unknown." },
+          finish_stated: { type: "boolean", description: "true only when the finish is printed for this part; false when taken from the render / board." },
+          qty: { type: ["number", "null"], description: "Quantity per bag when printed or clear from the location (BOTH TOP CORNERS = 2); else null." },
+          location: { type: "string", description: 'Where the part sits as written, e.g. "BOTH TOP CORNERS", "FRONT POCKET ZIPS". Empty if not given.' },
         },
       },
     },
@@ -116,7 +119,7 @@ export type ReadSourceOutput = {
   row_values?: { question_id: string; row: number; column: string; value_json: string; unit: string; note: string }[];
   new_rows?: { question_id: string; row_json: string; unit: string; note: string }[];
   measurements?: { point: string; value: number; unit: string; tolerance: number | null; how: string }[];
-  hardware?: { type: string; description: string; supplier_code: string; dims_mm: string; material: string; finish: string }[];
+  hardware?: { type: string; description: string; supplier_code: string; dims_mm: string; material: string; finish: string; finish_stated?: boolean; qty?: number | null; location?: string }[];
   materials?: { callout: number; colorway: string; description: string; part: string; locations: string[] }[];
   board_notes?: string[];
   notes?: string;
@@ -136,7 +139,7 @@ const GUIDE: Record<SourceKind, (view?: string) => string[]> = {
     "- Overall height, width and depth → answers dims.h, dims.w, dims.d (and dims.unit).",
     "- Every measurement (overall and detail) → measurements[], naming the point with a POINTS OF MEASURE name where one fits; include tolerance and how to measure when given.",
     "- Measurements that belong to a current row (pocket W × H, zip opening length, strap width / length / adjustment range, hardware sizes) → row_values on that row, or answers for single fields such as the strap.",
-    "- Hardware: every part in hardware[] — each with ITS OWN type (BUCKLE, SQUARE RING, EYELET, LOGO PLATE, ZIPPER PULL, ZIPPER SLIDER …), description and size as written (\"INNER 40\", \"40 X 15\", \"DIA 8\", \"50 X 32\"). Supplier code only when one is printed; never a placeholder.",
+    "- Hardware: every part in hardware[] — each with ITS OWN type (BUCKLE, SQUARE RING, EYELET, LOGO PLATE, ZIPPER PULL, ZIPPER SLIDER …), description and size as written (\"INNER 40\", \"40 X 15\", \"DIA 8\", \"50 X 32\"). Supplier code only when one is printed; never a placeholder. Use the same type names as the current hardware rows where it is the same part (a render's STRAP ANCHOR that the sheet calls a square ring is SQUARE RING), give each part's location and quantity, and put only a finish NAME in finish — if the sheet doesn't print one, give the finish seen on the render with finish_stated false; never write a note in a value.",
     "- Materials named on the sheet (shell, trim, lining …) → materials[], matched to CURRENT MATERIALS by number; 0 for one that isn't listed.",
     "- Read only what is written; never estimate. Give each measurement's unit as written.",
   ],

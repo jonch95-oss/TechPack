@@ -1,5 +1,5 @@
 {
- "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 \u2014 an Off-White-style micro-mesh shoulder bag on a design board.",
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 — an Off-White-style micro-mesh shoulder bag on a design board.",
  "answers": [],
  "row_values": [],
  "new_rows": [],
@@ -11,7 +11,10 @@
    "supplier_code": "BK-2231",
    "dims_mm": "38 X 30",
    "material": "ZINC ALLOY",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": ""
   },
   {
    "type": "EYELET",
@@ -19,7 +22,10 @@
    "supplier_code": "EY-08",
    "dims_mm": "DIA 8",
    "material": "BRASS",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": ""
   }
  ],
  "board_notes": [],

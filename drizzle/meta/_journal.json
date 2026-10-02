@@ -78,6 +78,20 @@
       "when": 1790966651560,
       "tag": "0010_cleanup_test_packs_ow001",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790972108564,
+      "tag": "0011_hardware_field_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790972109471,
+      "tag": "0012_cleanup_finish_notes_ow_90004",
+      "breakpoints": true
     }
   ]
 }

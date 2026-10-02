@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gatePasses, validatePack, type ValidationInput } from "@/lib/validation";
+import { completeness } from "@/lib/questions";
 
 const base: ValidationInput = {
   category: "Handbags",
@@ -145,4 +146,12 @@ describe("round 5 validation fixes", () => {
     expect(find(validatePack(withHw), "Hardware OW002")).toBeUndefined(); // no stage = proto
     expect(find(validatePack({ ...withHw, stage: "PRODUCTION" }), "Hardware OW002")).toMatchObject({ status: "warn", fix: "Plating / mould sample not approved yet." });
   });
+});
+
+describe("round 6: POM tolerance follows the Tolerances section", () => {
+  const pom = { "dims.unit": "CM", "pom.list": [{ point: "TOTAL HEIGHT", value: 16, how: "CENTRE FRONT" }] };
+  const tolIssue = (answers: Record<string, unknown>) =>
+    completeness({ category: "Handbags", answers }, {}, ["-A"]).find((i) => i.questionId === "pom.list" && /TOLERANCE/.test(i.problem));
+  it("does not block while tolerances are off", () => expect(tolIssue(pom)).toBeUndefined());
+  it("is required once the admin turns tolerances on", () => expect(tolIssue({ ...pom, "optional.opt.tolerances": true })).toBeDefined());
 });

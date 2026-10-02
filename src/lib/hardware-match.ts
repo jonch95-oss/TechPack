@@ -7,7 +7,7 @@ import { normaliseType } from "@/lib/library-import";
  * type (the row the render pre-fill made), with the size the sheet gives. Pure, so it is unit-tested.
  */
 
-export type SheetPart = { type: string; description: string; supplier_code: string; dims_mm: string; material: string; finish: string };
+export type SheetPart = { type: string; description: string; supplier_code: string; dims_mm: string; material: string; finish: string; finish_stated?: boolean; qty?: number | null; location?: string };
 export type LibPart = { id: string; code: string; type: string; dimsMm: string; notes: string };
 export type Resolved<T extends LibPart = LibPart> = { part: SheetPart; type: string; size: string; match: T | null; key: string };
 
@@ -60,28 +60,115 @@ export function resolveParts<T extends LibPart>(parts: SheetPart[], lib: T[]): R
     });
 }
 
+/** Types that are the same family of part: a render's "STRAP ANCHOR" is the spec's SQUARE RING. */
+function family(type: string) {
+  if (["SQUARE RING", "D-RING", "O-RING"].includes(type) || /\b(RING|ANCHOR|LOOP|CONNECTOR)\b/.test(type)) return "RING";
+  return type;
+}
+
+const STOP = new Set(["THE", "AND", "ON", "OF", "AT", "TO", "IN", "FOR", "WITH", "SIDE", "PART"]);
+const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 2 && !STOP.has(w) && !/^\d/.test(w)));
+const overlap = (a: string, b: string) => {
+  const wa = words(a);
+  let n = 0;
+  for (const w of words(b)) if (wa.has(w)) n++;
+  return n;
+};
+/** "BOTH TOP CORNERS", "EACH SIDE", "PAIR" → 2 when the sheet gives no quantity. */
+const impliedQty = (loc: string) => (/\b(BOTH|EACH|PAIR|TWO|X ?2)\b/.test(norm(loc)) ? 2 : 0);
+
+export type LinkedPart = { type: string; size: string; item: { id: string; label: string }; description: string; location?: string; qty?: number | null; note?: string };
+type Row = Record<string, unknown>;
+
 /**
- * Puts each part on a pack row of its own type — the first one not yet given a part in this read —
- * with its size; parts with no such row get a new row. Rows a designer already linked to a different
- * part are left alone.
+ * Merges each part into the pack's hardware rows (the ones the render pre-fill made) instead of adding
+ * rows: the best unused row of the same type — or the same family (a STRAP ANCHOR row takes the square
+ * ring) — preferring the row whose placement matches the part's location. A part on the sheet once but
+ * on several rows (two ring zip pulls) links every such row. The sheet's quantity applies when the part
+ * sits on one row ("BOTH TOP CORNERS" = 2). Rows a designer linked to a different part are left alone,
+ * parts with no row get one, and blank rows are dropped — no empty item rows remain for a sheet part.
  */
-export function assignRows(rows: Record<string, unknown>[], linked: { type: string; size: string; item: { id: string; label: string }; description: string }[], typeOfItem: (id: string) => string | undefined) {
+export function assignRows(rows: Row[], linked: LinkedPart[], typeOfItem: (id: string) => string | undefined) {
   const out = rows.map((r) => ({ ...r }));
+  const itemOf = (r: Row) => r.item as { id: string } | undefined;
+  const rowType = (r: Row) => {
+    const it = itemOf(r);
+    return (it && typeOfItem(it.id)) || partType({ description: String(r.seen ?? "") });
+  };
+  const score = (r: Row, l: LinkedPart) => {
+    const it = itemOf(r);
+    if (it && it.id !== l.item.id) return 0;
+    const t = rowType(r);
+    const typeScore = t === l.type ? 3 : family(t) === family(l.type) ? 2 : 0;
+    if (!typeScore) return 0;
+    return typeScore * 100 + (it ? 50 : 0) + overlap(`${r.placement ?? ""} ${r.seen ?? ""}`, `${l.location ?? ""} ${l.description}`);
+  };
+  const best = (l: LinkedPart, free: (k: number) => boolean) => {
+    let bi = -1;
+    let bs = 0;
+    out.forEach((r, k) => {
+      if (!free(k)) return;
+      const s = score(r, l);
+      if (s > bs) [bi, bs] = [k, s];
+    });
+    return bi;
+  };
   const used = new Set<number>();
+  const rowsOf = new Map<LinkedPart, number[]>();
+  const put = (k: number, l: LinkedPart) => {
+    const r = out[k];
+    const note = l.note && !String(r.seen ?? "").includes(l.note) ? [r.seen, l.note].filter(Boolean).join(" · ") : r.seen;
+    out[k] = { ...r, item: l.item, ...(l.size ? { size: l.size } : {}), ...(note ? { seen: note } : {}) };
+    used.add(k);
+    rowsOf.set(l, [...(rowsOf.get(l) ?? []), k]);
+  };
+  // 1. each part to its best row; parts with no row get a new one.
   for (const l of linked) {
-    const rowType = (r: Record<string, unknown>) => {
-      const it = r.item as { id: string } | undefined;
-      return (it && typeOfItem(it.id)) || partType({ description: String(r.seen ?? "") });
-    };
-    let i = out.findIndex((r, k) => !used.has(k) && rowType(r) === l.type && (!r.item || (r.item as { id: string }).id === l.item.id));
-    if (i < 0) i = out.findIndex((r, k) => !used.has(k) && !r.item && rowType(r) === l.type);
-    if (i >= 0) {
-      out[i] = { ...out[i], item: l.item, ...(l.size ? { size: l.size } : {}) };
-      used.add(i);
-    } else {
-      out.push({ item: l.item, qty: 1, seen: l.description.toUpperCase(), ...(l.size ? { size: l.size } : {}) });
+    const k = best(l, (i) => !used.has(i));
+    if (k >= 0) put(k, l);
+    else {
+      out.push({ item: l.item, qty: l.qty || impliedQty(l.location ?? "") || 1, placement: (l.location ?? "").toUpperCase(), seen: [l.description.toUpperCase(), l.note].filter(Boolean).join(" · "), ...(l.size ? { size: l.size } : {}) });
       used.add(out.length - 1);
+      rowsOf.set(l, [out.length - 1]);
     }
   }
-  return out;
+  // 2. rows still without an item that are the same part (a second zip pull, the other strap anchor).
+  out.forEach((r, k) => {
+    if (used.has(k) || itemOf(r)) return;
+    let bl: LinkedPart | null = null;
+    let bs = 0;
+    for (const l of linked) {
+      const s = score(r, l);
+      if (s > bs) [bl, bs] = [l, s];
+    }
+    if (bl) put(k, bl);
+  });
+  // 3. the sheet's quantity, where the part sits on one row.
+  for (const [l, ks] of rowsOf) {
+    if (ks.length !== 1) continue;
+    const q = l.qty || impliedQty(l.location ?? "");
+    if (q) out[ks[0]] = { ...out[ks[0]], qty: q };
+  }
+  return out.filter((r) => itemOf(r) || String(r.seen ?? "").trim() || String(r.placement ?? "").trim());
+}
+
+const FINISH_WORDS = [
+  "SHINY CHAMPAGNE GOLD", "LIGHT GOLD", "ANTIQUE BRASS", "GUNMETAL", "GUN METAL", "SHINY NICKEL", "BLACK NICKEL", "MATTE BLACK", "ROSE GOLD",
+  "ANTIQUE SILVER", "SHINY SILVER", "PALE GOLD", "SHINY GOLD", "MATTE GOLD", "RUTHENIUM", "CHROME", "PALLADIUM", "COPPER", "NICKEL", "GOLD", "SILVER", "BRASS", "BLACK",
+];
+const NOTE_RE = /NOT (STATED|GIVEN|SPECIFIED|SHOWN|LISTED|ON)|CONFIRM|\b(PER|FROM|AS) (THE )?(RENDER|BOARD|PHOTO|IMAGE)|\bTB[CD]\b|UNKNOWN|ASSUMED|ESTIMATED|\?/;
+
+/**
+ * A finish is a value, never a note. "NOT STATED ON SPEC SHEET — CONFIRM (GUNMETAL PER RENDER)" →
+ * value GUNMETAL, AI-suggested (needs confirm), and the note kept for the row's "seen".
+ */
+export function cleanFinish(raw: string, stated = true): { value: string; ai: boolean; note: string } {
+  const up = String(raw ?? "").toUpperCase().replace(/\s+/g, " ").trim();
+  if (!up) return { value: "", ai: false, note: "" };
+  if (!NOTE_RE.test(up) && up.length <= 40) return stated ? { value: up, ai: false, note: "" } : { value: up, ai: true, note: `FINISH ${up} FROM RENDER — CONFIRM` };
+  const inParens = [...up.matchAll(/\(([^)]*)\)/g)].map((m) => m[1]);
+  const pick = (s: string) => FINISH_WORDS.find((f) => new RegExp(`\\b${f}\\b`).test(s));
+  const found = inParens.map(pick).find(Boolean) ?? pick(up) ?? "";
+  const value = found === "GUN METAL" ? "GUNMETAL" : found;
+  return { value, ai: true, note: `FINISH: ${up}` };
 }

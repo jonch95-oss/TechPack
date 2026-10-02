@@ -124,6 +124,8 @@ export const hardware = pgTable(
     finishSpec: jsonb("finish_spec").$type<FinishSpec>().notNull().default({}),
     /** Plating sample / mould / sample approval. */
     approval: jsonb("approval").$type<Approval>().notNull().default({ status: "PENDING", type: "", date: "", note: "" }),
+    /** Fields an AI read filled without a printed value (e.g. finish taken from the render): "ai" until a designer confirms. */
+    fieldStatus: jsonb("field_status").$type<FieldStatusMap>().notNull().default({}),
     createdBy: uuid("created_by").references(() => users.id),
     updatedBy: uuid("updated_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

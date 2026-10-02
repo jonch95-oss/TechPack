@@ -188,6 +188,7 @@ export function completeness(
       rows.forEach((r, i) => {
         for (const c of (q as RowsQ).columns) {
           if (!c.required) continue;
+          if (c.requiredWithSection && ctx.answers[optionalToggleId(c.requiredWithSection)] !== true) continue;
           if (c.showIf && !c.showIf.in.includes(String(r[c.showIf.key] ?? ""))) continue;
           if (isEmpty(r[c.key])) issues.push({ questionId: q.id, label: `${q.label} — row ${i + 1}`, problem: `${c.label.toUpperCase()} MISSING` });
         }

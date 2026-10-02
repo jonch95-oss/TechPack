@@ -9,8 +9,8 @@ import { buildSourceInstructions, normaliseSource, READ_SOURCE_SCHEMA, sourceLab
 import { buildSwatchInstructions, normaliseChipBox, READ_SWATCH_SCHEMA, SWATCH_FIELDS, type ReadSwatchOutput } from "@/lib/ai/read-swatch";
 import { checkComponentCode, hardwareByCode, loadPack, materialLabel, rebuildLibraryUsage, type LoadedPack } from "@/lib/data";
 import { normaliseField } from "@/lib/library-import";
-import { assignRows, realCode, resolveParts } from "@/lib/hardware-match";
-import type { LibValue, MatrixValue } from "@/lib/questions";
+import { assignRows, cleanFinish, realCode, resolveParts, type LinkedPart } from "@/lib/hardware-match";
+import type { MatrixValue } from "@/lib/questions";
 import { readStoredFile } from "@/lib/storage";
 
 export type SourceResult = { answered: number; skippedConfirmed: number; created: string[]; linked: string[]; boardNotes: string[]; dropped: string[] };
@@ -157,9 +157,11 @@ async function linkHardware(p: LoadedPack, parts: NonNullable<ReadSourceOutput["
   const lib = await db.select().from(hardware).where(eq(hardware.brandId, p.brand.id));
   const resolved = resolveParts(parts, lib);
   const created = new Map<string, (typeof lib)[number]>();
-  const linked: { type: string; size: string; item: LibValue; description: string }[] = [];
+  const linked: LinkedPart[] = [];
   for (const r of resolved) {
     let item = r.match ?? created.get(r.key) ?? null;
+    // A finish is a value; a note ("NOT STATED — CONFIRM (GUNMETAL PER RENDER)") goes to the row's "seen".
+    const finish = cleanFinish(r.part.finish, r.part.finish_stated !== false);
     if (!item) {
       const code = (await checkComponentCode(p.brand.id, "")).suggestion;
       if (!code) continue;
@@ -173,7 +175,8 @@ async function linkHardware(p: LoadedPack, parts: NonNullable<ReadSourceOutput["
           name: (r.part.description || r.type).toUpperCase(),
           dimsMm: r.size.replace(/ MM$/, ""),
           material: normaliseField("hardware", "material", r.part.material),
-          finish: normaliseField("hardware", "finish", r.part.finish),
+          finish: normaliseField("hardware", "finish", finish.value),
+          fieldStatus: finish.ai && finish.value ? { finish: "ai" as const } : {},
           notes: [`FROM ${source}`, supplierCode && `SUPPLIER CODE ${supplierCode}`].filter(Boolean).join(" · "),
         })
         .returning();
@@ -181,7 +184,15 @@ async function linkHardware(p: LoadedPack, parts: NonNullable<ReadSourceOutput["
       lib.push(item);
       result.created.push(`${code} ${r.type}`);
     } else if (!result.linked.includes(item.code)) result.linked.push(item.code);
-    linked.push({ type: r.type, size: r.size, item: { id: item.id, label: item.code }, description: r.part.description || r.type });
+    linked.push({
+      type: r.type,
+      size: r.size,
+      item: { id: item.id, label: item.code },
+      description: r.part.description || r.type,
+      location: r.part.location ?? "",
+      qty: typeof r.part.qty === "number" && r.part.qty > 0 ? Math.round(r.part.qty) : null,
+      note: finish.note,
+    });
   }
   const typeOf = new Map(lib.map((h) => [h.id, h.type]));
   const rows = assignRows((p.answers["hardware.items"] as Record<string, unknown>[] | undefined) ?? [], linked, (id) => typeOf.get(id));

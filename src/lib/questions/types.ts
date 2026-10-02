@@ -65,7 +65,15 @@ export type FileQ = Base & { kind: "file"; accept?: string };
 export type DateQ = Base & { kind: "date_asap" };
 export type DerivedQ = Base & { kind: "derived"; from: string; unit: StepUnit };
 
-type ColBase = { key: string; label: string; required?: boolean; showIf?: { key: string; in: string[] }; noOther?: boolean };
+type ColBase = {
+  key: string;
+  label: string;
+  required?: boolean;
+  /** Required only while this optional section is switched on (e.g. POM tolerance ↔ "opt.tolerances"). */
+  requiredWithSection?: string;
+  showIf?: { key: string; in: string[] };
+  noOther?: boolean;
+};
 export type Column = ColBase &
   (
     | { kind: "chips"; options: string[] }

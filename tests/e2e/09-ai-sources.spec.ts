@@ -85,7 +85,14 @@ test("REFER TO SPEC prompt, Needed from you, and AI-read sources", async ({ page
   expect(await rowValues(1)).toContain("SQUARE PRONG BUCKLE");
   // Rows from the render: 0 arrows plate, 1 buckle, 2 ring zip pulls, 3 strap rings, 4 eyelet.
   for (const [row, size] of [[0, "50 X 32 MM"], [1, "INNER 40 MM"], [3, "40 X 15 MM"], [4, "DIA 8 MM"]] as const) expect(await rowValues(row)).toContain(size);
-  expect((await rowValues(2)).join(" ")).not.toMatch(/ MM/); // zip pulls: not on the spec
+  // Round 6: the spec's zip pull merges into the render's zip-pull row (no size on the spec), the
+  // strap rings sit at both top corners (qty 2), no row is left without an item, and the finish the
+  // spec didn't print is a value (GUNMETAL, AI-suggested) with the note kept in "seen".
+  expect((await rowValues(2)).join(" ")).not.toMatch(/ MM/);
+  expect((await rowValues(2)).join(" ")).toContain("FINISH: NOT STATED ON SPEC SHEET");
+  expect(await rowValues(3)).toContain("2");
+  await expect(hwRows.getByTestId(/^hardware\.items-row-/)).toHaveCount(5);
+  await expect(hwRows).not.toContainText("Pick or add");
   // Round 5, item 5: materials named on the spec pre-fill the breakdown cells.
   await expect(needed).not.toContainText("MICRO MESH (-A) — SWATCH / MATERIAL");
   await expect(page.getByTestId("cell-text--A-mat_2").locator("input, textarea").first()).toHaveValue("BLACK SMOOTH LEATHER 1.2MM");

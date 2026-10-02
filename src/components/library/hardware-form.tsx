@@ -6,7 +6,7 @@ import { checkHardwareCode, saveHardware, type HardwareInput } from "@/app/actio
 import type { CodeCheck } from "@/lib/codes";
 import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "@/lib/questions/common";
 import { uploadFile } from "@/lib/client/upload";
-import { Button, Label, TextInput, Thumb, cx } from "@/components/ui";
+import { Badge, Button, Label, TextInput, Thumb, cx } from "@/components/ui";
 import { ChipRow, Toggle } from "@/components/chips";
 import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
 
@@ -48,6 +48,8 @@ export function HardwareForm({
     detailDims: item?.detailDims ?? [],
     approval: item?.approval ?? EMPTY_APPROVAL,
   });
+  // Finish an AI read took from the render (the sheet printed none): shown as a value, flagged until confirmed.
+  const [finishAi, setFinishAi] = useState(item?.fieldStatus?.finish === "ai");
   const [check, setCheck] = useState<CodeCheck | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -146,8 +148,24 @@ export function HardwareForm({
           <ChipRow options={HARDWARE_MATERIALS} value={v.material} onChange={(x) => set("material", x)} disabled={!canEdit} allowOther />
         </div>
         <div>
-          <Label>Finish</Label>
-          <ChipRow options={HARDWARE_FINISHES} value={v.finish} onChange={(x) => set("finish", x)} disabled={!canEdit} allowOther />
+          <div className="flex items-center justify-between gap-2">
+            <Label>Finish</Label>
+            {finishAi && (
+              <button type="button" className="mb-2" data-testid="finish-ai" title="Accept the finish taken from the render" disabled={!canEdit} onClick={() => setFinishAi(false)}>
+                <Badge tone="ai">AI-suggested — confirm ✓</Badge>
+              </button>
+            )}
+          </div>
+          <ChipRow
+            options={HARDWARE_FINISHES}
+            value={v.finish}
+            onChange={(x) => {
+              set("finish", x);
+              setFinishAi(false);
+            }}
+            disabled={!canEdit}
+            allowOther
+          />
         </div>
         <div>
           <Label>Logo treatment</Label>
@@ -244,7 +262,7 @@ export function HardwareForm({
               disabled={pending || !v.type || !v.brandId || !v.code || !!check?.errors.length}
               onClick={() =>
                 start(async () => {
-                  const res = await saveHardware(v);
+                  const res = await saveHardware({ ...v, confirmFields: item?.fieldStatus?.finish === "ai" && !finishAi ? ["finish"] : [] });
                   if (!res.ok) return setMsg({ ok: false, text: res.error });
                   setMsg({ ok: true, text: res.message ?? "Saved." });
                   if (res.id) {

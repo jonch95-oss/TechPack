@@ -1,5 +1,5 @@
 {
- "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 \u2014 an Off-White-style micro-mesh shoulder bag on a design board.",
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 — an Off-White-style micro-mesh shoulder bag on a design board.",
  "answers": [
   {
    "question_id": "dims.h",
@@ -82,7 +82,10 @@
    "supplier_code": "N/A",
    "dims_mm": "50 X 32",
    "material": "ZINC ALLOY",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "FRONT CENTRE"
   },
   {
    "type": "BUCKLE",
@@ -90,7 +93,10 @@
    "supplier_code": "N/A",
    "dims_mm": "INNER 40",
    "material": "ZINC ALLOY",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "STRAP"
   },
   {
    "type": "HARDWARE",
@@ -98,7 +104,10 @@
    "supplier_code": "-",
    "dims_mm": "40 X 15",
    "material": "ZINC ALLOY",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "BOTH TOP CORNERS"
   },
   {
    "type": "EYELET",
@@ -106,7 +115,21 @@
    "supplier_code": "TBC",
    "dims_mm": "DIA 8",
    "material": "BRASS",
-   "finish": "BLACK NICKEL"
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "FRONT"
+  },
+  {
+   "type": "ZIPPER PULL",
+   "description": "RING ZIP PULL",
+   "supplier_code": "N/A",
+   "dims_mm": "",
+   "material": "ZINC ALLOY",
+   "finish": "NOT STATED ON SPEC SHEET — CONFIRM (GUNMETAL PER RENDER)",
+   "finish_stated": false,
+   "qty": null,
+   "location": "FRONT POCKET ZIPS"
   }
  ],
  "board_notes": [],

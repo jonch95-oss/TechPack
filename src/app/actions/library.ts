@@ -156,6 +156,8 @@ export type HardwareInput = {
   finishSpec?: FinishSpec;
   approval?: Approval;
   detailDims?: { label: string; mm?: number | null }[];
+  /** AI-suggested fields the designer accepted. */
+  confirmFields?: string[];
 };
 
 /** Live check while a designer types a code: errors block saving, warnings are called out. */
@@ -193,7 +195,12 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
   };
   if (input.id) {
     const [before] = await db.select().from(hardware).where(eq(hardware.id, input.id));
-    await db.update(hardware).set(values).where(eq(hardware.id, input.id));
+    if (!before) return { ok: false, error: "Hardware not found." };
+    const fieldStatus: FieldStatusMap = { ...before.fieldStatus };
+    // A field the designer edited or confirmed is no longer AI-suggested.
+    for (const [f, st] of Object.entries(fieldStatus))
+      if (st === "ai" && ((before as Record<string, unknown>)[f] !== (values as Record<string, unknown>)[f] || input.confirmFields?.includes(f))) fieldStatus[f] = "confirmed";
+    await db.update(hardware).set({ ...values, fieldStatus }).where(eq(hardware.id, input.id));
     await audit({ userId: user.id, entity: "hardware", entityId: input.id, action: "update", before, after: values });
     revalidatePath("/library/hardware");
     return { ok: true, id: input.id, code, message: "Saved." };
