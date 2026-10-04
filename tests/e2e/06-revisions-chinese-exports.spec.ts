@@ -109,7 +109,8 @@ test("Phase 4: R1 with *UPDATED* flags and change log, bilingual EN/中文, AI/E
   const blair = await loginAs(browser, BLAIR.email, BLAIR.password);
   await signOff(page, blair, pink.id);
   const original = pdfText(await download(page, `/api/packs/${pink.id}/pdf`, "PINK013-original.pdf"));
-  const today = new Date().toISOString().slice(0, 10);
+  const iso = new Date().toISOString().slice(0, 10);
+  const today = `${iso.slice(5, 7)}.${iso.slice(8, 10)}.${iso.slice(0, 4)}`; // the header prints US order
   expect(original[0]).toContain(`STYLECODE:PINK013${today}ITEM:`); // standard header: date in red, no revision yet
   expect(original.join("")).not.toContain("*UPDATED*");
   expect(original.join("")).not.toContain("CHANGELOG");

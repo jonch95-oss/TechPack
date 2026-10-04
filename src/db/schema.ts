@@ -100,6 +100,8 @@ export type Approval = { status: "PENDING" | "APPROVED" | "REJECTED"; type: stri
 export type FinishSpec = { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
 
 export type HardwareViews = { front?: string; side?: string; rear?: string; top?: string };
+export type ViewCrop = { x: number; y: number; w: number; h: number };
+export type HardwareViewCrops = { front?: ViewCrop | null; side?: ViewCrop | null; rear?: ViewCrop | null; top?: ViewCrop | null };
 
 export const hardware = pgTable(
   "hardware",
@@ -112,6 +114,8 @@ export const hardware = pgTable(
     /** Free mm string, e.g. "40 X 20" or "16 X 42 X 5.5". Hardware is always mm. */
     dimsMm: text("dims_mm").notNull().default(""),
     views: jsonb("views").$type<HardwareViews>().notNull().default({}),
+    /** Crop of each view to the part itself (fractions of the image): 100% views print the crop. */
+    viewCrops: jsonb("view_crops").$type<HardwareViewCrops>().notNull().default({}),
     material: text("material").notNull().default(""),
     finish: text("finish").notNull().default(""),
     logoTreatment: text("logo_treatment").notNull().default(""),
@@ -213,8 +217,10 @@ export type FileMarks = {
   dot?: { x: number; y: number } | null;
   /** Render / board: text written around the product, read by the AI at upload ("REFER TO SPEC" …). */
   board?: { text: string[]; refersToSpec: boolean; reference: string } | null;
-  /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. */
-  role?: "SIDE_VIEW" | "APPLICATION" | null;
+  /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. BACK / SIDE: a view printed beside the front on OVERVIEW. */
+  role?: "SIDE_VIEW" | "APPLICATION" | "BACK" | "SIDE" | null;
+  /** On the render: where each material's numbered callout goes, keyed by callout number. */
+  callouts?: Record<string, { x: number; y: number }> | null;
 };
 
 export const packFileKindEnum = pgEnum("pack_file_kind", [

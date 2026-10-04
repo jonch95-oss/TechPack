@@ -120,6 +120,13 @@
       "when": 1790977524732,
       "tag": "0016_standard_page_names",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791124708032,
+      "tag": "0017_hardware_view_crops",
+      "breakpoints": true
     }
   ]
 }

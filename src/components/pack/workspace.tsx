@@ -20,6 +20,7 @@ import {
   sectionVisible,
   unitLabel as unitLabelFor,
   visibleQuestions,
+  NOT_A_MATERIAL,
   type AnswerMap,
   type MaterialEntry,
   type Category,
@@ -358,9 +359,10 @@ export function PackWorkspace(props: WorkspaceProps) {
               packId={pack.id}
               mode="logo"
               file={render}
+              materials={((answers["materials.list"] as { callout: number; name: string; locations?: string[] }[] | undefined) ?? []).filter((m) => m?.name && !NOT_A_MATERIAL.test(m.name.toUpperCase()))}
               trigger={(open) => (
                 <button type="button" onClick={open} className="absolute top-4 left-4 inline-flex h-8 px-4 items-center bg-ivory/90 border border-hairline-strong text-[10px] tracking-[0.18em] uppercase hover:border-ink" data-testid="mark-logo">
-                  {render.marks?.dot ? "Logo marked ●" : "Mark logo"}
+                  {render.marks?.dot ? "Logo marked ●" : "Mark logo"} · callouts
                 </button>
               )}
             />
@@ -745,7 +747,7 @@ export function PackWorkspace(props: WorkspaceProps) {
 
           <section id="sec-uploads" className="scroll-mt-28">
             <SectionTitle n="—" title="Uploads & references" />
-            <FilesPanel packId={pack.id} files={props.files} colorways={colorways} canEdit={canEdit} />
+            <FilesPanel packId={pack.id} files={props.files} colorways={colorways} canEdit={canEdit} comments={((answers["comments.list"] as { text?: string }[] | undefined) ?? []).map((c) => c.text ?? "")} />
           </section>
 
           <section className="scroll-mt-28">

@@ -1,6 +1,6 @@
 /**
  * Reference answers (V2.1 §1): real proto packs answer many questions with a reference instead of a
- * value — "PLEASE FOLLOW REFERENCE IMAGE 2", "SAME AS LAB-HB-#####", "FROM PREVIOUS DEVELOPMENT".
+ * value — "PLEASE FOLLOW REFERENCE IMAGE 2", "SAME AS <STYLE #>", "FROM PREVIOUS DEVELOPMENT".
  * Any question accepts one. At PROTO it is a settled answer and prints as written. At PRODUCTION,
  * TO_BE_PROVIDED and OPEN_OPTIONS block, and SAME_AS must resolve to a pack or library item.
  */

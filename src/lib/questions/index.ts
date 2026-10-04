@@ -225,11 +225,17 @@ export function completeness(
 
 /**
  * PROTO accepts what real proto packs give (V2.1 §1.3, §5): a flat product gives two of H / W / D
- * (no depth on a flat bag), and a lining stated per colourway in the breakdown is the lining.
+ * (no depth on a flat bag), a set gives its pieces' sizes, and a lining stated per colourway in the
+ * breakdown is the lining.
  */
 function protoSatisfied(qid: string, ctx: EvalContext, colorways: string[]) {
   const a = ctx.answers;
-  if (/^dims\.[hwd]$/.test(qid)) return ["dims.h", "dims.w", "dims.d"].filter((k) => !isEmpty(a[k]) || isReference(a[k])).length >= 2;
+  if (/^dims\.[hwd]$/.test(qid)) {
+    // A set's size is per piece: its set rows (each with two of L / W / H) are the size (golden run 1 #17).
+    const set = (a["cube.set"] as Record<string, unknown>[] | undefined) ?? [];
+    if (set.length && set.every((r) => ["l", "w", "h"].filter((k) => typeof r?.[k] === "number").length >= 2)) return true;
+    return ["dims.h", "dims.w", "dims.d"].filter((k) => !isEmpty(a[k]) || isReference(a[k])).length >= 2;
+  }
   if (qid === "interior.lining_material") {
     const m = (a["materials.matrix"] as MatrixValue | undefined) ?? {};
     return colorways.length > 0 && colorways.every((cw) => !!m[cw]?.lining && (!isEmpty(m[cw]!.lining!.text) || !!m[cw]!.lining!.lib));

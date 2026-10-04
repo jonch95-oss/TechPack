@@ -6,7 +6,7 @@ import { cx } from "@/components/ui";
 
 /**
  * Answer any question with a reference instead of a value (V2.1 §1): "follow reference image 2",
- * "same as LAB-HB-#####", "from previous development", "factory standard", "scale to CAD",
+ * "same as <style #>", "from previous development", "factory standard", "scale to CAD",
  * "open to options", "to be provided". Settled at PROTO; printed as written.
  */
 export function ReferenceControl({ qid, value, onChange, disabled }: { qid: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {

@@ -38,12 +38,17 @@ export type Bilingual = {
   onGaps?: (gaps: string[]) => void;
 };
 
-export async function htmlToPdf(html: string, opts: { bilingual?: Bilingual } = {}): Promise<Buffer> {
+export async function htmlToPdf(html: string, opts: { bilingual?: Bilingual; inspect?: (page: import("puppeteer-core").Page) => Promise<void> } = {}): Promise<Buffer> {
   const browser = await launch();
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "load", timeout: 120_000 });
     await page.evaluate(() => document.fonts.ready);
+    // Checks on the laid-out pages (the golden overflow check) run before the PDF is cut.
+    if (opts.inspect) {
+      await page.emulateMediaType("print");
+      await opts.inspect(page);
+    }
     if (opts.bilingual) await addChinese(page, opts.bilingual);
     const pdf = await page.pdf({ width: "17in", height: "11in", printBackground: true, preferCSSPageSize: true });
     return Buffer.from(pdf);

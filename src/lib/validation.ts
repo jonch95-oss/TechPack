@@ -42,6 +42,10 @@ export type ValidationInput = {
   materials?: { id: string; label: string; approval: string; composition: string }[];
   /** Line art (Phase 3): each view's status and the material numbers drawn on it. */
   flats?: { view: string; status: string; materialCallouts: string[] }[];
+  /** False when the logo has a type but neither a marked point on the render nor a placement that locates it. */
+  logoMarked?: boolean;
+  /** Reference / construction photos: their comment letter and caption. */
+  photos?: { letter: string; note: string }[];
   spelling: SpellFlag[];
 };
 
@@ -94,6 +98,15 @@ export function validatePack(input: ValidationInput): RuleResult[] {
   if (!comments.length) push({ group: "Completeness", rule: "Every comment letter appears on a page", status: "na", fix: "" });
   else if (!unplaced.length) push({ group: "Completeness", rule: "Every comment letter appears on a page", status: "pass", fix: "" });
   for (const { letter } of unplaced) push({ group: "Completeness", rule: `Comment ${letter} isn't on any page`, status: "fail", fix: `Choose the page(s) comment ${letter} belongs on.`, questionId: "comments.list" });
+  // A photo lettered like a comment is that comment's photo: its caption is the comment (golden run 1 #7).
+  const norm = (t: string) => t.toUpperCase().replace(/\s+/g, " ").trim();
+  for (const ph of input.photos ?? []) {
+    const k = ph.letter ? ph.letter.charCodeAt(0) - 65 : -1;
+    const c = k >= 0 && k < comments.length ? comments[k] : null;
+    if (c && ph.note.trim() && norm(ph.note) !== norm(c.text ?? ""))
+      push({ group: "Completeness", rule: `Photo ${ph.letter} caption ≠ comment ${ph.letter}`, status: "warn", fix: `Photo ${ph.letter} is captioned "${norm(ph.note)}" but comment ${ph.letter} says something else — pick the photo's letter from the comment list.`, questionId: "comments.list" });
+  }
+  if (input.logoMarked === false) push({ group: "Completeness", rule: "Logo position on the render", status: "warn", fix: "Click the logo on the render — its placement doesn't say where the leader line should point." });
 
   /* ------------------------------ Geometry ------------------------------ */
   const flap = num(a["hb.flap_height"]);

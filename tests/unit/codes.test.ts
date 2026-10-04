@@ -16,10 +16,10 @@ describe("code assignment", () => {
     expect(nextCode("PINK###", ["PINK011", "PINK012"], ["PINK013", "PINK014-A"])).toBe("PINK015"); // skips codes styles use
   });
 
-  it("a longer style number in the same family is never read as a component (PA_LUG_### → PA_LUG_009)", () => {
-    const components = ["PA_LUG_001", "PA_LUG_002", "PA_LUG_003", "PA_LUG_004", "PA_LUG_005", "PA_LUG_006", "PA_LUG_007", "PA_LUG_008"];
-    expect(nextCode("PA_LUG_###", components, ["PA_LUG_10001"])).toBe("PA_LUG_009");
-    expect(codeNumber("PA_LUG_###", "PA_LUG_10001")).toBeNull();
+  it("a longer style number in the same family is never read as a component (XY_LUG_### → XY_LUG_009)", () => {
+    const components = ["XY_LUG_001", "XY_LUG_002", "XY_LUG_003", "XY_LUG_004", "XY_LUG_005", "XY_LUG_006", "XY_LUG_007", "XY_LUG_008"];
+    expect(nextCode("XY_LUG_###", components, ["XY_LUG_10001"])).toBe("XY_LUG_009");
+    expect(codeNumber("XY_LUG_###", "XY_LUG_10001")).toBeNull();
   });
 
   it("ignores other brands' codes and malformed codes", () => {

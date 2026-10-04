@@ -4,7 +4,7 @@ import { friendlyAIError } from "@/lib/ai/errors";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type PantoneColour } from "@/db/schema";
+import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type HardwareViewCrops, type PantoneColour } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { checkComponentCode } from "@/lib/data";
@@ -146,6 +146,8 @@ export type HardwareInput = {
   type: string;
   dimsMm: string;
   views: { front?: string; side?: string; rear?: string; top?: string };
+  /** Each view cropped to the part (fractions of the image). */
+  viewCrops?: HardwareViewCrops;
   material: string;
   finish: string;
   logoTreatment: string;
@@ -159,6 +161,17 @@ export type HardwareInput = {
   /** AI-suggested fields the designer accepted. */
   confirmFields?: string[];
 };
+
+/** Crops kept only for views that exist, clamped to the image. */
+function cleanCrops(c: HardwareViewCrops, views: HardwareInput["views"]): HardwareViewCrops {
+  const f = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
+  const out: HardwareViewCrops = {};
+  for (const k of ["front", "side", "rear", "top"] as const) {
+    const b = c[k];
+    if (views[k] && b) out[k] = { x: f(b.x), y: f(b.y), w: Math.max(0.02, f(b.w)), h: Math.max(0.02, f(b.h)) };
+  }
+  return out;
+}
 
 /** Live check while a designer types a code: errors block saving, warnings are called out. */
 export async function checkHardwareCode(brandId: string | null, code: string, excludeId?: string) {
@@ -180,6 +193,7 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
     type: up(input.type),
     dimsMm: up(input.dimsMm),
     views: input.views,
+    ...(input.viewCrops ? { viewCrops: cleanCrops(input.viewCrops, input.views) } : {}),
     material: up(input.material),
     finish: up(input.finish),
     logoTreatment: up(input.logoTreatment),

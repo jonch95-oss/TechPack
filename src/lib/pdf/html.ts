@@ -3,6 +3,9 @@ import { numbersOf, trueSize } from "./true-size";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PackDoc } from "./doc";
+import { missingFrom, tight, type SpecItem } from "./specs";
+import { planPages, TRIMS } from "./plan";
+import { calloutPoint, usDate } from "./hints";
 import { inlineFlat } from "@/lib/lineart/geometry";
 
 /**
@@ -117,6 +120,10 @@ ul.feat li::before { content: "-  "; }
 .chip { display: inline-block; width: 0.32in; height: 0.22in; border: 1px solid #666; vertical-align: middle; margin-right: 4px; }
 .sku { font-size: 11.5pt; line-height: 1.35; text-align: left; }
 .sku b { font-weight: 900; }
+.specs { font-size: 10pt; line-height: 1.3; }
+.specs .spechead { font-size: 9pt; color: #555; border-bottom: 1px solid #999; margin: 6px 0 3px; }
+.specs .specline { margin-bottom: 2px; }
+.specs .k { color: #555; font-size: 0.9em; }
 `;
 
 /**
@@ -125,17 +132,28 @@ ul.feat li::before { content: "-  "; }
  * bottom right (with *UPDATED* when something on the page changed).
  */
 function head(doc: PackDoc, n: number, section: string) {
-  const sec = /^SWATCH|MTL$/.test(section) ? "SWATCH CARDS" : section;
+  const sec = /^SWATCH|MTL$/.test(section) ? "SWATCH CARDS" : section.replace(/ \(\d+\/\d+\)$/, "");
   const rev = doc.revision.dates.length ? doc.revision.dates[doc.revision.dates.length - 1] : null;
-  const date = rev?.date || doc.revision.original || new Date().toISOString().slice(0, 10);
-  return `<div class="stylebox"><div><span class="k">STYLE CODE:</span> ${up(doc.styleCodes.join(", "))}</div>
+  const date = usDate(rev?.date || doc.revision.original || new Date().toISOString().slice(0, 10));
+  const item = doc.pack.styleName.toUpperCase();
+  return `<div class="stylebox"><div style="white-space:nowrap;overflow:hidden;font-size:${fitPt(`STYLE CODE: ${doc.styleCodes.join(", ")}`, 4.15, 1, 12, 7)}pt"><span class="k">STYLE CODE:</span> ${up(doc.styleCodes.join(", "))}</div>
       <div class="red">${esc(date)}${rev ? ` &nbsp;${esc(rev.label)}` : ""}</div>
-      <div><span class="k">ITEM:</span> <span class="item">${up(doc.pack.styleName)}</span></div></div>
+      <div style="white-space:nowrap;overflow:hidden"><span class="k">ITEM:</span> <span class="item" style="font-size:${fitPt(item, 3.6, 1, 16, 7)}pt">${esc(item)}</span></div></div>
     <div class="brandbox"><div class="k">BRAND:</div>${doc.brand.logo ? `<img src="${doc.brand.logo.src}" style="max-width:1.9in;max-height:0.62in;margin-top:2px"/>` : `<div style="font-size:${fitPt(doc.brand.name.toUpperCase(), 1.9, 2, 20)}pt;margin-top:4px">${up(doc.brand.name)}</div>`}</div>
     <div class="ptag">P${n} · ${esc(section)}${pageUpd(doc, sec, true)}</div>
     <div style="height:1.15in"></div>`; // pages laid out in flow start under the header
 }
 
+/** A colourway's SKU: the style number alone when the pack has one colourway (golden run 1, P0.4). */
+function sku(doc: PackDoc, cw: string) {
+  return doc.pack.colorways.length > 1 ? `${doc.pack.styleNo}${cw}` : doc.pack.styleNo;
+}
+
+/** " (X)" when X has a value, "" otherwise: an empty value never prints its brackets (golden run 1, P0.5). */
+function paren(v: unknown) {
+  const s = String(v ?? "").trim();
+  return s ? ` (${up(s)})` : "";
+}
 function commentsFor(doc: PackDoc, section: string, n?: number) {
   const cs = doc.comments.filter((c) => c.pages.includes(section));
   if (!cs.length) return "";
@@ -160,6 +178,8 @@ function crossRef(doc: PackDoc, c: { letter: string; text: string; pages: string
 /* ------------------------------ layout helpers (inches) ------------------------------ */
 type R = { x: number; y: number; w: number; h: number };
 const RED = "#e2231a";
+/** The red photo frame, drawn on the image's own box (golden run 1 #6). */
+const FRAME = "border:1.5px solid #e2231a;";
 const r2 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Where an image of natural size w × h lands when contained in a box. */
@@ -194,11 +214,6 @@ function plate(x: number, y: number, text: string, size = 15, anchor: "start" | 
   return `<rect x="${r2(x0)}" y="${r2(y - h / 2)}" width="${r2(w)}" height="${r2(h)}" fill="#fff"/><text x="${r2(x0 + w / 2)}" y="${r2(y + size / 72 / 2.9)}" text-anchor="middle" font-size="${r2(size / 72)}" fill="${RED}" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(text)}</text>`;
 }
 
-function proto(doc: PackDoc) {
-  const [first, ...rest] = doc.pack.colorways;
-  return `${up(doc.pack.styleNo)}${first ?? ""}${rest.length ? `, ${rest.map((r) => r.replace(/^-/, "")).join(", ")}` : ""}`;
-}
-
 /** A flat, sized by its box; inferred views carry the INFERRED — CONFIRM tag. */
 function flatBox(f: { svg: string; inferred: boolean } | null, cls: string, label?: string) {
   if (!f) return "";
@@ -218,61 +233,107 @@ function fitPt(text: string, w: number, lines = 1, max = 14, min = 7) {
   return min;
 }
 
-/** Date of the i-th revision (R1 = 0) for the masthead. */
-function rd(doc: PackDoc, i: number) {
-  const r = doc.revision.dates[i];
-  return r ? ` <span class="red">${esc(r.date)}</span>` : "";
+/* ------------------------------ P1. OVERVIEW ------------------------------ */
+/** The yellow numbered material callouts placed on a drawing at r (inches). */
+function materialCallouts(doc: PackDoc, r: R, d = 0.34) {
+  return doc.materials
+    .map((m, k) => {
+      const p = calloutPoint(m, k);
+      // Kept inside the drawing so a callout near an edge never runs off its box.
+      const x = Math.min(Math.max(r.x + p.x * r.w - d / 2, r.x), r.x + r.w - d),
+        y = Math.min(Math.max(r.y + p.y * r.h - d / 2, r.y), r.y + r.h - d);
+      return `<div class="abs" style="left:${r2(x)}in;top:${r2(y)}in;z-index:7"><span class="callout" style="width:${d}in;height:${d}in;font-size:${Math.round(d * 38)}pt">${m.callout}</span></div>`;
+    })
+    .join("");
 }
 
-/* ------------------------------ P1. OVERVIEW ------------------------------ */
+/** Spec lines grouped by section: "LABEL: VALUE" (golden run 1, P0.1). */
+function specBlock(items: SpecItem[], pt = 10) {
+  if (!items.length) return "";
+  const groups: { section: string; items: SpecItem[] }[] = [];
+  for (const it of items) {
+    const g = groups[groups.length - 1];
+    if (g && g.section === it.section) g.items.push(it);
+    else groups.push({ section: it.section, items: [it] });
+  }
+  return groups
+    .map(
+      (g) =>
+        `<div class="specgroup" style="break-inside:avoid-column"><div class="spechead">${esc(g.section)}</div>${g.items
+          .map((it) => `<div class="specline" style="font-size:${pt}pt"><span class="k">${esc(it.label)}:</span> ${it.lines.length === 1 ? esc(it.lines[0]) : it.lines.map((l) => `<div style="padding-left:10px">${esc(l)}</div>`).join("")}</div>`)
+          .join("")}</div>`,
+    )
+    .join("");
+}
+
 /**
- * Page 1 (V2.1 §2.3): the front flat (or render) with red dimension lines, the overall size on one
- * line, the headline instruction in large type, PRODUCT FEATURES, and the red lettered comments (plus
- * reference answers, as written). The header facts that used to fill the masthead sit under them.
+ * Page 1 (V2.1 §2.3): the front flat (or render) with red dimension lines, back / side views beside it,
+ * the overall size (a line per piece for sets), the headline instruction, PRODUCT FEATURES, the red
+ * lettered comments (plus reference answers, as written), the header facts and the SPECIFICATIONS block.
  */
-function overviewPage(doc: PackDoc, n: number) {
+function overviewPage(doc: PackDoc, n: number, specs: SpecItem[] = doc.specChunks[0] ?? []) {
   const h = doc.header;
-  const box: R = { x: 0.4, y: 1.55, w: 10.2, h: h.instruction ? 7.15 : 7.75 };
+  const sizeH = doc.sizeLines.length ? 0.5 + (doc.sizeLines.length - 1) * 0.36 : 0;
+  const box: R = { x: 0.4, y: 1.55, w: 10.2, h: 8.3 - sizeH - (h.instruction ? 0.6 : 0) };
   let drawing = "";
   let lines = "";
+  const extra = doc.references.filter((r) => r.page === "OVERVIEW" && r.img).slice(0, 2);
   if (doc.flats.front) {
     drawing = `<div class="abs" style="${at(box)}display:flex;gap:0.2in"><div style="flex:1;min-width:0">${flatBox(doc.flats.front, "flat", "FRONT VIEW")}</div>${doc.flats.back ? `<div style="flex:1;min-width:0">${flatBox(doc.flats.back, "flat-mat", "BACK VIEW")}</div>` : ""}</div>`;
   } else if (doc.render) {
-    // Red dimension lines on the render: W under it, H up the right side, D across the near corner.
-    const inner: R = { x: box.x + 0.9, y: box.y + 0.5, w: box.w - 2.2, h: box.h - 1.3 };
+    // Front view (red dimension lines: W under it, H up the right side, D across the near corner), with
+    // the back / side views beside it when they were uploaded.
+    const frontW = extra.length ? box.w * (extra.length === 1 ? 0.56 : 0.5) : box.w;
+    const inner: R = { x: box.x + 0.9, y: box.y + 0.5, w: frontW - 2.2 + (extra.length ? 0.9 : 0), h: box.h - 1.3 };
     const r = fit(doc.render, inner);
     const d = doc.dims;
     const v = (x?: number) => (typeof x === "number" ? `${x}${doc.U}` : "");
-    drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(box.y)}in;width:${box.w}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, inner)}`;
+    drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(box.y)}in;width:${r2(frontW)}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, inner)}${materialCallouts(doc, r)}`;
     lines += [
       d.w != null ? lead(r.x, r.y + r.h + 0.3, r.x + r.w, r.y + r.h + 0.3, { arrow: "both", w: 0.03 }) + plate(r.x + r.w / 2, r.y + r.h + 0.3, v(d.w), 20) : "",
       d.h != null ? lead(r.x + r.w + 0.35, r.y + r.h, r.x + r.w + 0.35, r.y, { arrow: "both", w: 0.03 }) + plate(r.x + r.w + 0.35, r.y + r.h / 2, v(d.h), 20) : "",
       d.d != null ? lead(r.x - 0.35, r.y + r.h, r.x - 0.05, r.y + r.h * 0.8, { arrow: "both", w: 0.03 }) + plate(r.x - 0.5, r.y + r.h + 0.15, v(d.d), 20) : "",
     ].join("");
-    if (doc.logo.type) {
-      const px = r.x + doc.logoPoint.x * r.w,
-        py = r.y + doc.logoPoint.y * r.h;
+    const ew = extra.length ? (box.w - frontW - 0.2 * extra.length) / extra.length : 0;
+    let backR: R | null = null;
+    extra.forEach((e, k) => {
+      const x = box.x + frontW + 0.2 + k * (ew + 0.2);
+      const label = e.role === "BACK" ? "BACK VIEW" : e.role === "SIDE" ? "SIDE VIEW" : e.note || "VIEW";
+      const er = fit(e.img, { x, y: box.y + 0.5, w: ew, h: box.h - 1.3 });
+      if (e.role === "BACK" || (!backR && /BACK/.test(label))) backR = er;
+      drawing += `<div class="big-label abs" style="left:${r2(x)}in;top:${r2(box.y)}in;width:${r2(ew)}in;text-align:center;font-size:${fitPt(label.toUpperCase(), ew, 2, 22, 11)}pt">${up(label)}</div>${imgIn(e.img, { x, y: box.y + 0.5, w: ew, h: box.h - 1.3 })}`;
+    });
+    // The logo's leader points where the logo is: on the back view when it sits on the back; no
+    // leader at all when nothing says where (the studio asks for a click on the render).
+    if (doc.logo.type && doc.logoPoint) {
+      const target: R = doc.logo.onBack && backR ? backR : r;
+      const px = target.x + doc.logoPoint.x * target.w,
+        py = target.y + doc.logoPoint.y * target.h;
       const lx = box.x + box.w - 0.1,
         ly = box.y + 0.9;
-      drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:14pt;line-height:1.1;z-index:6">LOGO${doc.logo.placement ? ` (${up(doc.logo.placement)})` : ""}${upd(doc, "branding.")}</div>`;
+      drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:14pt;line-height:1.1;z-index:6">LOGO${paren(doc.logo.placement)}${upd(doc, "branding.")}</div>`;
       lines += lead(lx - 0.15, ly, px, py, { dot: true });
     }
   }
-  const size = doc.sizeText ? `<div class="abs" style="left:0.4in;top:${r2(box.y + box.h + 0.1)}in;width:${box.w}in;text-align:center;font-size:20pt"><span class="red">${esc(doc.sizeText.toUpperCase())}</span>${upd(doc, "dims.")}</div>` : "";
-  const instruction = h.instruction ? `<div class="abs red" style="left:0.4in;top:${r2(box.y + box.h + 0.6)}in;width:${box.w}in;text-align:center;font-size:${fitPt(h.instruction.toUpperCase(), box.w, 1, 30, 16)}pt">${up(h.instruction)}${upd(doc, "header.instruction")}</div>` : "";
-  const banner = h.physicalSample ? `<div class="banner" style="margin-bottom:10px">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL.</div>` : "";
-  const features = doc.features.length
-    ? `<div class="box" style="padding:10px 14px;margin-bottom:12px"><div style="font-size:13pt;margin-bottom:6px">PRODUCT FEATURES</div><ul class="feat" style="font-size:13pt;line-height:1.4">${doc.features.map((f) => `<li>${up(f)}</li>`).join("")}</ul></div>`
+  const size = doc.sizeLines.length
+    ? `<div class="abs" style="left:0.4in;top:${r2(box.y + box.h + 0.1)}in;width:${box.w}in;text-align:center;font-size:${doc.sizeLines.length > 1 ? 16 : 20}pt;line-height:1.3">${doc.sizeLines.map((l, k) => `<div class="red">${esc(l.toUpperCase())}${k === 0 ? upd(doc, "dims.", "duf.size", "rduf.size", "cube.set", "lug.size") : ""}</div>`).join("")}</div>`
     : "";
-  // Reference answers print as written ("WEBBING SAME AS <STYLE #>", "PLEASE FOLLOW SAMPLE IMAGES FOR …").
-  const refNotes = doc.refNotes.length
-    ? `<div class="comments" data-ref-notes style="margin-top:8px">${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>`
-    : "";
-  const comments = commentsFor(doc, "OVERVIEW", n);
-  const callouts = doc.materials
-    .map((m) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5pt;line-height:1.15"><span class="callout" style="width:26px;height:26px;font-size:13pt">${m.callout}</span><span>${up(m.name)}</span></div>`)
-    .join("");
-  const facts = [
+  const instruction = h.instruction ? `<div class="abs red" style="left:0.4in;top:${r2(box.y + box.h + sizeH + 0.1)}in;width:${box.w}in;text-align:center;font-size:${fitPt(h.instruction.toUpperCase(), box.w, 1, 30, 16)}pt">${up(h.instruction)}${upd(doc, "header.instruction")}</div>` : "";
+  return `<section class="page">
+    ${head(doc, n, "OVERVIEW")}
+    ${drawing}${size}${instruction}
+    <div class="abs" style="left:10.9in;top:1.55in;width:5.7in;height:9.15in;overflow:hidden"><div style="zoom:${doc.overviewScale}">
+      ${overviewColumn(doc, n)}
+      ${specs.length ? `<div class="specs" style="margin-top:8px">${specBlock(specs)}</div>` : ""}
+    </div></div>
+    ${overlay(lines)}
+  </section>`;
+}
+
+/** Facts printed in the overview's right column (header facts that used to fill the masthead). */
+function overviewFacts(doc: PackDoc) {
+  const h = doc.header;
+  return [
     ["DESCRIPTION", h.description, "header.description"],
     ["CATEGORY", h.category, ""],
     ["RETAILER", h.retailer, "header.retailer"],
@@ -284,30 +345,137 @@ function overviewPage(doc: PackDoc, n: number) {
     ["HARDWARE", doc.hardwareFinish, "hardware.finish"],
     ["LOGO", doc.logo.type ? `${doc.logo.placement ? `(${doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement}) ` : ""}${doc.logo.type}` : "", "branding."],
     ["CUSTOM HARDWARE KEYCHAIN", doc.charm ? `${doc.charm.code} INCLUDED` : "", "hb.charm."],
-  ]
-    .filter(([, v]) => v)
+  ].filter(([, v]) => v) as [string, string, string][];
+}
+
+/** The overview's right column without the SPECIFICATIONS block; long comment lists print smaller. */
+function overviewColumn(doc: PackDoc, n: number) {
+  const h = doc.header;
+  const banner = h.physicalSample ? `<div class="banner" style="margin-bottom:10px">YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL.</div>` : "";
+  const features = doc.features.length
+    ? `<div class="box" style="padding:10px 14px;margin-bottom:12px"><div style="font-size:13pt;margin-bottom:6px">PRODUCT FEATURES</div><ul class="feat" style="font-size:13pt;line-height:1.4">${doc.features.map((f) => `<li>${up(f)}</li>`).join("")}</ul></div>`
+    : "";
+  // Reference answers print as written ("WEBBING SAME AS <STYLE #>", "PLEASE FOLLOW SAMPLE IMAGES FOR …").
+  const refNotes = doc.refNotes.length
+    ? `<div class="comments" data-ref-notes style="margin-top:8px">${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>`
+    : "";
+  const comments = commentsFor(doc, doc.componentOnly ? "TRIMS & HARDWARE" : "OVERVIEW", n);
+  const callouts = doc.materials
+    .map((m) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5pt;line-height:1.15"><span class="callout" style="width:26px;height:26px;font-size:13pt">${m.callout}</span><span>${up(m.name)}</span></div>`)
+    .join("");
+  const facts = overviewFacts(doc)
     .map(([k, v, q]) => `<div><span style="font-size:10pt">${k}:</span> ${up(v)}${q ? upd(doc, q) : ""}</div>`)
     .join("");
-  return `<section class="page">
-    ${head(doc, n, "OVERVIEW")}
-    ${drawing}${size}${instruction}
-    <div class="abs" style="left:10.9in;top:1.55in;width:5.7in;max-height:9.2in;overflow:hidden">
-      ${banner}${features}
+  return `${banner}${features}
       ${comments || refNotes ? `<div style="margin-bottom:12px"><div class="label" style="background:#111;color:#fff;display:inline-block;padding:1px 8px;margin-bottom:8px">COMMENTS:</div>${comments}${refNotes}</div>` : ""}
       ${callouts ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">${callouts}</div>` : ""}
-      <div style="font-size:12pt;line-height:1.45">${facts}</div>
-    </div>
-    ${overlay(lines)}
+      <div style="font-size:12pt;line-height:1.45">${facts}</div>`;
+}
+
+/* ------------------------------ SPECIFICATIONS (page 1 overflow) ------------------------------ */
+function specPage(doc: PackDoc, n: number, items: SpecItem[], part: { i: number; of: number }) {
+  return `<section class="page">
+    ${head(doc, n, `SPECIFICATIONS${part.of > 1 ? ` (${part.i}/${part.of})` : ""}`)}
+    <div class="abs specs" style="left:0.4in;top:1.45in;width:16.2in;height:9.2in;column-count:3;column-gap:0.35in;column-fill:balance;overflow:hidden">${specBlock(items, 10.5)}</div>
   </section>`;
+}
+
+/* -------- estimates (inches) used to split the SPECIFICATIONS block; the overflow check proves them -------- */
+const lineH = (pt: number, lh = 1.3) => (pt / 72) * lh;
+function textLines(text: string, widthIn: number, pt: number) {
+  const perLine = Math.max(8, Math.floor(widthIn / ((pt / 72) * 0.56)));
+  return text.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0);
+}
+function specHeight(items: SpecItem[], widthIn: number, pt: number) {
+  let hgt = 0;
+  let section = "";
+  for (const it of items) {
+    if (it.section !== section) {
+      hgt += lineH(9, 1.6);
+      section = it.section;
+    }
+    hgt += it.lines.length === 1 ? textLines(`${it.label}: ${it.lines[0]}`, widthIn, pt) * lineH(pt) : lineH(pt) + it.lines.reduce((s2, l) => s2 + textLines(l, widthIn - 0.15, pt) * lineH(pt), 0);
+  }
+  return hgt;
+}
+function overviewColumnHeight(doc: PackDoc) {
+  const W = 5.7;
+  let hgt = 0;
+  if (doc.header.physicalSample) hgt += textLines("YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL.", W, 19) * lineH(19, 1.2) + 0.14;
+  if (doc.features.length) hgt += 0.75 + doc.features.reduce((s2, f) => s2 + textLines(`-  ${f}`, W - 0.4, 13) * lineH(13, 1.4), 0);
+  const cs = doc.comments.filter((c) => c.pages.includes(doc.componentOnly ? "TRIMS & HARDWARE" : "OVERVIEW"));
+  if (cs.length || doc.refNotes.length) hgt += 0.5 + [...cs.map((c) => c.text), ...doc.refNotes.map((r) => `${r.label}: ${r.text}`)].reduce((s2, t) => s2 + textLines(t, W - 0.55, 14) * lineH(14, 1.25) + 0.14, 0);
+  if (doc.materials.length) hgt += doc.materials.length * 0.4 + 0.17;
+  hgt += overviewFacts(doc).reduce((s2, [k, v]) => s2 + textLines(`${k}: ${v}`, W, 12) * lineH(12, 1.45), 0);
+  return hgt;
+}
+
+/** Visible text of rendered pages, for "is this answer already printed somewhere?". */
+function textOf(html: string) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Splits the SPECIFICATIONS block (golden run 1, P0.1): the answers no page already prints go on page
+ * 1 (the component sheet for a Hardware pack) as far as they fit, then onto SPECIFICATIONS pages, and
+ * the plan is renumbered for those pages.
+ */
+export function paginateSpecs(doc: PackDoc): PackDoc {
+  const colH0 = doc.componentOnly ? 0 : overviewColumnHeight(doc);
+  const bare = { ...doc, specChunks: [[]] as SpecItem[][], overviewScale: colH0 <= 8.9 ? 1 : Math.max(0.7, Math.floor((8.9 / colH0) * 50) / 50) };
+  const printed = tight(textOf(renderPages(bare)));
+  const missing = missingFrom(doc.specs, printed);
+  if (!missing.length) return bare;
+  // Page 1 takes them all when its column type can shrink a little (not below 72%) to fit; otherwise
+  // the column fits as it is (or shrunk), page 1 takes what fits, and the rest go on SPECIFICATIONS pages.
+  const AREA = 9.15 - 0.25;
+  const hostW = doc.componentOnly ? 5.2 : 5.7;
+  const colH = doc.componentOnly ? 0 : overviewColumnHeight(doc);
+  const allH = specHeight(missing, hostW, 10) * 1.12;
+  let scale = 1;
+  let room: number;
+  if (doc.componentOnly) room = Math.max(0, (TRIMS.area - trimsUsed(doc, 0) - 0.4) * 3);
+  else if (colH + allH <= AREA) room = allH;
+  else if (AREA / (colH + allH) >= 0.72) {
+    scale = Math.floor((AREA / (colH + allH)) * 50) / 50;
+    room = allH;
+  } else {
+    scale = colH <= AREA ? 1 : Math.max(0.7, Math.floor((AREA / colH) * 50) / 50);
+    room = Math.max(0, AREA / scale - colH);
+  }
+  const first: SpecItem[] = [];
+  let k = 0;
+  while (k < missing.length && specHeight([...first, missing[k]], hostW, 10) * 1.12 <= room + 0.001) first.push(missing[k++]);
+  const rest = missing.slice(k);
+  const pages: SpecItem[][] = [];
+  const pageRoom = 3 * 9.0;
+  let cur: SpecItem[] = [];
+  for (const it of rest) {
+    if (cur.length && specHeight([...cur, it], 5.15, 10.5) * 1.15 > pageRoom) {
+      pages.push(cur);
+      cur = [];
+    }
+    cur.push(it);
+  }
+  if (cur.length) pages.push(cur);
+  const plan = pages.length ? planPages({ ...doc.planInput, specPages: pages.length }) : doc.plan;
+  return { ...doc, plan, specChunks: [first, ...pages], overviewScale: scale };
 }
 
 /* ------------------------------ 3. MEASUREMENTS SHEET ------------------------------ */
 function measurementsPage(doc: PackDoc, n: number) {
   const d = doc.dims;
   const overall = [
-    typeof d.h === "number" ? { t: `${d.h}${doc.U} TOTAL HEIGHT`, k: "dims." } : null,
-    typeof d.w === "number" ? { t: `${d.w}${doc.U} TOTAL WIDTH`, k: "dims." } : null,
-    typeof d.d === "number" ? { t: `${d.d}${doc.U} TOTAL DEPTH`, k: "dims." } : null,
+    typeof d.h === "number" ? { t: `${d.h}${doc.U} TOTAL ${doc.dimNames.h}`, k: "dims." } : null,
+    typeof d.w === "number" ? { t: `${d.w}${doc.U} TOTAL ${doc.dimNames.w}`, k: "dims." } : null,
+    typeof d.d === "number" ? { t: `${d.d}${doc.U} TOTAL ${doc.dimNames.d}`, k: "dims." } : null,
   ].filter(Boolean) as { t: string; k: string }[];
   const closureRef = doc.references.find((r) => r.onMeasurements);
   const sideRef = doc.references.find((r) => r.role === "SIDE_VIEW");
@@ -321,7 +489,7 @@ function measurementsPage(doc: PackDoc, n: number) {
   const list = `<div class="abs" style="left:${r2(listX)}in;top:${closureRef ? 4.6 : tables ? 2.35 : 4.6}in;width:${r2(listW)}in;font-size:${closureRef && tables ? 11.5 : 15}pt;line-height:${closureRef && tables ? 1.3 : 1.45}">
       ${overall.map((o) => `<div class="red">${esc(o.t)}${upd(doc, o.k)}</div>`).join("")}
       ${doc.measures.map((m) => `<div class="red">${esc(m.label)}: ${esc(m.value)}${upd(doc, m.key)}</div>`).join("")}
-      ${doc.logo.type ? `<div style="margin-top:6px">LOGO (${up(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)}) ${up(doc.logo.type)}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
+      ${doc.logo.type ? `<div style="margin-top:6px">LOGO${paren(doc.logo.placement.includes("CENTER") ? "CENTERED" : doc.logo.placement)} ${up(doc.logo.type)}${doc.logo.placementRef ? ` — ${esc(doc.logo.placementRef)}` : ""}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.placement")}</div>` : ""}
       ${doc.strapNote ? `<div style="margin-top:6px">${up(doc.strapNote)}</div>` : ""}
       ${!hasSide && doc.gussetNote ? `<div style="margin-top:6px">${up(doc.gussetNote)}</div>` : ""}
     </div>`;
@@ -333,13 +501,15 @@ function measurementsPage(doc: PackDoc, n: number) {
     // Left of the brand mark and above the side view, as on the Icon sheet.
     const pbox: R = { x: 9.0, y: 0.75, w: 3.7, h: 3.45 };
     const pr = fit(closureRef?.img, pbox);
-    closure = `<div class="abs" style="left:8.75in;top:0.3in;width:4.2in;text-align:center;font-size:17pt">${up(doc.closure.split(" — ")[0] || closureRef?.note || "")}</div>${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
+    const title = closureRef ? closureRef.note : doc.closure.split(" — ")[0];
+    closure = `<div class="abs" style="left:8.75in;top:0.3in;width:4.2in;text-align:center;font-size:${fitPt(up(title), 4.2, 2, 17, 10)}pt;line-height:1.1">${closureRef?.letter ? `<span class="bubble" style="margin-right:6px">${esc(closureRef.letter)}</span>` : ""}${up(title)}</div>${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
       doc.closure.includes(" — ") && !closureRef ? `<div class="abs small" style="left:8.85in;top:1in;width:4in;text-align:center">${up(doc.closure.split(" — ")[1])}</div>` : ""
     }`;
     if (closureRef?.img) {
       const dr = fit(doc.flats.front ? null : doc.render, box);
-      const sx = dr.x + dr.w * Math.min(0.92, doc.logoPoint.x + 0.3),
-        sy = dr.y + dr.h * Math.max(0.15, doc.logoPoint.y + 0.02);
+      const lp = doc.logoPoint ?? { x: 0.5, y: 0.5 };
+      const sx = dr.x + dr.w * Math.min(0.92, lp.x + 0.3),
+        sy = dr.y + dr.h * Math.max(0.15, lp.y + 0.02);
       const ex = pr.x - 0.12,
         ey = pr.y + pr.h * 0.35;
       const cx = (sx + ex) / 2 - 0.4,
@@ -391,33 +561,40 @@ function measurementsPage(doc: PackDoc, n: number) {
 function colourwaysPage(doc: PackDoc, n: number) {
   const used = doc.matrixColumns.filter((c, i) => c.key.startsWith("mat_") || doc.rows.some((r) => String(r.cells[i]?.text ?? "").trim()));
   const idx = used.map((c) => doc.matrixColumns.indexOf(c));
+  // "HARDWARE & SNAP" only when the pack has snaps (golden run 1 #16).
+  const hasSnaps = /SNAP/.test(JSON.stringify(doc.placements) + doc.closure + JSON.stringify(doc.refNotes));
   const headCell = (c: (typeof used)[number]) =>
     c.key.startsWith("mat_")
       ? `<th><span class="callout" style="width:26px;height:26px;font-size:13pt">${c.callout}</span><br/>${up(c.label)}</th>`
       : c.key === "logo"
         ? `<th class="red">LOGO${doc.logo.type ? `<br/>${up(doc.logo.type)}` : ""}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.finish", "branding.fill")}</th>`
-        : `<th>${up(c.label)}</th>`;
+        : c.key === "hardware_finish"
+          ? `<th>${hasSnaps ? "HARDWARE &amp; SNAP" : "HARDWARE"}</th>`
+          : `<th>${up(c.label)}</th>`;
+  const refOf = (cw: string, c: PackDoc["rows"][number]["cells"][number] | undefined) => {
+    if (!c?.refKind) return "";
+    const ref = c.refKind === "swatch" && c.callout != null ? doc.plan.swatchRef(cw, c.callout) : c.refKind === "artwork" ? doc.plan.artworkRef() : null;
+    return ref ? `<span class="ref">SEE P${ref.split("/")[0]}${c.refKind === "swatch" ? " SWATCH CARD" : ""}</span>` : "";
+  };
   const rows = doc.rows
     .map((r) => {
-      const cells = idx
-        .map((i) => {
-          const c = r.cells[i];
-          const ref = c?.ref ? (c.refKind === "swatch" ? `<span class="ref">SEE P${c.ref.split("/")[0]} SWATCH CARD</span>` : c.refKind === "artwork" ? `<span class="ref">SEE P${c.ref.split("/")[0]}</span>` : "") : "";
-          return `<td>${up(c?.text ?? "")}${ref}</td>`;
-        })
-        .join("");
-      return `<tr><td class="cw">${up(doc.pack.styleNo)}${esc(r.code)}${r.name ? `<div style="font-size:11pt;margin-top:3px">${up(r.name)}</div>` : ""}</td>${cells}</tr>`;
+      const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${refOf(r.code, r.cells[i])}</td>`).join("");
+      return `<tr><td class="cw">${up(sku(doc, r.code))}${r.name ? `<div style="font-size:11pt;margin-top:3px">${up(r.name)}</div>` : ""}</td>${cells}</tr>`;
     })
     .join("");
   const table = `<table class="variant"><tr><th>COLOURWAY</th>${used.map(headCell).join("")}</tr>${rows}</table>`;
-  // SKU blocks: each colourway's render (or the pack render for a single colourway) with its facts.
+  // SKU blocks: each colourway's render — the pack render for the first colourway when it has no
+  // colourway render of its own (golden run 1, P0.4) — with its facts.
   const cell = (cw: string, key: string) => {
     const r = doc.rows.find((x) => x.code === cw);
     const i = doc.matrixColumns.findIndex((c) => c.key === key);
     return r && i >= 0 ? String(r.cells[i]?.text ?? "") : "";
   };
-  const renders = doc.colorwayRenders.length ? doc.colorwayRenders : doc.render && doc.pack.colorways.length === 1 ? [{ colorway: doc.pack.colorways[0], img: doc.render }] : [];
-  const k = renders.length + doc.flats.indicative.length;
+  const renders = doc.pack.colorways
+    .map((cw, k) => ({ colorway: cw, img: doc.colorwayRenders.find((x) => x.colorway === cw)?.img ?? (k === 0 ? doc.render : null) }))
+    .filter((x) => x.img);
+  const photos = doc.references.filter((r) => r.page === "COLOURWAYS" && r.img).slice(0, 3);
+  const k = renders.length + doc.flats.indicative.length + photos.length;
   const tableH = 0.55 + doc.rows.length * 0.75;
   const top = 1.55 + tableH + 0.35;
   const w = k ? Math.min(5.2, (16.2 - (k - 1) * 0.3) / k) : 0;
@@ -425,7 +602,7 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const block = (cw: string) => {
     const name = doc.rows.find((x) => x.code === cw)?.name;
     const facts = [
-      ["SKU#", `${doc.pack.styleNo}${cw}`],
+      ["SKU#", sku(doc, cw)],
       ["COLOR", name ?? ""],
       ["FABRIC", cell(cw, doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "")],
       ["LINING", cell(cw, "lining")],
@@ -435,8 +612,9 @@ function colourwaysPage(doc: PackDoc, n: number) {
   };
   const gallery = k
     ? `<div class="abs" style="left:0.4in;top:${r2(top)}in;width:16.2in;display:flex;gap:0.3in;justify-content:center">
-        ${renders.map((r) => `<div style="width:${r2(w)}in"><div style="position:relative;height:${r2(ih)}in">${imgIn(r.img, { x: 0, y: 0, w, h: ih })}</div>${block(r.colorway)}</div>`).join("")}
+        ${renders.map((r) => `<div style="width:${r2(w)}in"><div style="position:relative;height:${r2(ih)}in">${imgIn(r.img, { x: 0, y: 0, w, h: ih })}${materialCallouts(doc, fit(r.img, { x: 0, y: 0, w, h: ih }), 0.26)}</div>${block(r.colorway)}</div>`).join("")}
         ${doc.flats.indicative.map((r) => `<div style="width:${r2(w)}in"><div style="height:${r2(ih)}in">${r.svg}</div><div class="red" style="font-size:12pt">COLOUR INDICATIVE</div>${block(r.colorway)}</div>`).join("")}
+        ${photos.map((r) => `<div style="width:${r2(w)}in"><div style="position:relative;height:${r2(ih)}in">${imgIn(r.img, { x: 0, y: 0, w, h: ih }, FRAME)}</div>${refCaption(r)}</div>`).join("")}
       </div>`
     : "";
   return `<section class="page">
@@ -495,7 +673,7 @@ function photoGrid(items: RefPhoto[], box: R) {
       const body: R = { x: cell.x, y: cell.y + top, w: cell.w, h: cell.h - top };
       const d = Math.min(body.w, body.h);
       return `<div class="abs" style="${at({ ...cell, h: top || 0.01 })}">${hasCap ? refCaption(it) : ""}</div>${
-        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : imgIn(it.img, body, "border:1.5px solid #e2231a;")
+        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : imgIn(it.img, body, FRAME)
       }`;
     })
     .join("");
@@ -615,22 +793,73 @@ function wallTitle(wall: string, mode: "hatched" | "lining", centered: boolean) 
   return `<div style="font-size:18pt;line-height:1.2">${esc(name)}${mode === "lining" ? "<br/>W/ LINING" : centered ? `<br/>(PKT IS CENTERED)` : ""}</div>`;
 }
 
+/** A pocket as one printed line: qty, type, wall, size, construction, zip. */
+function pocketLine(doc: PackDoc, p: PackDoc["interior"]["pockets"][number]) {
+  return [
+    `${(p.qty ?? 1) > 1 ? `${p.qty} × ` : ""}${up(p.type)}${p.wall ? ` ON ${up(p.wall)}` : ""}`,
+    p.w != null && `${p.w}${doc.U} WIDE`,
+    p.h != null && `${p.h}${doc.U} HIGH`,
+    p.top_offset != null && `${p.top_offset}${doc.U} FROM TOP`,
+    p.construction && up(p.construction),
+    p.zip_size && `${up(p.zip_size)} ZIP`,
+    p.note && up(p.note),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** Photos stacked in a box, each with its caption, dot and leader (interior binding photos …). */
+function photoStack(items: RefPhoto[], box: R, horizontal = false) {
+  if (!items.length) return { html: "", lines: "" };
+  let html = "";
+  let lines = "";
+  const gap = 0.2;
+  const k = items.length;
+  items.forEach((ph, i) => {
+    const cell: R = horizontal ? { x: box.x + i * ((box.w + gap) / k), y: box.y, w: (box.w + gap) / k - gap, h: box.h } : { x: box.x, y: box.y + i * ((box.h + gap) / k), w: box.w, h: (box.h + gap) / k - gap };
+    const capH = 0.55;
+    const body: R = { x: cell.x, y: cell.y + capH, w: cell.w, h: cell.h - capH };
+    const pr = fit(ph.img, body);
+    html += `<div class="abs cap" style="left:${r2(cell.x)}in;top:${r2(cell.y)}in;width:${r2(cell.w)}in;font-size:${fitPt(up(ph.note), cell.w - 0.5, 2, 16, 9)}pt;line-height:1.15">${ph.letter ? `<span class="bubble" style="margin-right:8px">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div>${imgIn(ph.img, body, FRAME)}`;
+    if (ph.dot) lines += lead(cell.x + Math.min(1.2, cell.w * 0.4), cell.y + 0.42, pr.x + ph.dot.x * pr.w, pr.y + ph.dot.y * pr.h, { dot: true });
+  });
+  return { html, lines };
+}
+
 function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
   const i = doc.interior;
   const lab = i.label ? `ADD <span class="red">${up(i.label.code)}</span> ${up(i.label.name || i.label.type)}${i.labelCentered ? " (CENTERED)" : ""}` : "";
+  const photos = doc.references.filter((r) => r.page === "INTERIOR & LINING" && r.img);
+  const notes = `${i.lined ? `LINED${i.liningName ? `: ${up(i.liningName)}` : ""}<br/>` : ""}${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets.map((p) => pocketLine(doc, p)).join("<br/>")}${i.seamBinding ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}`;
+  // Nothing to draw (no wall size, or no pocket with a size): the interior photos print large instead
+  // of empty titled frames (golden run 1 #8).
+  const geometry = doc.dims.w != null && doc.dims.h != null && (i.pockets.some((p) => p.w != null || p.h != null || p.top_offset != null) || (!!i.label && i.labelSize?.w != null));
+  if (!geometry && !withArtwork) {
+    const g = photoStack(photos, { x: 0.4, y: 2.0, w: 11.4, h: 8.6 }, true);
+    return `<section class="page">
+      ${head(doc, n, "INTERIOR & LINING")}
+      ${lab ? `<div class="abs" style="left:0.4in;top:1.3in;font-size:20pt;line-height:1.2;width:11in">${lab}</div>` : ""}
+      ${g.html}
+      <div class="abs" style="left:12.2in;top:1.3in;width:4.4in">${commentsFor(doc, "INTERIOR & LINING", n)}
+        <div style="margin-top:14px;font-size:13pt;line-height:1.45">${notes}</div>
+        ${doc.dims.w != null && doc.dims.h != null && doc.dims.d != null ? `<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:0.15in;align-items:flex-end">${allWalls(doc, 0.55, 0.85)}</div>` : ""}
+      </div>
+      ${overlay(g.lines)}
+    </section>`;
+  }
   const W = doc.dims.w ?? 20,
     D = doc.dims.d ?? 8,
     H = doc.dims.h ?? 16;
   const main = doc.interiorWall;
-  const photos = doc.references.filter((r) => r.page === "INTERIOR & LINING");
   // Panels: hatched + lining of the pocket wall; with the lining artwork on this page, each pocket
   // wall plus its plain opposite wall, both lined (as TB25: SIDE 1 with the zip pocket, SIDE 2).
   const walls = withArtwork ? [...new Set([...i.pockets.map((p) => p.wall ?? "").filter(Boolean), OPPOSITE[main] ?? "FRONT WALL"])].slice(0, 2) : [main, main];
   const modes: ("hatched" | "lining")[] = withArtwork ? walls.map(() => "lining") : ["hatched", "lining"];
   const widthOf = (w: string) => wallWidth(doc, w) ?? (/SIDE/.test(w) ? D : W);
   let panels = "";
-  let lines = "";
   const wide = withArtwork && Math.max(...walls.map(widthOf)) > H;
+  // Photos get their own column / row, so they never sit on the drawings.
+  let pbox: R;
   if (wide) {
     // Landscape walls (a Dopp kit's long sides): staggered like the Icon sheet — first wall top left,
     // second lower and to the right, the binding photo under the first.
@@ -638,45 +867,38 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
     panels = walls
       .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.3 : 3.4}in;top:${k === 0 ? 1.4 : 5.75}in;text-align:center">${wallTitle(w, "hatched", false)}<div style="margin-top:6px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
       .join("");
+    pbox = { x: 0.4, y: 6.2, w: 2.95, h: 4.5 };
   } else if (withArtwork) {
     // Two walls side by side, as large as the column left of the repeat allows.
     const s = Math.min(2.75 / Math.max(...walls.map(widthOf)), 4.3 / H);
     panels = walls
       .map((w, k) => `<div class="abs" style="left:${r2(0.4 + k * 5.25)}in;top:1.45in;width:5.1in;text-align:center">${wallTitle(w, "hatched", false)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
       .join("");
+    pbox = { x: 0.4, y: 7.0, w: 10.2, h: 3.7 };
   } else {
-    const s = Math.min(5.6 / W, 5.0 / H);
+    const s = Math.min((photos.length ? 3.4 : 5.6) / W, 5.0 / H);
+    const colW = photos.length ? 5.9 : 8;
     panels = walls
-      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.3 : 8.6}in;top:2.0in;text-align:center;width:8in">${wallTitle(w, modes[k], i.pockets.some((p) => p.centered) && k === 0)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
+      .map((w, k) => `<div class="abs" style="left:${k === 0 ? 0.3 : r2(0.3 + colW + 0.1)}in;top:2.0in;text-align:center;width:${colW}in">${wallTitle(w, modes[k], i.pockets.some((p) => p.centered) && k === 0)}<div style="margin-top:8px">${wallSvg(doc, modes[k], w, s)}</div></div>`)
       .join("");
+    pbox = { x: 12.6, y: 1.45, w: 4.0, h: 7.6 };
   }
-  // Photos for this page (e.g. PLEASE MAKE SURE TO ADD INTERIOR BINDING) with caption, dot and leader.
-  const pbox: R = wide ? { x: 0.4, y: 6.2, w: 2.95, h: 4.5 } : withArtwork ? { x: 0.4, y: 7.0, w: 5.0, h: 3.7 } : { x: 12.6, y: 7.6, w: 4.0, h: 3.0 };
-  const photo = photos[0];
-  let photoHtml = "";
-  if (photo?.img) {
-    const pr = fit(photo.img, { ...pbox, y: pbox.y + 0.55, h: pbox.h - 0.55 });
-    photoHtml = `<div class="abs cap" style="left:${pbox.x}in;top:${pbox.y}in;width:${pbox.w + (wide ? 0 : 1.6)}in">${photo.letter ? `<span class="bubble" style="margin-right:8px">${esc(photo.letter)}</span>` : ""}${up(photo.note)}</div>${imgIn(photo.img, { ...pbox, y: pbox.y + 0.55, h: pbox.h - 0.55 })}`;
-    const dot = photo.dot ?? { x: 0.5, y: 0.35 };
-    lines += lead(pbox.x + 1.2, pbox.y + 0.42, pr.x + dot.x * pr.w, pr.y + dot.y * pr.h, { dot: true });
-  }
+  const g = photoStack(wide ? photos.slice(0, 1) : photos, pbox, withArtwork && !wide);
   return `<section class="page">
     ${head(doc, n, "INTERIOR & LINING")}
     ${lab ? `<div class="abs" style="left:${withArtwork ? 3.9 : 0.4}in;top:${withArtwork ? 0.45 : 1.3}in;font-size:24pt;line-height:1.2;width:9in">${lab}</div>` : ""}
-    <div class="abs" style="left:${withArtwork ? 5.9 : 9.4}in;top:${withArtwork ? 0.45 : 1.3}in;width:${withArtwork ? 5.4 : 7}in">${commentsFor(doc, "INTERIOR & LINING", n)}</div>
+    <div class="abs" style="left:${withArtwork ? 5.9 : 9.4}in;top:${withArtwork ? 0.45 : 1.3}in;width:${withArtwork ? 5.4 : 3.1}in">${commentsFor(doc, "INTERIOR & LINING", n)}</div>
     ${panels}
     ${withArtwork ? `<div class="abs" style="left:${wide ? 12.1 : 11.0}in;top:1.3in;width:${wide ? 4.5 : 5.6}in">${artworkBlock(doc, wide ? 4.5 : 5.6)}</div>` : ""}
     ${!withArtwork ? `<div class="abs" style="left:0.4in;top:9.35in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>` : ""}
-    ${photoHtml}
-    <div class="abs" style="left:${wide ? 12.1 : withArtwork ? 5.9 : 7.4}in;bottom:0.35in;width:${wide ? 4.5 : withArtwork ? 4.8 : 5}in;font-size:12pt;line-height:1.45">${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets
-      .map((p) => `${up(p.type)} ON ${up(p.wall)}${p.w ? ` — ${p.w}${doc.U} WIDE` : ""}${p.top_offset != null ? `, ${p.top_offset}${doc.U} FROM TOP` : ""}${p.zip_size ? `, ${up(p.zip_size)} ZIP` : ""}`)
-      .join("<br/>")}${i.seamBinding && !photo ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}</div>
-    ${overlay(lines)}
+    ${g.html}
+    <div class="abs" style="left:${wide ? 12.1 : withArtwork ? 11.0 : 7.4}in;bottom:0.35in;width:${wide ? 4.5 : withArtwork ? 5.6 : 5}in;font-size:12pt;line-height:1.45">${notes}</div>
+    ${overlay(g.lines)}
   </section>`;
 }
 
 /** Every inside wall — front, back, both sides and the base — with its pockets (or NO POCKET). */
-function allWalls(doc: PackDoc) {
+function allWalls(doc: PackDoc, maxHIn = 0.75, maxWIn = 1.2) {
   const W = doc.dims.w,
     H = doc.dims.h,
     D = doc.dims.d;
@@ -688,8 +910,10 @@ function allWalls(doc: PackDoc) {
     { name: "SIDE 2", w: longSides(doc) ? W : D, h: H },
     { name: "BASE", w: W, h: D },
   ];
-  const maxH = 0.75 * 72,
-    maxW = 1.2 * 72;
+  // Pockets on a wall the standard five don't name (e.g. LID) get a thumbnail of their own.
+  for (const p of doc.interior.pockets) if (p.wall && !walls.some((x) => x.name === p.wall)) walls.push({ name: p.wall, w: W, h: /LID|BASE|TOP/.test(p.wall) ? D : H });
+  const maxH = maxHIn * 72,
+    maxW = maxWIn * 72;
   const scale = Math.min(...walls.map((x) => Math.min(maxH / x.h, maxW / x.w)));
   return walls
     .map((wall) => {
@@ -705,8 +929,8 @@ function allWalls(doc: PackDoc) {
         })
         .join("");
       const board = wall.name === "BASE" && doc.baseBoard ? `<rect x="3" y="3" width="${ws - 6}" height="${hs - 6}" fill="none" stroke="#e2231a" stroke-dasharray="5 3"/>` : "";
-      const caption = pk.length ? pk.map((p) => up(p.type)).join(", ") : wall.name === "BASE" && doc.baseBoard ? "BASE BOARD" : "NO POCKET";
-      return `<div style="text-align:center;font-size:10pt"><svg width="${ws}" height="${hs}" xmlns="http://www.w3.org/2000/svg"><rect width="${ws}" height="${hs}" fill="#f2f2f2" stroke="#111"/>${rects}${board}</svg><div style="margin-top:3px">${wall.name}</div><div class="muted" style="font-size:9pt">${caption}</div></div>`;
+      const caption = pk.length ? pk.map((p) => `${(p.qty ?? 1) > 1 ? `${p.qty} × ` : ""}${up(p.type)}`).join(", ") : wall.name === "BASE" && doc.baseBoard ? "BASE BOARD" : "NO POCKET";
+      return `<div style="text-align:center;font-size:10pt;max-width:${r2(Math.max(ws / 72, 1.1))}in"><svg width="${ws}" height="${hs}" xmlns="http://www.w3.org/2000/svg"><rect width="${ws}" height="${hs}" fill="#f2f2f2" stroke="#111"/>${rects}${board}</svg><div style="margin-top:3px">${esc(wall.name)}</div><div class="muted" style="font-size:9pt">${caption}</div></div>`;
     })
     .join("");
 }
@@ -723,8 +947,8 @@ function repeatPanel(doc: PackDoc, w: number, h: number, labelSize = 26) {
   const unit = up(l.tileUnit);
   return `<div style="position:relative;width:${r2(w)}in;height:${r2(h)}in;${img ? `background:url(${img.src});background-size:${r2(t)}in ${r2(th)}in;background-position:${r2(bx)}in ${r2(by)}in;` : `background:${l.colourHex[0] ?? "#eee"};`}">
       <div class="abs" style="left:${r2(bx)}in;top:${r2(by)}in;width:${r2(t)}in;height:${r2(th)}in;border:${labelSize >= 20 ? 6 : 4}px solid ${RED}"></div>
-      <div class="abs red" style="left:${r2(bx)}in;top:${r2(by - labelSize / 72 - 0.18)}in;width:${r2(t)}in;text-align:center"><span style="background:#fff;padding:0 6px;font-size:${labelSize}pt">${esc(l.tileW)} ${unit}</span></div>
-      <div class="abs red" style="left:${r2(bx - (String(l.tileH).length + unit.length + 1) * labelSize * 0.0075 - 0.35)}in;top:${r2(by + th / 2 - labelSize / 144)}in"><span style="background:#fff;padding:0 6px;font-size:${labelSize}pt">${esc(l.tileH)} ${unit}</span></div>
+      ${String(l.tileW ?? "").trim() ? `<div class="abs red" style="left:${r2(bx)}in;top:${r2(by - labelSize / 72 - 0.18)}in;width:${r2(t)}in;text-align:center"><span style="background:#fff;padding:0 6px;font-size:${labelSize}pt">${esc(l.tileW)} ${unit}</span></div>` : ""}
+      ${String(l.tileH ?? "").trim() ? `<div class="abs red" style="left:${r2(bx - (String(l.tileH).length + unit.length + 1) * labelSize * 0.0075 - 0.35)}in;top:${r2(by + th / 2 - labelSize / 144)}in"><span style="background:#fff;padding:0 6px;font-size:${labelSize}pt">${esc(l.tileH)} ${unit}</span></div>` : ""}
     </div>`;
 }
 
@@ -733,7 +957,7 @@ function artworkBlock(doc: PackDoc, w: number) {
   return `<div style="display:flex;flex-direction:column;gap:12px">
     <div style="font-size:22pt;color:${RED}">REPEAT</div>
     ${repeatPanel(doc, w, w * 0.95, 18)}
-    <div style="font-size:13pt;line-height:1.4">${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}<br/>` : ""}COLORS:<br/>${l.colours.map((c) => up(c)).join("<br/>")}</div>
+    <div style="font-size:13pt;line-height:1.4">PRINT:<br/>${up(l.name)}<br/>${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}<br/>` : ""}COLORS:<br/>${l.colours.map((c) => up(c)).join("<br/>")}</div>
     <div style="display:flex;gap:10px">${l.colours.map((c, i) => `<div style="width:1.1in;text-align:center;font-size:10pt"><div style="height:0.7in;background:${l.colourHex[i]};border:1px solid #999"></div>${up(c)}</div>`).join("")}</div>
   </div>`;
 }
@@ -754,10 +978,11 @@ function artworkPage(doc: PackDoc, n: number) {
   return `<section class="page">
     ${head(doc, n, "LINING / PRINT ARTWORK")}
     ${left}
+    <div class="abs" style="left:14.8in;top:6.2in;width:1.8in">${commentsFor(doc, "LINING / PRINT ARTWORK", n)}</div>
     <div class="abs" style="left:5.2in;top:0.3in;width:9.3in;text-align:center;font-size:24pt">LINING ARTWORK</div>
     <div class="abs" style="left:5.2in;top:0.85in">${repeatPanel(doc, 9.3, 8.4)}</div>
     <div class="abs" style="left:5.2in;top:9.4in;width:9.3in;display:flex;gap:0.3in;justify-content:center">${l.colours.map((c, i) => `<div style="text-align:center;font-size:16pt"><div style="width:2.2in;height:0.75in;background:${l.colourHex[i]};border:1px solid #999"></div>${up(c)}</div>`).join("")}</div>
-    <div class="abs" style="left:14.8in;top:1.9in;width:1.8in;font-size:13pt;line-height:1.45">${l.motif ? `MOTIF:<br/>${up(l.motif)}<br/>` : ""}${l.repeat ? `REPEAT:<br/>${up(l.repeat)}<br/>` : ""}${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}` : ""}</div>
+    <div class="abs" style="left:14.8in;top:1.9in;width:1.8in;font-size:13pt;line-height:1.45">PRINT:<br/>${up(l.name)}<br/>${l.motif ? `MOTIF:<br/>${up(l.motif)}<br/>` : ""}${l.repeat ? `REPEAT:<br/>${up(l.repeat)}<br/>` : ""}${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}` : ""}</div>
     ${overlay(lines)}
   </section>`;
 }
@@ -771,10 +996,20 @@ function sideDims(dims: string, k: "side" | "rear" | "top") {
   return k === "side" ? `${d} X ${h}` : `${w} X ${d}`;
 }
 
-function detailPage(doc: PackDoc, n: number) {
-  const photos = doc.references.filter((r) => r.page === "TRIMS & HARDWARE");
-  const panelH = doc.detail.length > 1 ? 3.9 : 5.4;
+/** Height (in) the panels and logo / photo row take on one TRIMS & HARDWARE page. */
+function trimsUsed(doc: PackDoc, page: number) {
+  const pg = doc.trims[page];
+  if (!pg) return 0;
+  const panelH = doc.detail.length > 1 ? TRIMS.panel : TRIMS.single;
+  return (pg.to - pg.from) * (panelH + TRIMS.gap) + (pg.row ? TRIMS.row : 0);
+}
+
+function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = { i: 1, of: 1 }) {
+  const pg = doc.trims[part.i - 1] ?? { from: 0, to: doc.detail.length, row: true };
+  const photos = pg.row ? doc.references.filter((r) => r.page === "TRIMS & HARDWARE") : [];
+  const panelH = doc.detail.length > 1 ? TRIMS.panel : TRIMS.single;
   const panels = doc.detail
+    .slice(pg.from, pg.to)
     .map((h) => {
       // 100% views: drawn at true size (mm on paper) from the part's own dimensions — never a default.
       const front = h.views.front ?? h.views.side ?? h.views.rear ?? h.views.top;
@@ -790,6 +1025,7 @@ function detailPage(doc: PackDoc, n: number) {
       const enlarge = Math.max(1.5, Math.min(3, ((panelH - 0.9) * 25.4) / tallest));
       const fs = h.finishSpec as { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
       const notes = [
+        ...h.use.map((u) => `PLACEMENT: ${u}`),
         h.material,
         h.finish,
         fs.plating && `PLATING: ${fs.plating}${fs.platingThickness ? ` ${fs.platingThickness}` : ""}`,
@@ -804,20 +1040,20 @@ function detailPage(doc: PackDoc, n: number) {
         h.approval !== "APPROVED" && `SAMPLE APPROVAL: ${h.approval}`,
       ].filter(Boolean);
       const dims = h.detailDims.length
-        ? `<div style="font-size:15pt;line-height:1.4"><div style="font-size:12pt;margin-bottom:4px">DETAIL DIMENSIONS</div>${h.detailDims.map((d) => `<div><span class="red">${d.mm != null ? `${d.mm}MM` : ""}</span> ${up(d.label)}</div>`).join("")}</div>`
+        ? `<div style="font-size:${h.detailDims.length > 8 ? 12 : 15}pt;line-height:1.35;max-width:3.6in"><div style="font-size:12pt;margin-bottom:4px">DETAIL DIMENSIONS</div>${h.detailDims.map((d) => `<div>${d.mm != null ? `<span class="red">${d.mm}MM</span> ` : ""}${up(d.label)}</div>`).join("")}</div>`
         : "";
-      return `<div class="box" style="display:flex;gap:0.35in;align-items:flex-start;margin-bottom:0.2in;min-height:${panelH}in;padding:14px 18px">
-        <div style="width:1.9in"><div style="font-size:15pt">${up(h.type)}<br/>${up(h.code)}</div><div style="font-size:14pt;margin-top:4px">${esc(h.dimsMm)} MM</div>
-          <div style="display:inline-block;margin-top:10px;padding:4px 14px;border-radius:14px;background:${exact ? "#5ab4e6" : "#999"};color:#fff;font-size:15pt">${exact ? "SIZE 100%" : "NOT TO SCALE — SIZE NOT GIVEN"}</div>
+      return `<div class="box" style="display:flex;gap:0.35in;align-items:flex-start;margin-bottom:${TRIMS.gap}in;height:${panelH}in;overflow:hidden;padding:14px 18px">
+        <div style="width:1.9in;flex:none"><div style="font-size:15pt">${up(h.type)}<br/>${up(h.code)}</div>${h.dimsMm ? `<div style="font-size:14pt;margin-top:4px">${esc(h.dimsMm)} MM</div>` : ""}
+          <div style="display:inline-block;margin-top:10px;padding:4px 14px;border-radius:14px;background:${exact ? "#5ab4e6" : "#999"};color:#fff;font-size:${exact ? 15 : 11}pt">${exact ? "SIZE 100%" : "NOT TO SCALE — SIZE NOT GIVEN"}</div>
           ${exact ? `<div style="display:flex;gap:0.2in;align-items:flex-end;margin-top:0.25in">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}${view("top", "TOP")}</div>` : ""}</div>
-        <div style="display:flex;gap:0.3in;align-items:flex-end">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>
+        <div style="display:flex;gap:0.3in;align-items:flex-end;flex:none">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>
         ${dims}
-        <div style="flex:1;font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div>
-        ${h.photo ? `<div style="position:relative;width:1.8in;height:2.4in">${imgIn(h.photo, { x: 0, y: 0, w: 1.8, h: 2.4 })}</div>` : ""}
+        <div style="flex:1;min-width:1.5in;font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div>
+        ${h.photo ? `<div style="position:relative;width:1.8in;height:2.4in;flex:none">${imgIn(h.photo, { x: 0, y: 0, w: 1.8, h: 2.4 })}</div>` : ""}
       </div>`;
     })
     .join("");
-  const lp = doc.logo.panel;
+  const lp = pg.row ? doc.logo.panel : null;
   const logo = lp
     ? `<div style="display:flex;gap:0.6in;align-items:center">
         <div style="position:relative;padding:0.4in 0 0 0.55in">
@@ -829,14 +1065,18 @@ function detailPage(doc: PackDoc, n: number) {
       </div>`
     : "";
   const photoBoxes = photos
-    .map((ph) => `<div style="border:1.5px solid #111;width:2.9in;text-align:center"><div style="position:relative;height:2in">${imgIn(ph.img, { x: 0, y: 0, w: 2.9, h: 2 })}</div><div style="font-size:14pt;padding:6px 8px;line-height:1.2">${ph.letter ? `<span class="bubble" style="margin-right:6px">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div></div>`)
+    .map((ph) => `<div style="border:1.5px solid #111;width:2.9in;text-align:center"><div style="position:relative;height:1.75in">${imgIn(ph.img, { x: 0, y: 0, w: 2.9, h: 1.75 })}</div><div style="font-size:${fitPt(up(ph.note), 2.6, 2, 14, 9)}pt;padding:6px 8px;line-height:1.2">${ph.letter ? `<span class="bubble" style="margin-right:6px">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div></div>`)
     .join("");
+  // A Hardware-category pack is this one page: its leftover answers print under the panel.
+  const specs = doc.componentOnly && part.i === 1 ? (doc.specChunks[0] ?? []) : [];
+  const title = doc.componentOnly ? "COMPONENT SHEET" : "TRIMS & HARDWARE";
   return `<section class="page">
-    ${head(doc, n, "TRIMS & HARDWARE")}
+    ${head(doc, n, `${title}${part.of > 1 ? ` (${part.i}/${part.of})` : ""}`)}
     <div class="abs" style="left:0.4in;right:0.4in;top:1.35in">${panels}
-      <div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.25in">${logo}<div style="display:flex;gap:0.4in">${photoBoxes}</div></div>
+      ${logo || photoBoxes ? `<div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.1in;height:${TRIMS.row - 0.2}in">${logo}<div style="display:flex;gap:0.4in">${photoBoxes}</div></div>` : ""}
+      ${specs.length ? `<div class="specs" style="column-count:3;column-gap:0.35in;margin-top:0.1in">${specBlock(specs)}</div>` : ""}
     </div>
-    <div class="abs" style="right:0.4in;top:0.35in;width:7in">${commentsFor(doc, "TRIMS & HARDWARE", n)}</div>
+    <div class="abs" style="right:0.4in;top:0.35in;width:7in">${commentsFor(doc, "TRIMS & HARDWARE", n)}${doc.componentOnly && doc.refNotes.length ? `<div class="comments" style="margin-top:6px">${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>` : ""}</div>
   </section>`;
 }
 
@@ -873,7 +1113,7 @@ function constructionPage(doc: PackDoc, n: number) {
   const rows = doc.construction;
   return `<section class="page">
     ${head(doc, n, "CONSTRUCTION DETAILS")}
-    <div style="position:absolute;left:5in;top:0.5in;width:7.8in">${commentsFor(doc, "CONSTRUCTION DETAILS")}</div>
+    <div style="position:absolute;left:5in;top:0.5in;width:7.8in">${commentsFor(doc, "CONSTRUCTION DETAILS", n)}</div>
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:0.25in;margin-top:0.55in">
       ${rows
         .map(
@@ -883,6 +1123,7 @@ function constructionPage(doc: PackDoc, n: number) {
     </div>
     <div style="display:flex;gap:0.5in;margin-top:0.35in;font-size:10.5pt;line-height:1.6">
       ${doc.threadColour ? `<div>THREAD COLOUR: ${up(doc.threadColour)}</div>` : ""}
+      ${doc.edgeTreatment ? `<div>EDGE TREATMENT: ${up(doc.edgeTreatment)}</div>` : ""}
       ${
         doc.materialLayout.length
           ? `<div>${doc.materialLayout.map((m) => `<div style="display:flex;gap:8px;align-items:center"><span class="callout" style="width:20px;height:20px;font-size:10pt">${m.callout}</span>${up(m.name)}${m.direction ? ` — DIRECTION: ${up(m.direction)}` : ""}${m.matching && m.matching !== "NONE" ? ` — <span class="red">${up(m.matching)}</span>` : ""}</div>`).join("")}</div>`
@@ -901,10 +1142,11 @@ function bomPage(doc: PackDoc, n: number) {
     : "";
   const labels = Object.entries(doc.contentLabels).filter(([, v]) => v.text);
   const content = labels.length
-    ? `<div class="small" style="margin:14px 0 3px">CONTENT LABEL (FROM THE MATERIAL LIBRARY)</div><table class="spec">${labels.map(([cw, v]) => `<tr><td class="code" style="width:1.6in">${up(doc.pack.styleNo)}${esc(cw)}</td><td style="text-align:left">${up(v.text)}${v.missing.length ? ` <span class="red">— COMPOSITION MISSING: ${up(v.missing.join(", "))}</span>` : ""}</td></tr>`).join("")}</table>`
+    ? `<div class="small" style="margin:14px 0 3px">CONTENT LABEL (FROM THE MATERIAL LIBRARY)</div><table class="spec">${labels.map(([cw, v]) => `<tr><td class="code" style="width:1.6in">${up(sku(doc, cw))}</td><td style="text-align:left">${up(v.text)}${v.missing.length ? ` <span class="red">— COMPOSITION MISSING: ${up(v.missing.join(", "))}</span>` : ""}</td></tr>`).join("")}</table>`
     : "";
   return `<section class="page">
     ${head(doc, n, "BILL OF MATERIALS")}
+    <div class="abs" style="left:11in;top:1.3in;width:5.6in">${commentsFor(doc, "BILL OF MATERIALS", n)}</div>
     <div class="small muted" style="position:absolute;left:5in;top:0.55in">QUANTITIES PER FINISHED BAG. NO PRICES — COSTING BY FACTORY. “FTY TO CONFIRM” = FACTORY TO CONFIRM CONSUMPTION.</div>
     <div style="margin-top:0.45in">
       ${
@@ -943,32 +1185,49 @@ function samplePage(doc: PackDoc, n: number) {
 }
 
 /* ------------------------------ 9. SWATCH CARDS ------------------------------ */
-/** A swatch-card photo contained in `box`, with its red chip box; returns the html and the chip rect (inches). */
-function swatchCard(s: PackDoc["swatches"][number], box: R, ring = 5) {
+type Card = PackDoc["swatches"][number];
+
+/** A swatch-card photo contained in `box`, with a red box on every chip the pack uses (and its label). */
+function swatchCard(doc: PackDoc, s: Card, box: R, ring = 5) {
   const pr = fit(s.photo, box);
-  const chip = s.chipBox ? { x: pr.x + s.chipBox.x * pr.w, y: pr.y + s.chipBox.y * pr.h, w: s.chipBox.w * pr.w, h: s.chipBox.h * pr.h } : null;
-  const html = `${s.photo ? `<img src="${s.photo.src}" style="${at(pr)}"/>` : `<div style="${at(box)}border:1.5px dashed #999"></div>`}${chip ? `<div style="${at(chip)}border:${ring}px solid ${RED};z-index:4"></div>` : ""}`;
-  return { html, chip, pr };
+  const chips = s.chips.map((c) => ({ c, r: c.box ? { x: pr.x + c.box.x * pr.w, y: pr.y + c.box.y * pr.h, w: c.box.w * pr.w, h: c.box.h * pr.h } : null }));
+  // With several chips on one card, each box says which colourway(s) it is for.
+  const tags = s.chips.length > 1
+    ? chips
+        .filter((x) => x.r)
+        .map(({ c, r }) => `<div class="abs" style="left:${r2(r!.x)}in;top:${r2(Math.max(pr.y, r!.y - 0.3))}in;z-index:6;font-size:11pt;background:#fff;color:${RED};padding:0 4px;white-space:nowrap">${c.callout} · ${up(c.colorways.map((cw) => sku(doc, cw)).join(" / "))}</div>`)
+        .join("")
+    : "";
+  const html = `${s.photo ? `<img src="${s.photo.src}" style="${at(pr)}"/>` : `<div style="${at(box)}border:1.5px dashed #999"></div>`}${chips.map(({ r }) => (r ? `<div style="${at(r)}border:${ring}px solid ${RED};z-index:4"></div>` : "")).join("")}${tags}`;
+  return { html, chip: chips[0]?.r ?? null, pr };
+}
+
+/** "FOR REFERENCE <SKU> ONLY" for every colourway the card serves. */
+function forReference(doc: PackDoc, s: Card) {
+  const all = [...new Set(s.chips.flatMap((c) => c.colorways))];
+  return `FOR REFERENCE <span class="red">${up(all.map((cw) => sku(doc, cw)).join(", "))} ONLY</span>`;
 }
 
 function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialCallout: number }[]) {
-  const items = list.map((s) => doc.swatches.find((x) => x.colorway === s.colorway && x.callout === s.materialCallout)!).filter(Boolean);
-  const caption = (s: (typeof items)[number]) => [`${up(s.supplier)}`, "SWATCH CARD", up(s.article), up(s.colourName)].filter(Boolean).join("<br/>");
+  const items = list.map((x) => doc.swatches.find((s) => s.chips.some((c) => c.colorways[0] === x.colorway && c.callout === x.materialCallout))!).filter(Boolean);
+  const caption = (s: Card) => [up(s.supplier), "SWATCH CARD", ...s.chips.map((c) => [up(c.article), up(c.colourName)].filter(Boolean).join(" "))].filter(Boolean).join("<br/>");
   if (items.length === 1) {
     const s = items[0];
+    const c0 = s.chips[0];
     // The caption goes on the chip's side of the card, its leader running to the chip box.
-    const right = !!s.chipBox && s.chipBox.x + s.chipBox.w / 2 > 0.5;
-    const { html, chip, pr } = swatchCard(s, right ? { x: 2.4, y: 1.5, w: 9.4, h: 9.3 } : { x: 3.6, y: 1.5, w: 10.4, h: 9.3 }, 6);
+    const right = !!c0.box && c0.box.x + c0.box.w / 2 > 0.5;
+    const { html, chip, pr } = swatchCard(doc, s, right ? { x: 2.4, y: 1.5, w: 9.4, h: 9.3 } : { x: 3.6, y: 1.5, w: 10.4, h: 9.3 }, 6);
     const cy = chip ? Math.min(Math.max(chip.y + chip.h / 2 - 1.2, 2.3), 8.6) : 2.6;
     const capX = right ? pr.x + pr.w + 0.25 : 0.4,
       capW = right ? Math.min(3.4, 16.6 - capX) : pr.x - 0.25 - 0.4;
     const ly = cy + 1.55;
     const lines = chip ? (right ? lead(capX - 0.05, ly, chip.x + chip.w, chip.y + chip.h * 0.3, { w: 0.03 }) : lead(capX + capW + 0.05, ly, chip.x, chip.y + chip.h * 0.3, { w: 0.03 })) : "";
+    const callouts = [...new Set(s.chips.map((c) => c.callout))];
     return `<section class="page">
-      ${head(doc, n, `${s.materialName.replace(/ MTL$/, "")} #${s.callout} MTL`)}
-      <div class="abs" style="left:0.4in;top:1.62in;font-size:14pt">FOR REFERENCE <span class="red">${up(doc.pack.styleNo)}${esc(s.colorway)} ONLY</span></div>
+      ${head(doc, n, `${c0.materialName.replace(/ MTL$/, "")} #${callouts.join(", #")} MTL`)}
+      <div class="abs" style="left:0.4in;top:1.62in;font-size:14pt">${forReference(doc, s)}</div>
       <div class="abs" style="left:${r2(capX)}in;top:${r2(cy)}in;width:${r2(capW)}in;text-align:${right ? "left" : "right"}">
-        <div style="text-align:center;width:2.2in;${right ? "" : "margin-left:auto"}"><span class="callout" style="width:52px;height:52px;font-size:26pt;border-width:3px">${s.callout}</span></div>
+        <div style="text-align:center;width:2.2in;${right ? "" : "margin-left:auto"}">${callouts.map((c) => `<span class="callout" style="width:52px;height:52px;font-size:26pt;border-width:3px">${c}</span>`).join(" ")}</div>
         <div style="font-size:14pt;line-height:1.15;margin-top:8px">${caption(s)}</div>
       </div>
       ${html}
@@ -986,10 +1245,11 @@ function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialC
     .map((s, i) => {
       const x = 0.4 + (i % cols) * (cw + gap),
         y = top + Math.floor(i / cols) * (ch + gap);
-      const { html } = swatchCard(s, { x, y: y + 0.5, w: cw, h: ch - 1.25 }, 4);
-      return `<div class="abs" style="left:${r2(x)}in;top:${r2(y)}in;width:${r2(cw)}in;display:flex;gap:10px;align-items:center;justify-content:center"><span class="callout">${s.callout}</span><span style="font-size:16pt">${up(doc.pack.styleNo)}${esc(s.colorway)} — ${up(s.colourName)}</span></div>
+      const { html } = swatchCard(doc, s, { x, y: y + 0.5, w: cw, h: ch - 1.25 }, 4);
+      const title = s.chips.map((c) => `${c.colorways.map((cw2) => sku(doc, cw2)).join(" / ")} — ${up(c.colourName)}`).join(" · ");
+      return `<div class="abs" style="left:${r2(x)}in;top:${r2(y)}in;width:${r2(cw)}in;display:flex;gap:10px;align-items:center;justify-content:center"><span class="callout">${s.chips[0].callout}</span><span style="font-size:${fitPt(title, cw - 0.6, 2, 16, 9)}pt;line-height:1.1">${up(title)}</span></div>
         ${html}
-        <div class="abs" style="left:${r2(x)}in;top:${r2(y + ch - 0.7)}in;width:${r2(cw)}in;text-align:center;font-size:14pt;line-height:1.2">${up(s.supplier)} · ${up([s.articleNo, s.article].filter(Boolean).join(" "))}<br/><span class="red">FOR REFERENCE ${up(doc.pack.styleNo)}${esc(s.colorway)} ONLY</span></div>`;
+        <div class="abs" style="left:${r2(x)}in;top:${r2(y + ch - 0.7)}in;width:${r2(cw)}in;text-align:center;font-size:${fitPt(`${s.supplier} · ${s.articleNo} ${s.chips.map((c) => c.article).join(" / ")}`, cw, 1, 14, 8)}pt;line-height:1.2">${up(s.supplier)} · ${up([s.articleNo, s.chips.map((c) => c.article).join(" / ")].filter(Boolean).join(" "))}<br/><span style="font-size:12pt">${forReference(doc, s)}</span></div>`;
     })
     .join("");
   return `<section class="page">
@@ -1006,20 +1266,23 @@ function changeLogPage(doc: PackDoc, n: number) {
       <table class="log"><tr><th style="width:1.4in">REVISION</th><th style="width:1.3in">DATE</th><th style="width:1.4in">BY</th><th>CHANGES</th></tr>
       ${[...doc.revision.log]
         .reverse()
-        .map((r) => `<tr><td class="${r.sent ? "" : "red"}">${esc(r.label)}</td><td>${esc(r.date || "—")}</td><td>${up(r.by || "—")}</td><td>${r.lines.map((l) => `<div class="red">*UPDATED* ${up(l)}</div>`).join("")}</td></tr>`)
+        .map((r) => `<tr><td class="${r.sent ? "" : "red"}">${esc(r.label)}</td><td>${esc(r.date ? usDate(r.date) : "—")}</td><td>${up(r.by || "—")}</td><td>${r.lines.map((l) => `<div class="red">*UPDATED* ${up(l)}</div>`).join("")}</td></tr>`)
         .join("")}
-      <tr><td>ORIGINAL</td><td>${esc(doc.revision.original || "—")}</td><td></td><td class="muted">FIRST ISSUE</td></tr>
+      <tr><td>ORIGINAL</td><td>${esc(doc.revision.original ? usDate(doc.revision.original) : "—")}</td><td></td><td class="muted">FIRST ISSUE</td></tr>
       </table>
     </div>
   </section>`;
 }
 
-export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
-  const pages = doc.plan.pages
+/** Every planned page's HTML, in order. */
+export function renderPages(doc: PackDoc) {
+  return doc.plan.pages
     .map((p) => {
       switch (p.section) {
         case "OVERVIEW":
           return overviewPage(doc, p.n);
+        case "SPECIFICATIONS":
+          return specPage(doc, p.n, doc.specChunks[p.part.i] ?? [], p.part);
         case "MEASUREMENTS":
           return measurementsPage(doc, p.n);
         case "COLOURWAYS":
@@ -1031,7 +1294,7 @@ export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
         case "LINING / PRINT ARTWORK":
           return artworkPage(doc, p.n);
         case "TRIMS & HARDWARE":
-          return detailPage(doc, p.n);
+          return detailPage(doc, p.n, p.part);
         case "SWATCH CARDS":
           return swatchPage(doc, p.n, p.swatches);
         case "CONSTRUCTION DETAILS":
@@ -1044,7 +1307,11 @@ export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
           return changeLogPage(doc, p.n);
       }
     })
-    .map((html) => (opts.draft ? html.replace('<section class="page">', '<section class="page"><div class="draft"><span>DRAFT — NOT FOR FACTORY</span></div>') : html))
     .join("\n");
+}
+
+export function renderPackHtml(doc: PackDoc, opts: { draft?: boolean } = {}) {
+  let pages = renderPages(doc);
+  if (opts.draft) pages = pages.replace(/<section class="page">/g, '<section class="page"><div class="draft"><span>DRAFT — NOT FOR FACTORY</span></div>');
   return `<!doctype html><html><head><meta charset="utf-8"/><title>${up(doc.pack.styleNo)} ${up(doc.pack.styleName)}</title><style>${CSS()}</style></head><body>${pages}</body></html>`;
 }

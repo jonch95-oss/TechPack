@@ -300,7 +300,8 @@ export async function updatePackFile(
       board: cur?.marks?.board ?? null, // set only by the board reader
       zoom: m.zoom ? { x: f(m.zoom.x), y: f(m.zoom.y), r: Math.min(0.5, Math.max(0.03, Number(m.zoom.r) || 0.2)) } : null,
       dot: m.dot ? { x: f(m.dot.x), y: f(m.dot.y) } : null,
-      role: m.role === "SIDE_VIEW" || m.role === "APPLICATION" ? m.role : null,
+      role: m.role === "SIDE_VIEW" || m.role === "APPLICATION" || m.role === "BACK" || m.role === "SIDE" ? m.role : null,
+      callouts: m.callouts && typeof m.callouts === "object" ? Object.fromEntries(Object.entries(m.callouts).filter(([k, v]) => /^\d+$/.test(k) && v).map(([k, v]) => [k, { x: f(v.x), y: f(v.y) }])) : (cur?.marks?.callouts ?? null),
     };
   }
   await db.update(packFiles).set(set).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));

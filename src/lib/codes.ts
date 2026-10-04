@@ -2,11 +2,11 @@
  * Component / style code assignment.
  *
  * A brand's code format is a literal pattern with one run of `#` digit
- * placeholders, e.g. "PINK###" -> PINK003, PINK004 …, "PA_LUG_###" -> PA_LUG_009.
+ * placeholders, e.g. "PINK###" -> PINK003, PINK004 …, "XY_LUG_###" -> XY_LUG_009.
  * Component codes and style numbers are SEPARATE sequences (V2.1 §7): the next
  * component code is one past the highest component code, skipping any number a
  * style already uses — so they still never collide. The format's digit count is
- * exact, so a style PA_LUG_10001 is never read as component 10001.
+ * exact, so a style XY_LUG_10001 is never read as component 10001.
  */
 
 export function defaultCodeFormat(prefix: string) {

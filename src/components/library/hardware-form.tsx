@@ -9,6 +9,7 @@ import { uploadFile } from "@/lib/client/upload";
 import { Badge, Button, Label, TextInput, Thumb, cx } from "@/components/ui";
 import { ChipRow, Toggle } from "@/components/chips";
 import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
+import { ViewCropDrawer } from "./view-crop";
 
 const LOGO_TREATMENTS = ["ENGRAVED", "DEBOSSED GROOVE", "EMBOSSED", "ENAMEL INLAY", "LASER", "INKED METALLIC LOGO", "NONE"];
 
@@ -37,6 +38,7 @@ export function HardwareForm({
     type: item?.type ?? defaultType ?? "",
     dimsMm: item?.dimsMm ?? "",
     views: item?.views ?? {},
+    viewCrops: item?.viewCrops ?? {},
     material: item?.material ?? "",
     finish: item?.finish ?? "",
     logoTreatment: item?.logoTreatment ?? "",
@@ -53,6 +55,7 @@ export function HardwareForm({
   const [check, setCheck] = useState<CodeCheck | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
+  const [cropping, setCropping] = useState<"front" | "side" | "rear" | null>(null);
   const set = <K extends keyof HardwareInput>(k: K, val: HardwareInput[K]) => setV((x) => ({ ...x, [k]: val }));
 
   // Live code check (debounced): errors block saving, warnings are called out. A new component
@@ -243,10 +246,46 @@ export function HardwareForm({
                 <Thumb src={v.views[k]} alt={`${k} view`} className="w-full aspect-square" />
                 <div className="flex items-center justify-between mt-1">
                   <span className="eyebrow">{k}</span>
-                  {canEdit && <FileButton small label="+" onFile={(f) => upload(f, (u) => set("views", { ...v.views, [k]: u }))} />}
+                  {canEdit && (
+                    <FileButton
+                      small
+                      label="+"
+                      onFile={(f) =>
+                        upload(f, (u) => {
+                          set("views", { ...v.views, [k]: u });
+                          set("viewCrops", { ...(v.viewCrops ?? {}), [k]: null }); // a new image needs its own crop
+                        })
+                      }
+                    />
+                  )}
                 </div>
+                {v.views[k] && (
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => setCropping(k)}
+                    data-testid={`hw-crop-${k}`}
+                    className={cx("mt-1 text-[10px] tracking-[0.12em] uppercase", v.viewCrops?.[k] ? "text-taupe" : "text-signal")}
+                  >
+                    {v.viewCrops?.[k] ? "Cropped ✓" : "Crop to the part"}
+                  </button>
+                )}
               </div>
             ))}
+            {cropping && v.views[cropping] && (
+              <ViewCropDrawer
+                key={cropping}
+                src={v.views[cropping]!}
+                label={`${v.code || "Hardware"} · ${cropping} view`}
+                crop={v.viewCrops?.[cropping] ?? null}
+                open
+                onClose={() => setCropping(null)}
+                onSave={(c) => {
+                  set("viewCrops", { ...(v.viewCrops ?? {}), [cropping]: c });
+                  setCropping(null);
+                }}
+              />
+            )}
           </div>
         </div>
         {usedIn && (

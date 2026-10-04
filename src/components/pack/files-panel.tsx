@@ -18,7 +18,13 @@ const GROUPS: { kind: Kind; title: string; hint: string }[] = [
   { kind: "swatch_photo", title: "Swatch-card photos", hint: "Add to the library from Materials." },
 ];
 
-export function FilesPanel({ packId, files, colorways, canEdit }: { packId: string; files: PackFile[]; colorways: string[]; canEdit: boolean }) {
+export function FilesPanel({ packId, files, colorways, canEdit, comments = [] }: { packId: string; files: PackFile[]; colorways: string[]; canEdit: boolean; comments?: string[] }) {
+  // A photo's letter is picked from the comment list and its caption is that comment; a photo with no
+  // comment takes the next free letter (golden run 1 #7).
+  const letters = [
+    ...comments.map((t, i) => ({ l: String.fromCharCode(65 + i), label: `${String.fromCharCode(65 + i)} — ${t.slice(0, 40)}${t.length > 40 ? "…" : ""}`, text: t })),
+    ...Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + comments.length + i)).map((l) => ({ l, label: `${l} — no comment`, text: "" })),
+  ];
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -85,11 +91,23 @@ export function FilesPanel({ packId, files, colorways, canEdit }: { packId: stri
                             <select
                               aria-label="Comment letter"
                               value={f.tag}
-                              onChange={(e) => start(async () => { await updatePackFile(packId, f.id, { tag: e.target.value }); router.refresh(); })}
-                              className="text-[10px] bg-transparent text-taupe"
+                              onChange={(e) =>
+                                start(async () => {
+                                  const pick = letters.find((x) => x.l === e.target.value);
+                                  const prev = letters.find((x) => x.l === f.tag);
+                                  // The caption follows the comment unless the designer wrote their own.
+                                  const own = f.note.trim() && f.note.trim().toUpperCase() !== (prev?.text ?? "").trim().toUpperCase();
+                                  await updatePackFile(packId, f.id, { tag: e.target.value, ...(pick?.text && !own ? { note: pick.text } : {}) });
+                                  router.refresh();
+                                })
+                              }
+                              className="text-[10px] bg-transparent text-taupe max-w-[9rem]"
                             >
-                              {Array.from({ length: 12 }, (_, i) => String.fromCharCode(65 + i)).map((l) => (
-                                <option key={l}>{l}</option>
+                              {!letters.some((x) => x.l === f.tag) && f.tag && <option value={f.tag}>{f.tag}</option>}
+                              {letters.map((x) => (
+                                <option key={x.l} value={x.l}>
+                                  {x.label}
+                                </option>
                               ))}
                             </select>
                           )}

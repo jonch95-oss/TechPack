@@ -72,7 +72,7 @@ Working notes for `docs/V2-SEAMLESS-BRIEF.md`, one section per §12 step: what w
   - W × H fits at the image's aspect;
   - with no size, the panel says "NOT TO SCALE — SIZE NOT GIVEN" instead of "SIZE 100%".
   - The TOP view now renders too.
-- **Component codes and style numbers are separate sequences.** The format's digit count is exact, so `PA_LUG_10001` (a style) is never read as component 10001. The next component code skips any number a style already uses. Tests: `tests/unit/codes.test.ts` (`PA_LUG_009`).
+- **Component codes and style numbers are separate sequences.** The format's digit count is exact, so `XY_LUG_10001` (a style) is never read as component 10001. The next component code skips any number a style already uses. Tests: `tests/unit/codes.test.ts` (`XY_LUG_009`, a neutral stand-in for the brief's example).
 
 ### Step 2 — reference answers and the PROTO gate
 - **Reference answers** (`src/lib/reference-answer.ts`):
@@ -120,3 +120,60 @@ Jon's decisions (§13): one standard layout for every brand; packaging pages are
   - PINK013 prints 8 pages (12 once construction, BOM, flats and the change log are added).
   - TB25_ACC0023 prints 6 pages.
   - `tests/e2e/03-phase2-pdf.spec.ts` checks every fact of each original page on the standard page that now carries it.
+
+## Golden run 1 — the real packs through the standard layout
+The nine golden packs were printed through the standard layout and compared with their originals. The fixes, by rule:
+
+### P0 — every entered fact reaches the PDF
+- **Each category's own size fields** (`src/lib/pdf/doc.ts`):
+  - duffels print `size_l/w/h` as L × W × H, and their dimension arrows read L across, H up and W as the depth;
+  - sets print one line per `cube.set` piece;
+  - luggage prints `lug.size`, plus H/W/D when given.
+- **SPECIFICATIONS block** (`src/lib/pdf/specs.ts`):
+  - Every answered, visible question that no page already prints goes on page 1 as `LABEL: VALUE`, grouped by section.
+  - Page 1's right column shrinks its type (to 72% at most) before anything spills onto SPECIFICATIONS pages after OVERVIEW.
+  - Booleans print as the feature, never "YES". Reference answers print via `refText()`.
+  - A template that prints an answer in its own words declares those words (`printedAs`, e.g. the strap note, "(CENTERED)"). Either form counts as printed.
+  - Parts identified by a description now print with the other hardware rows here.
+- **Comments and photos make their page print** (`src/lib/pdf/plan.ts`, `forced`).
+  - A page that can't print hands the item on: comments go to page 1, photos to REFERENCE IMAGES. That covers a lining page with no artwork, and the swatch, sample and change-log pages.
+  - Each page places a set number of photos: OVERVIEW 2, MEASUREMENTS one detail + one side view, COLOURWAYS 3, TRIMS 4, INTERIOR 3, LINING ARTWORK 1. Extra photos go to REFERENCE IMAGES.
+- **TRIMS & HARDWARE paginates** (`trimsLayout`): two panels to a page, continuing as "TRIMS & HARDWARE (2/3)". The logo / photo row goes on the last page.
+- **Colourways:**
+  - the pack render stands in for the first colourway when that colourway has no render of its own;
+  - a single-colourway pack's SKU is the style number alone;
+  - photos assigned to COLOURWAYS print.
+- **Empty values print nothing:** no "()", no bare "MM", no empty "·" separators.
+
+### P1 — layout and markup
+- Photo frames are sized to the EXIF-rotated image, so they hug the photo.
+- Photo letters are picked from the comment list, and the caption follows the comment. A photo with no comment takes the next free letter. The validator warns when a photo and its comment disagree.
+- **Interior page:**
+  - with no pocket geometry, the interior photos print large instead of empty frames;
+  - photos get their own column;
+  - LEFT/RIGHT SIDE pockets map to SIDE 1/SIDE 2, and other walls get their own thumbnail;
+  - pocket qty and construction print.
+- The measurements detail photo is captioned with its own note.
+- **Logo leader:**
+  - it starts from `branding.placement`, and points at the back view when the logo is on the back;
+  - when nothing says where the logo is, there is no leader, and the validator asks for a click on the render.
+- **BACK / SIDE photo roles** ("Overview — back view") print beside the front on OVERVIEW.
+- **Material callouts on the drawings:** the yellow numbered callouts sit on the OVERVIEW render and on the colourway renders.
+  - They are suggested from each material's locations.
+  - The designer places them in the render's mark-up drawer (stored as `marks.callouts`).
+- **Swatch cards:** one page per physical card. Every chip used on it is boxed and labelled with its colourway(s).
+- **A Hardware-category pack is one component sheet:** the panel, its leftover answers and the finish photo.
+- **Hardware views can be cropped to the part** in the library (migration 0017, `hardware.view_crops`). The 100% views print the crop, and an uncropped view shows "Crop to the part" in the studio.
+- **Labels:**
+  - dates print MM.DD.YYYY;
+  - the breakdown says "HARDWARE" unless the pack has snaps;
+  - zipper rows with nothing but a position are dropped.
+- **Sets at PROTO:** `cube.set` rows with two of L/W/H each satisfy the size rule.
+
+### `npm run golden:pdf`
+- Seeds the study packs' expected answers into the e2e database: the reference answers from `golden-entry.json`, and the pack G parts as library hardware. No photos.
+- Prints all nine packs and runs three checks:
+  - answered → printed;
+  - every comment and photo caption printed;
+  - no element outside its page or clipping box (`src/lib/pdf/overflow.ts`).
+- Prints counts, question ids and page lists only. PDFs and the report go to `.data/golden/`.
