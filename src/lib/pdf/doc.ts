@@ -295,7 +295,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   /* ---------- lining artwork ---------- */
   const liningPrintId = lib(a["interior.lining_print"])?.id ?? Object.values(matrix).map((r) => r?.lining?.lib?.id).find((id) => id && printById.has(id));
   const liningPrint = liningPrintId ? printById.get(liningPrintId) ?? null : null;
-  const hasInterior = sectionsFor(p.pack.category).some((s) => s.id === "interior" && evalCondition(s.showIf, ctx)) && (a["interior.lined"] === true || !isEmpty(a["interior.pockets"]));
+  const hasInterior = sectionsFor(p.pack.category).some((s) => s.id === "interior" && evalCondition(s.showIf, ctx)) && (a["interior.lined"] === true || !isEmpty(a["interior.pockets"]) || a["interior.seam_binding"] === true || !isEmpty(a["interior.features"]) || !isEmpty(a["interior.layout"]));
   const artworkOnInterior = a["pages.lining_artwork"] === "ON INTERIOR PAGE";
 
   /* ---------- extra measurements (measurement sheet) ---------- */
@@ -598,6 +598,10 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       pockets: ((a["interior.pockets"] as { type?: string; wall?: string; w?: number; h?: number; top_offset?: number; centered?: boolean; zip_size?: string; qty?: number; construction?: string; note?: string }[] | undefined) ?? []).map((pk) => ({ ...pk, wall: wallName(pk.wall) })),
       pocketEdge: (a["interior.pocket_edge"] as string) ?? "",
       seamBinding: a["interior.seam_binding"] === true,
+      /** "PP BINDING ON INTERIOR SEAMS, NEATLY SEWN" (V2.1 §9). */
+      binding: a["interior.seam_binding"] === true && a["interior.binding"] ? [a["interior.binding"], a["interior.binding_where"] && `ON ${a["interior.binding_where"]}`].filter(Boolean).join(" ") : "",
+      features: ((a["interior.features"] as string[] | undefined) ?? []).filter(Boolean),
+      labelPosition: (a["interior.label_position"] as string | undefined) ?? "",
       lined: a["interior.lined"] === true,
       liningName: liningPrint?.name ?? lib(a["interior.lining_material"])?.label ?? "",
       /** A hardside case's interior by half (V2.1 §9): features without a half print under INTERIOR. */

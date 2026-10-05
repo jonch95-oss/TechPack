@@ -904,9 +904,9 @@ function photoStack(items: RefPhoto[], box: R, horizontal = false) {
 
 function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
   const i = doc.interior;
-  const lab = i.label ? `ADD <span class="red">${up(i.label.code)}</span> ${up(i.label.name || i.label.type)}${i.labelCentered ? " (CENTERED)" : ""}` : "";
+  const lab = i.label ? `ADD <span class="red">${up(i.label.code)}</span> ${up(i.label.name || i.label.type)}${i.labelCentered ? " (CENTERED)" : ""}${i.labelPosition ? ` — ${up(i.labelPosition)}` : ""}` : "";
   const photos = doc.references.filter((r) => r.page === "INTERIOR & LINING" && r.img);
-  const notes = `${i.lined ? `LINED${i.liningName ? `: ${up(i.liningName)}` : ""}<br/>` : ""}${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets.map((p) => pocketLine(doc, p)).join("<br/>")}${i.seamBinding ? "<br/>PLEASE MAKE SURE TO ADD INTERIOR BINDING" : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}${i.halves.map((h) => `<div style="margin-top:10px"><b>${h.half}</b><br/>${h.lines.map((l, k) => `${k + 1}. ${esc(l)}`).join("<br/>")}</div>`).join("")}`;
+  const notes = `${i.lined ? `LINED${i.liningName ? `: ${up(i.liningName)}` : ""}<br/>` : ""}${doc.baseBoard ? `BASE: ${up(doc.baseBoard)}<br/>` : ""}${i.pockets.map((p) => pocketLine(doc, p)).join("<br/>")}${i.lined === false && i.seamBinding ? "<br/>UNLINED" : ""}${i.seamBinding ? `<br/>${i.binding ? up(i.binding) : "PLEASE MAKE SURE TO ADD INTERIOR BINDING"}` : ""}${i.features.length ? `<br/>${i.features.map((f) => up(f)).join("<br/>")}` : ""}${i.padding ? `<br/>${up(i.padding)}` : ""}${i.halves.map((h) => `<div style="margin-top:10px"><b>${h.half}</b><br/>${h.lines.map((l, k) => `${k + 1}. ${esc(l)}`).join("<br/>")}</div>`).join("")}`;
   // Nothing to draw (no wall size, or no pocket with a size): the interior photos print large instead
   // of empty titled frames (golden run 1 #8).
   const geometry = doc.dims.w != null && doc.dims.h != null && (i.pockets.some((p) => p.w != null || p.h != null || p.top_offset != null) || (!!i.label && i.labelSize?.w != null));

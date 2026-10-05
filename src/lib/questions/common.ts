@@ -1,4 +1,4 @@
-import type { Section } from "./types";
+import type { Condition, Section } from "./types";
 import { PAGE_SECTIONS } from "@/lib/page-names";
 
 export const HARDWARE_TYPES = [
@@ -130,6 +130,21 @@ export const POCKET_TYPES = [
   "KEY LEASH",
   "MESH POCKET",
   "ELASTIC LOOPS",
+  "ELASTIC-TOP SLIP POCKET",
+  "3-COMPARTMENT SLIP POCKET",
+];
+
+/** Interior features of a bag or case (V2.1 §9). */
+export const INTERIOR_FEATURES = [
+  "ZIPPERED POCKET",
+  "ZIPPERED COMPRESSION COMPARTMENT",
+  "ELASTIC COMPRESSION STRAPS",
+  "X STRAPS WITH CENTRE BUCKLE",
+  "ZIPPERED DIVIDER PANEL",
+  "MESH POCKET",
+  "SHOE BAG",
+  "WET POCKET",
+  "KEY CLIP",
 ];
 export const WALLS = ["BACK WALL", "FRONT WALL", "SIDE 1", "SIDE 2", "BASE", "DIVIDER"];
 
@@ -192,7 +207,12 @@ const INTERIOR_CATEGORIES = [
   "Cosmetic bags",
   "Toiletry kits",
   "Coolers / insulated",
+  "Packing cubes",
 ] as const;
+
+/** Interior categories whose interior is usually unlined with no pockets: pockets and label are asked only when switched on. */
+const POCKETS_OPTIONAL = ["Packing cubes"] as const;
+const POCKETS_ASKED: Condition = { any: [{ category: INTERIOR_CATEGORIES.filter((c) => !(POCKETS_OPTIONAL as readonly string[]).includes(c)) }, { q: "interior.has_pockets", eq: true }] };
 
 /** Component sheets (hardware, decorative hardware, print artwork) skip the bag-body blocks. */
 const BODY_CATEGORIES = [
@@ -480,6 +500,7 @@ export const COMMON_SECTIONS: Section[] = [
         required: true,
         showIf: { q: "interior.lining_artwork_type", eq: "PANTONE" },
       },
+      { id: "interior.has_pockets", label: "Interior pockets / label", kind: "toggle", showIf: { category: POCKETS_OPTIONAL }, visibility: "inferred" },
       {
         id: "interior.pockets",
         label: "Pockets",
@@ -487,6 +508,7 @@ export const COMMON_SECTIONS: Section[] = [
         required: true,
         addLabel: "Add pocket",
         visibility: "inferred",
+        showIf: POCKETS_ASKED,
         columns: [
           { key: "type", label: "Type", kind: "chips", options: POCKET_TYPES, required: true },
           { key: "wall", label: "Position", kind: "chips", options: WALLS, required: true },
@@ -506,12 +528,18 @@ export const COMMON_SECTIONS: Section[] = [
         options: ["BINDING", "TURNED", "FOLDED"],
         required: true,
         visibility: "inferred",
+        showIf: POCKETS_ASKED,
       },
-      { id: "interior.label", label: "Interior label", kind: "lib", lib: "hardware", hardwareTypes: ["WOVEN LABEL", "TPU/RUBBER PATCH", "DEBOSS/EMBOSS PATCH"], required: true },
-      { id: "interior.label_size", label: "Interior label size (W × H)", kind: "dims2", unit: "dim", required: true },
-      { id: "interior.label_offset", label: "Label offset below pocket top", kind: "stepper", unit: "dim", required: true },
-      { id: "interior.label_centered", label: "Label centered", kind: "toggle" },
+      { id: "interior.label", label: "Interior label", kind: "lib", lib: "hardware", hardwareTypes: ["WOVEN LABEL", "TPU/RUBBER PATCH", "DEBOSS/EMBOSS PATCH"], required: true, showIf: POCKETS_ASKED },
+      { id: "interior.label_size", label: "Interior label size (W × H)", kind: "dims2", unit: "dim", required: true, showIf: POCKETS_ASKED },
+      // The label may sit above a pocket or below its top: the offset is measured from the reference chosen here (V2.1 §9).
+      { id: "interior.label_position", label: "Label position", kind: "chips", options: ["BELOW POCKET TOP", "ABOVE POCKET", "FROM TOP OF BAG"], showIf: POCKETS_ASKED },
+      { id: "interior.label_offset", label: "Label offset (from the position above)", kind: "stepper", unit: "dim", required: true, showIf: POCKETS_ASKED },
+      { id: "interior.label_centered", label: "Label centered", kind: "toggle", showIf: POCKETS_ASKED },
+      { id: "interior.features", label: "Interior features", kind: "multi", options: INTERIOR_FEATURES, visibility: "inferred", showIf: { category: INTERIOR_CATEGORIES.filter((c) => !["Hardside luggage", "Softside luggage"].includes(c)) } },
       { id: "interior.seam_binding", label: "Interior binding on seams", kind: "toggle", visibility: "inferred" },
+      { id: "interior.binding", label: "Seam binding", kind: "chips", options: ["PP BINDING", "NYLON BINDING", "SELF-FABRIC BINDING", "OVERLOCK"], showIf: { q: "interior.seam_binding", eq: true } },
+      { id: "interior.binding_where", label: "Binding on", kind: "text", showIf: { q: "interior.seam_binding", eq: true } },
       { id: "interior.compartments", label: "Compartments", kind: "stepper", unit: "qty", visibility: "inferred" },
       {
         // Hardside cases open into two halves: the interior is described by half, not by bag walls (V2.1 §9).
@@ -538,6 +566,19 @@ export const COMMON_SECTIONS: Section[] = [
     title: "Construction",
     showIf: { category: [...BODY_CATEGORIES] },
     questions: [
+      {
+        // Padding by location and thickness (V2.1 §9).
+        id: "construction.padding",
+        label: "Padding",
+        kind: "rows",
+        addLabel: "Add padded area",
+        visibility: "inferred",
+        columns: [
+          { key: "where", label: "Where", kind: "text", required: true },
+          { key: "mm", label: "Thickness (mm)", kind: "stepper", unit: "mm", required: true },
+          { key: "material", label: "Material", kind: "chips", options: ["FOAM", "EVA", "SPACER MESH", "PE FOAM", "WADDING"] },
+        ],
+      },
       {
         id: "construction.list",
         label: "Edges and seams — cross-section per area",

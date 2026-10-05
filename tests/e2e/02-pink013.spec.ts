@@ -365,7 +365,7 @@ test("PINK013 JODIE — entered end to end from its render with every Part 6 ans
   await settled(page);
   await step(q(page, "interior.label_size"), "Interior label size (W × H) height", 2);
   await settled(page);
-  await number(page, "interior.label_offset", "Label offset below pocket top", 1.5);
+  await number(page, "interior.label_offset", "Label offset (from the position above)", 1.5);
   await yes(page, "interior.label_centered");
   await yes(page, "interior.seam_binding", false);
 

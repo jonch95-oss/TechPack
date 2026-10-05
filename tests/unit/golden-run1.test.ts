@@ -302,3 +302,23 @@ describe("V2.1 step 6 — packaging, labels and compliance pages", () => {
     expect(visibleQuestions({ category: "Handbags", answers: { "optional.pkg.hangtag": true } }).some((q) => q.id === "pkg.hangtag.artwork")).toBe(true);
   });
 });
+
+describe("V2.1 step 6 — construction and interior vocabulary (§9)", () => {
+  const has = (cat: Parameters<typeof findQuestion>[0], id: string, answers = {}) => visibleQuestions({ category: cat, answers }).some((q) => q.id === id);
+  it("packing cubes get the interior section; pockets and label only when switched on", () => {
+    expect(has("Packing cubes", "interior.seam_binding")).toBe(true);
+    expect(has("Packing cubes", "interior.pockets")).toBe(false);
+    expect(has("Packing cubes", "interior.pockets", { "interior.has_pockets": true })).toBe(true);
+    expect(has("Handbags", "interior.pockets")).toBe(true);
+    expect(has("Packing cubes", "interior.binding", { "interior.seam_binding": true })).toBe(true);
+  });
+  it("adds the new vocabulary", () => {
+    const opts = (cat: Parameters<typeof findQuestion>[0], id: string) => ((findQuestion(cat, id) as { options?: string[] }).options ?? []);
+    expect(opts("Handbags", "hb.silhouette")).toContain("BANDANA");
+    expect(opts("Handbags", "hb.strap.attachment")).toContain("KNOT-TIE (NO HARDWARE)");
+    expect(opts("Cosmetic bags", "cos.zip_path")).toContain("DOME");
+    expect(opts("Hardside luggage", "lug.interior_features")).toEqual(expect.arrayContaining(["ZIPPERED POCKET", "ZIPPERED COMPRESSION COMPARTMENT", "X STRAPS WITH CENTRE BUCKLE"]));
+    expect(opts("Handbags", "interior.label_position")).toContain("ABOVE POCKET");
+    for (const [cat, id] of [["Rolling duffels", "rduf.drop_bottom_board_mm"], ["Rolling duffels", "construction.padding"], ["Hardside luggage", "lug.corner_guards_position"], ["Men's bags", "men.closure"], ["Men's bags", "men.exterior_pockets"], ["Packing cubes", "cube.handle"]] as const) expect(findQuestion(cat, id), id).toBeTruthy();
+  });
+});

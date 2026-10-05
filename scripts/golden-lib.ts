@@ -130,6 +130,35 @@ const ADOPTED: Record<string, { id: string; map: (v: unknown) => unknown; also?:
       delete a._rn;
     },
   },
+  // Construction and interior vocabulary (V2.1 §9).
+  "rduf.padding": { id: "construction.padding", map: (v) => { const o = (v ?? {}) as { where?: string; thickness_mm?: number }; return [{ where: o.where, mm: o.thickness_mm }]; } },
+  "rduf.drop_bottom_compartment": { id: "rduf.drop_bottom", map: (v) => v === true },
+  "rduf.drop_bottom_board": {
+    id: "rduf.drop_bottom_board",
+    map: (v) => (v as { material?: string } | null)?.material,
+    also: (v, a) => put(a, { "rduf.drop_bottom_board_mm": (v as { thickness_mm?: number } | null)?.thickness_mm }),
+  },
+  "interior.features": { id: "interior.features", map: (v) => v },
+  "cube.handle": {
+    id: "cube.handle",
+    map: (v) => (/WEBBING/i.test(String((v as { type?: string } | null)?.type ?? "")) ? "WEBBING GRAB HANDLE" : (v as { type?: string } | null)?.type),
+    also: (v, a) => {
+      const o = (v ?? {}) as { position?: string; qty_per_cube?: number; length?: number | null };
+      put(a, { "cube.handle_position": o.position, "cube.handle_qty": o.qty_per_cube, "cube.handle_length": typeof o.length === "number" ? o.length : undefined });
+    },
+  },
+  "construction.unlined_seam_binding": {
+    id: "interior.seam_binding",
+    map: () => true,
+    also: (v, a) => {
+      const o = (v ?? {}) as { unlined?: boolean; binding?: string; where?: string; note?: string };
+      put(a, {
+        "interior.lined": o.unlined === true ? false : undefined,
+        "interior.binding": o.binding ? (/BINDING/i.test(o.binding) ? o.binding : `${o.binding} BINDING`) : undefined,
+        "interior.binding_where": [o.where, o.note].filter(Boolean).join(", ") || undefined,
+      });
+    },
+  },
   "branding.items": {
     id: "branding.items",
     map: (v) =>
@@ -212,7 +241,15 @@ export function fromStudy(file: string): GoldenPack[] {
   if ("answers" in e && "brand" in e) {
     const answers = Object.fromEntries(Object.entries(e.answers as object).filter(([, v]) => v !== null && unwrap(v) !== null).map(([k, v]) => [k, unwrap(v)]));
     const pack = (e.pack ?? {}) as Record<string, unknown>;
-    return [{ label, brand: String(e.brand), category: category(e.category), colorways: colorwaysOf(pack.colorways, answers["colorways.names"], answers["materials.matrix"]), answers, extra: Object.keys((e.proposed_new ?? {}) as object), colorwayStyles: stylesOf(pack.colorways) }];
+    // Proposed ids the bank now has are entered facts.
+    const cat = category(e.category);
+    const proposed = (e.proposed_new ?? {}) as Record<string, unknown>;
+    const extra: string[] = [];
+    for (const [k, v] of Object.entries(proposed)) {
+      if (findQuestion(cat, k) && unwrap(v) != null && answers[k] === undefined) answers[k] = unwrap(v);
+      else extra.push(k);
+    }
+    return [{ label, brand: String(e.brand), category: cat, colorways: colorwaysOf(pack.colorways, answers["colorways.names"], answers["materials.matrix"]), answers, extra, colorwayStyles: stylesOf(pack.colorways) }];
   }
   // Format 3: a style pack + its component sheets (pack F + pack G).
   if ("hardware_library" in d) {

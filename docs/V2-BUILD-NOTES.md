@@ -270,3 +270,16 @@ The nine golden packs were printed through the standard layout and compared with
 - "To be provided" is the reference answer (`TO_BE_PROVIDED`): accepted at PROTO, blocks PRODUCTION like any other.
 - **Decision:** switching is per pack only for now. A brand or retailer default (switch on for every new pack of that brand / retailer) is a small follow-up — listed for Jon.
 - **Golden:** the studies' proposed `_new.packaging.*`, `_new.labels.interior_coo` and `_new.brand.rn_number` switch the pages on and fill them; `_new.packaging.artwork_status: TO BE PROVIDED` becomes the artwork's reference answer.
+
+### Construction and interior vocabulary (§9)
+- `construction.padding` rows (where, mm, material) for every bag body. `rduf.drop_bottom` + board backing (material, mm).
+- **Packing cubes now have the Interior section.** Their pockets / pocket edge / label are asked only after `interior.has_pockets` is switched on (cubes are usually unlined with none), so the section adds no blockers to a plain cube.
+- Seam binding: `interior.binding` (PP / nylon / self-fabric / overlock) and `interior.binding_where`; the interior page prints "UNLINED" and e.g. "PP BINDING ON INTERIOR SEAMS" instead of the generic binding note. An unlined pack with binding (or interior features) now gets an INTERIOR & LINING page.
+- `interior.features` (bags / duffels / cubes) and luggage `*.interior_features` gain zippered pocket, zippered compression compartment, elastic compression straps, X straps with centre buckle. Hardside halves: `interior.layout` (step 5).
+- Corner guards position (all / top only / bottom only). Pocket types: elastic-top slip pocket, 3-compartment slip pocket. Zip path: DOME.
+- `interior.label_position` (below pocket top / above pocket / from top of bag) says what the label offset is measured from.
+- Strap attachment: KNOT-TIE (NO HARDWARE). Handbag silhouette: BANDANA.
+- Men's bags: `men.closure` (★, not for Dopp kits) and `men.exterior_pockets` rows.
+- Packing cubes: handle type, position, qty per cube, length.
+- PVC-backed fabric is a library field (step 6 §10, backing).
+- **Golden:** the matching study proposals are now entered through these ids; a format-2 study's `proposed_new` ids that the bank now has are entered facts.
