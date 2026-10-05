@@ -221,6 +221,8 @@ export const packs = pgTable(
     copiedFrom: uuid("copied_from"),
     /** Imported from a past tech pack (V2 §7 importer): PROPOSED until an admin approves it as a base style. */
     importStatus: text("import_status").notNull().default(""),
+    /** Who is working on the pack ("My queue", bulk assign — V2 §8). Unassigned packs belong to their creator. */
+    assignedTo: uuid("assigned_to").references(() => users.id),
     /** Last analyse_render output: visible features / not visible / notes. */
     aiAnalysis: jsonb("ai_analysis").$type<{
       visible_features: string[];

@@ -345,3 +345,11 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - Migration 0021: `archive_imports` (name, url, hash unique, pages, status, pack, result, error) and `packs.import_status`.
 - **Not yet:** proposed house standards (most common values per brand × category) from the imported set, and Excel BOM imports — they need the house-standards admin, which isn't built. Listed for Jon.
 - The "Dashboard" link to Batch create ships with this commit (it sits beside the archive filter on the same page).
+
+## V2 §12 step 6 — dashboard at volume, revisions inbox, review queue
+### Dashboard
+- **Server-side** search (style #, any colourway's style #, name, brand) and filters: brand, category, stage, status, due (ASAP / overdue / this week), designer; 24 packs a page with page links. Status tabs show counts.
+- **My queue:** packs assigned to me, or created by me and unassigned. `packs.assigned_to` (migration 0022).
+- **Pipeline view:** a column per status (Draft → In review → Signed off → Sent → Proto received → Closed), each card with its stage and revision (R1, R2 …).
+- **Bulk actions** (tick cards): export a ZIP of the packs' ZIPs (`/api/packs/export?ids=…`, up to 50), stage → Proto / Production, assign to a designer (or nobody), archive / restore (admin). Every bulk action can be **undone** (the bar shows Undo with the previous values).
+
