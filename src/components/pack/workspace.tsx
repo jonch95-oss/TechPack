@@ -45,6 +45,7 @@ import { ExportPanel } from "./export-panel";
 import { SignOff } from "./signoff";
 import { SIGNED_OFF } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
+import { StartFrom } from "./start-from";
 import { SetupEditor } from "./setup-editor";
 import { PackAdmin } from "./pack-admin";
 import { CropEditor } from "./crop-editor";
@@ -440,7 +441,7 @@ export function PackWorkspace(props: WorkspaceProps) {
                   names={(answers["colorways.names"] as Record<string, string> | undefined) ?? {}}
                 />
               )}
-              {canEdit && <DuplicatePack packId={pack.id} styleNo={pack.styleNo} styleName={pack.styleName} />}
+              {canEdit && <DuplicatePack packId={pack.id} styleNo={pack.styleNo} styleName={pack.styleName} brandId={props.brand.id} category={pack.category} colorways={pack.colorways} brands={props.brands} />}
               {props.isAdmin && <PackAdmin packId={pack.id} styleNo={pack.styleNo} archived={pack.archived} />}
               <SaveIndicator s={save} />
             </span>
@@ -563,6 +564,7 @@ export function PackWorkspace(props: WorkspaceProps) {
               </div>
             )}
           </dl>
+          {canEdit && !pack.copiedFrom && Object.values(statuses).filter((x) => x === "confirmed").length < 15 && <StartFrom packId={pack.id} />}
 
           <div className="mt-auto pt-10">
             <div className="border border-hairline bg-paper p-6">

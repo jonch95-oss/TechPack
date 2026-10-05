@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -10,6 +10,11 @@ import { audit } from "@/lib/audit";
 import { loadPack, rebuildLibraryUsage } from "@/lib/data";
 import { buildPackDoc } from "@/lib/pdf/doc";
 import { gatePasses } from "@/lib/validation";
+import { allQuestions } from "@/lib/questions";
+import { CATEGORIES, type Category } from "@/lib/questions/types";
+import { DEFAULT_GROUPS, inherits, reseedColourways } from "@/lib/inherit";
+import { rankSimilar, SILHOUETTE_IDS } from "@/lib/similar-score";
+import { writeAnswer } from "@/lib/answer-write";
 import type { ActionResult } from "./admin";
 
 /* ------------------------------ status & sign-off ------------------------------ */
@@ -104,8 +109,22 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
   const styleName = String(form.get("styleName") ?? "").trim().toUpperCase();
   const keepFiles = form.get("keepFiles") === "on";
   const keepComments = form.get("keepComments") === "on";
+  // "New from…" (V2 §8): which groups to inherit; brand, category and colourways can change here.
+  const picked = form.getAll("group").map(String);
+  const groups = picked.length ? picked : [...DEFAULT_GROUPS, ...(keepComments ? ["COMMENTS"] : [])];
+  const mode = form.get("mode") === "colourway" ? "colourway" : "style";
   const src = await loadPack(sourceId);
   if (!src) return { error: "Source pack not found." };
+  const brandId = String(form.get("brandId") ?? "") || src.pack.brandId;
+  const category = (CATEGORIES as readonly string[]).includes(String(form.get("category") ?? "")) ? (String(form.get("category")) as Category) : src.pack.category;
+  // A new colourway of this style: its colourways are typed ("-C RED, -D NAVY"), seeded from one of the style's.
+  const typed = String(form.get("colorways") ?? "").split(/[,\n]+/).map((x) => x.trim().toUpperCase()).filter(Boolean).map((x, i) => {
+    const m = x.match(/^(-[A-Z0-9]+)\s*(.*)$/);
+    return m ? { code: m[1], name: m[2] || undefined } : { code: `-${String.fromCharCode(65 + i)}`, name: x };
+  });
+  if (mode === "colourway" && !typed.length) return { error: "Name the new colourway(s)." };
+  const fromCw = src.pack.colorways.includes(String(form.get("fromColorway") ?? "")) ? String(form.get("fromColorway")) : src.pack.colorways[0];
+  const colorways = typed.length ? typed.map((c) => c.code) : src.pack.colorways;
   if (!/^[A-Z0-9_-]{3,30}$/.test(styleNo)) return { error: "Style # — letters, digits, _ or -." };
   if (!styleName) return { error: "Style name is required." };
   if ((await db.select({ id: packs.id }).from(packs).where(eq(packs.styleNo, styleNo))).length) return { error: `${styleNo} already exists.` };
@@ -113,11 +132,11 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
   const [np] = await db
     .insert(packs)
     .values({
-      brandId: src.pack.brandId,
-      category: src.pack.category,
+      brandId,
+      category,
       styleNo,
       styleName,
-      colorways: src.pack.colorways,
+      colorways,
       chineseOn: src.pack.chineseOn,
       factory: src.pack.factory,
       copiedFrom: src.pack.id,
@@ -127,8 +146,15 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
     })
     .returning({ id: packs.id });
   const rows = await db.select().from(packAnswers).where(eq(packAnswers.packId, sourceId));
-  const skip = new Set(["header.due_date", ...(keepComments ? [] : ["comments.list"])]);
-  const copy = rows.filter((r) => !skip.has(r.questionId));
+  // Only questions the (possibly new) category asks, in the groups chosen.
+  const known = new Set(allQuestions(category).map((q) => q.id));
+  let copy = rows.filter((r) => inherits(r.questionId, groups) && (known.has(r.questionId) || r.questionId.startsWith("optional.")));
+  if (typed.length) {
+    const seeded = reseedColourways(Object.fromEntries(copy.map((r) => [r.questionId, r.value])), fromCw, typed);
+    copy = copy.filter((r) => r.questionId in seeded).map((r) => ({ ...r, value: seeded[r.questionId] }));
+    if (seeded["colorways.names"] && !copy.some((r) => r.questionId === "colorways.names"))
+      copy.push({ ...rows[0], questionId: "colorways.names", value: seeded["colorways.names"], status: "confirmed", origin: "DESIGNER", source: "", aiNote: "", aiValue: null, confidence: "" } as (typeof rows)[number]);
+  }
   if (copy.length)
     // Settled values are inherited as BASE STYLE (trusted, §3 step 2); unconfirmed ones keep their origin and still need confirming.
     await db.insert(packAnswers).values(
@@ -151,8 +177,51 @@ export async function duplicatePack(_prev: DuplicateState, form: FormData): Prom
   }
   const loaded = await loadPack(np.id);
   if (loaded) await rebuildLibraryUsage(np.id, loaded.answers);
-  await audit({ userId: user.id, entity: "pack", entityId: np.id, action: "create", after: { duplicatedFrom: src.pack.styleNo, styleNo, keepFiles, keepComments } });
+  await audit({ userId: user.id, entity: "pack", entityId: np.id, action: "create", after: { duplicatedFrom: src.pack.styleNo, styleNo, keepFiles, groups, mode, colorways } });
   redirect(`/packs/${np.id}`);
+}
+
+/* ------------------------------ "Start from…" (V2 §3 step 2) ------------------------------ */
+
+/**
+ * The packs most like this one (same brand / category / silhouette, similar name), for "Start from…".
+ */
+export async function similarPacks(packId: string, n = 3) {
+  await requireRole("viewer");
+  const p = await loadPack(packId);
+  if (!p) return [];
+  const sil = (a: Record<string, unknown>) => String(SILHOUETTE_IDS.map((k) => a[k]).find((v) => typeof v === "string") ?? "");
+  const rows = await db.select({ id: packs.id, styleNo: packs.styleNo, styleName: packs.styleName, brandId: packs.brandId, category: packs.category, updatedAt: packs.updatedAt, archivedAt: packs.archivedAt }).from(packs);
+  const answers = await db.select({ packId: packAnswers.packId, questionId: packAnswers.questionId, value: packAnswers.value }).from(packAnswers).where(inArray(packAnswers.questionId, SILHOUETTE_IDS));
+  const silOf = new Map(answers.map((r) => [r.packId, String(r.value ?? "")]));
+  const candidates = rows.filter((r) => r.id !== packId && !r.archivedAt).map((r) => ({ ...r, silhouette: silOf.get(r.id) ?? "" }));
+  return rankSimilar({ styleName: p.pack.styleName, brandId: p.pack.brandId, category: p.pack.category, silhouette: sil(p.answers) }, candidates, n).map((c) => ({ id: c.id, styleNo: c.styleNo, styleName: c.styleName, category: c.category }));
+}
+
+/**
+ * Inherit a base style's settled answers into this pack, by group, as BASE STYLE: blanks are filled
+ * and AI reads are replaced; where a designer already answered differently a conflict chip shows.
+ */
+export async function startFromBase(packId: string, baseId: string, groups: string[] = [...DEFAULT_GROUPS]): Promise<ActionResult & { filled?: number }> {
+  const user = await requireRole("designer");
+  const [p, base] = await Promise.all([loadPack(packId), loadPack(baseId)]);
+  if (!p || !base) return { ok: false, error: "Pack not found." };
+  if (p.pack.archivedAt) return { ok: false, error: "This pack is archived." };
+  const known = new Set(allQuestions(p.pack.category).map((q) => q.id));
+  let filled = 0;
+  for (const [qid, value] of Object.entries(base.answers)) {
+    if (base.statuses[qid] !== "confirmed" || !inherits(qid, groups) || !(known.has(qid) || qid.startsWith("optional."))) continue;
+    const m = p.meta[qid];
+    const current = m ? { value: p.answers[qid], origin: m.origin, status: p.statuses[qid], aiValue: m.aiValue } : null;
+    const done = await writeAnswer({ packId, questionId: qid, value, origin: "BASE_STYLE", source: base.pack.styleNo, note: `FROM ${base.pack.styleNo}`, userId: user.id }, current);
+    if (done === "write" || done === "upgrade") filled++;
+  }
+  if (!p.pack.copiedFrom) await db.update(packs).set({ copiedFrom: base.pack.id, updatedBy: user.id, updatedAt: new Date() }).where(eq(packs.id, packId));
+  const loaded = await loadPack(packId);
+  if (loaded) await rebuildLibraryUsage(packId, loaded.answers);
+  await audit({ userId: user.id, entity: "pack", entityId: packId, action: "update", field: "start_from", after: { base: base.pack.styleNo, groups, filled } });
+  revalidatePath(`/packs/${packId}`);
+  return { ok: true, filled, message: `${filled} answer(s) from ${base.pack.styleNo}.` };
 }
 
 /* ------------------------------ archive / delete (admin only) ------------------------------ */
