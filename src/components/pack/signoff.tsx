@@ -6,6 +6,7 @@ import { approvePack, requestReview, sendBack, setFactory, setPackStatus } from 
 import type { PackStatus } from "@/db/schema";
 import { Badge, Button, cx } from "@/components/ui";
 import { STATUS_LABEL, statusTone } from "@/lib/status";
+import { fmtDate } from "@/lib/dates";
 
 /** Status, second-designer sign-off and factory — the part of the rail that decides who can export. */
 export function SignOff({
@@ -48,7 +49,7 @@ export function SignOff({
         <Badge tone={statusTone(status)}>{STATUS_LABEL[status]}</Badge>
       </div>
       {status === "IN_REVIEW" && requestedBy && <p className="text-[11px] text-taupe">Asked by {requestedBy.name}. A different designer signs it off.</p>}
-      {reviewedBy && reviewedAt && <p className="text-[11px] text-ok">Signed off by {reviewedBy.name} · {new Date(reviewedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</p>}
+      {reviewedBy && reviewedAt && <p className="text-[11px] text-ok">Signed off by {reviewedBy.name} · {fmtDate(reviewedAt, { day: "2-digit", month: "short" })}</p>}
       {canEdit && (
         <div className="flex flex-wrap gap-2">
           {status === "DRAFT" && (

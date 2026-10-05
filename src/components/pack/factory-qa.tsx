@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addFactoryQuestion, answerFactoryQuestion } from "@/app/actions/workflow";
 import { Button, cx } from "@/components/ui";
+import { fmtDate } from "@/lib/dates";
 
 type Q = { id: string; askedBy: string; question: string; answer: string; answeredByName: string | null; createdAt: string; answeredAt: string | null };
 
@@ -21,7 +22,7 @@ export function FactoryQA({ packId, questions, canEdit, factory }: { packId: str
         <div key={x.id} className={cx("border p-5 bg-paper", x.answer ? "border-hairline" : "border-gold/60")}>
           <div className="flex items-baseline justify-between gap-4">
             <div className="text-[13px]"><span className="eyebrow mr-2">Q{i + 1}</span>{x.question}</div>
-            <span className="text-[10px] tracking-[0.16em] uppercase text-taupe whitespace-nowrap">{x.askedBy || "FACTORY"} · {new Date(x.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>
+            <span className="text-[10px] tracking-[0.16em] uppercase text-taupe whitespace-nowrap">{x.askedBy || "FACTORY"} · {fmtDate(x.createdAt, { day: "2-digit", month: "short" })}</span>
           </div>
           {x.answer ? (
             <div className="mt-3 text-[13px] text-ok"><span className="eyebrow mr-2 text-ok">A</span>{x.answer} <span className="text-[10px] text-taupe ml-2">— {x.answeredByName}</span></div>

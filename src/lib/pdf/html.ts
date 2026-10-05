@@ -7,6 +7,7 @@ import { missingFrom, mmText, tight, type SpecItem } from "./specs";
 import { logoPanelWidth, planPages, TRIMS } from "./plan";
 import { calloutPoint, spreadPoints, usDate } from "./hints";
 import { inlineFlat } from "@/lib/lineart/geometry";
+import { studioDay } from "@/lib/dates";
 
 /**
  * The standard tech pack pages (V2.1 §2–3, one layout for every brand) as print HTML: 17 × 11 in
@@ -138,7 +139,7 @@ ul.feat li::before { content: "-  "; }
 function head(doc: PackDoc, n: number, section: string) {
   const sec = /^SWATCH|MTL$/.test(section) ? "SWATCH CARDS" : section.replace(/ \(\d+\/\d+\)$/, "");
   const rev = doc.revision.dates.length ? doc.revision.dates[doc.revision.dates.length - 1] : null;
-  const date = usDate(rev?.date || doc.revision.original || new Date().toISOString().slice(0, 10));
+  const date = usDate(rev?.date || doc.revision.original || studioDay());
   const item = doc.pack.styleName.toUpperCase();
   return `<div class="stylebox"><div style="white-space:nowrap;overflow:hidden;font-size:${fitPt(`STYLE CODE: ${doc.styleCodes.join(", ")}`, 4.15, 1, 12, 7)}pt"><span class="k">STYLE CODE:</span> ${up(doc.styleCodes.join(", "))}</div>
       <div class="red">${esc(date)}${rev ? ` &nbsp;${esc(rev.label)}` : ""}</div>
