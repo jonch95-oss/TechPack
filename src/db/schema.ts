@@ -219,6 +219,8 @@ export const packs = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     /** Pack the style was duplicated from (carry-over). */
     copiedFrom: uuid("copied_from"),
+    /** Imported from a past tech pack (V2 §7 importer): PROPOSED until an admin approves it as a base style. */
+    importStatus: text("import_status").notNull().default(""),
     /** Last analyse_render output: visible features / not visible / notes. */
     aiAnalysis: jsonb("ai_analysis").$type<{
       visible_features: string[];
@@ -536,6 +538,30 @@ export type Revision = typeof revisions.$inferSelect;
  */
 export const jobKindEnum = pgEnum("job_kind", ["PREFILL", "FLAT", "SOURCE", "BOARD", "PDF"]);
 export const jobStatusEnum = pgEnum("job_status", ["QUEUED", "RUNNING", "DONE", "ERROR"]);
+/**
+ * Past tech packs imported from the archive (V2 §7): one row per file, deduplicated by content hash.
+ * The read lands as a PROPOSED pack (and proposed library parts in `result`) for an admin to approve.
+ */
+export const archiveImports = pgTable(
+  "archive_imports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    hash: text("hash").notNull(),
+    pages: integer("pages").notNull().default(0),
+    /** QUEUED | RUNNING | PROPOSED | APPROVED | REJECTED | ERROR | SKIPPED */
+    status: text("status").notNull().default("QUEUED"),
+    packId: uuid("pack_id").references(() => packs.id, { onDelete: "set null" }),
+    result: jsonb("result").$type<Record<string, unknown> | null>(),
+    error: text("error"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("archive_imports_hash_uq").on(t.hash)],
+);
+
 export const jobs = pgTable(
   "jobs",
   {

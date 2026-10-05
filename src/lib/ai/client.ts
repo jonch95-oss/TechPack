@@ -29,7 +29,7 @@ export type AICallResult<T> = { output: T; model: string; fixture: boolean };
  * Never set it in Vercel.
  */
 export async function callTechnicalDesigner<T>(opts: {
-  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "read_source" | "read_board" | "build_pack" | "validate" | "diff_revision" | "translate";
+  task: "analyse_render" | "read_swatch_card" | "read_library_sheet" | "read_source" | "read_board" | "read_archive" | "build_pack" | "validate" | "diff_revision" | "translate";
   instructions: string;
   images: AIImage[];
   /** PDFs sent as document blocks (spec sheets, catalogues, scanned swatch cards). */
@@ -105,5 +105,5 @@ function normaliseMediaType(ct: string): "image/jpeg" | "image/png" | "image/gif
 
 /** Supplier cards and sheets can print bank, phone and address details: never let them out of a read (V2.1 §10). */
 function privateOut(task: string, out: unknown): unknown {
-  return task === "read_swatch_card" || task === "read_library_sheet" || task === "read_source" ? scrubDeep(out) : out;
+  return task === "read_swatch_card" || task === "read_library_sheet" || task === "read_source" || task === "read_archive" ? scrubDeep(out) : out;
 }

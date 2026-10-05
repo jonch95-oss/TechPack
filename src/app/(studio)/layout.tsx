@@ -12,7 +12,7 @@ export default async function StudioLayout({ children }: LayoutProps<"/">) {
     { href: "/library/materials", label: "Materials" },
     { href: "/library/hardware", label: "Hardware" },
     { href: "/library/prints", label: "Artwork" },
-    ...(can(user, "admin") ? [{ href: "/admin/brands", label: "Brands" }, { href: "/admin/glossary", label: "Glossary" }, { href: "/admin/users", label: "Team" }] : []),
+    ...(can(user, "admin") ? [{ href: "/admin/brands", label: "Brands" }, { href: "/admin/glossary", label: "Glossary" }, { href: "/admin/archive", label: "Archive" }, { href: "/admin/users", label: "Team" }] : []),
   ];
   return (
     <div className="min-h-screen flex flex-col">

@@ -191,10 +191,11 @@ export async function similarPacks(packId: string, n = 3) {
   const p = await loadPack(packId);
   if (!p) return [];
   const sil = (a: Record<string, unknown>) => String(SILHOUETTE_IDS.map((k) => a[k]).find((v) => typeof v === "string") ?? "");
-  const rows = await db.select({ id: packs.id, styleNo: packs.styleNo, styleName: packs.styleName, brandId: packs.brandId, category: packs.category, updatedAt: packs.updatedAt, archivedAt: packs.archivedAt }).from(packs);
+  const rows = await db.select({ id: packs.id, styleNo: packs.styleNo, styleName: packs.styleName, brandId: packs.brandId, category: packs.category, updatedAt: packs.updatedAt, archivedAt: packs.archivedAt, importStatus: packs.importStatus }).from(packs);
   const answers = await db.select({ packId: packAnswers.packId, questionId: packAnswers.questionId, value: packAnswers.value }).from(packAnswers).where(inArray(packAnswers.questionId, SILHOUETTE_IDS));
   const silOf = new Map(answers.map((r) => [r.packId, String(r.value ?? "")]));
-  const candidates = rows.filter((r) => r.id !== packId && !r.archivedAt).map((r) => ({ ...r, silhouette: silOf.get(r.id) ?? "" }));
+  // An archive import is a base style only once an admin approves it.
+  const candidates = rows.filter((r) => r.id !== packId && !r.archivedAt && r.importStatus !== "PROPOSED").map((r) => ({ ...r, silhouette: silOf.get(r.id) ?? "" }));
   return rankSimilar({ styleName: p.pack.styleName, brandId: p.pack.brandId, category: p.pack.category, silhouette: sil(p.answers) }, candidates, n).map((c) => ({ id: c.id, styleNo: c.styleNo, styleName: c.styleName, category: c.category }));
 }
 

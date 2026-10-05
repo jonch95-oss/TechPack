@@ -23,6 +23,7 @@ export default async function PacksPage(props: PageProps<"/">) {
       by: users.name,
       status: packs.status,
       archivedAt: packs.archivedAt,
+      importStatus: packs.importStatus,
       due: sql<string | null>`(select ${packAnswers.value} #>> '{}' from ${packAnswers} where ${packAnswers.packId} = ${packs.id} and ${packAnswers.questionId} = 'header.due_date' limit 1)`,
       render: sql<string | null>`(select ${packFiles.url} from ${packFiles} where ${packFiles.packId} = ${packs.id} and ${packFiles.kind} = 'render' limit 1)`,
       pending: sql<number>`(select count(*)::int from ${packAnswers} where ${packAnswers.packId} = ${packs.id} and ${packAnswers.status} <> 'confirmed')`,
@@ -40,6 +41,8 @@ export default async function PacksPage(props: PageProps<"/">) {
   const q = typeof sp.q === "string" ? sp.q.trim().toUpperCase() : "";
   const matches = (r: (typeof rows)[number]) => !q || [r.styleNo, r.styleName, r.brand, ...Object.values(r.colorwayStyles ?? {})].some((t) => t.toUpperCase().includes(q));
   const shown = rows
+    // Archive imports waiting for approval live on Admin → Archive, not here.
+    .filter((r) => r.importStatus !== "PROPOSED")
     .filter((r) => (showArchived ? !!r.archivedAt : !r.archivedAt))
     .filter((r) => !statusFilter || r.status === statusFilter)
     .filter(matches)
@@ -57,7 +60,14 @@ export default async function PacksPage(props: PageProps<"/">) {
       <PageHeader
         eyebrow="The Atelier"
         title="Tech Packs"
-        actions={can(user, "designer") && <ButtonLink href="/packs/new">New tech pack</ButtonLink>}
+        actions={
+          can(user, "designer") && (
+            <>
+              <ButtonLink href="/packs/batch" variant="secondary">Batch create</ButtonLink>
+              <ButtonLink href="/packs/new">New tech pack</ButtonLink>
+            </>
+          )
+        }
       >
         Upload a render, answer the click-through questions, and every answer is kept for the factory-ready pack.
       </PageHeader>

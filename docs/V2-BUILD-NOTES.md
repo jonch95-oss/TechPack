@@ -335,3 +335,13 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - Each pack: the brand's unit, colourways and their names, the base style's settled answers (as BASE STYLE, via Start from…), the first render as the render and the rest as colourway renders (each read as a board in the background).
 - Renders upload straight from the browser to storage; only their URLs reach the server.
 - **Decision:** batch create doesn't start an AI pre-fill per pack (cost at volume); each pack's board read runs, and pre-fill is one click on the pack. Listed for Jon.
+
+### Archive importer
+- **Admin → Archive** (`/admin/archive`): drop finished tech pack PDFs.
+  - Each file is hashed (a file already imported is skipped) and its pages counted; the button shows files, pages and the estimated cost (≈ $0.03 a page) **before** anything is read. Files over 40 pages are refused (split them).
+  - "Read" runs in the background, one file after another (`read_archive`, scrubbed for contact details like every supplier read). Each read becomes a **PROPOSED** pack: brand, category, style #, name, colourways (+ names), and every answer the pack states — all as AI reads to confirm — plus proposed library parts (codes, sizes, material, finish) and swatches.
+  - **Approve** makes it a base style (answers settled from the document, origin SPEC) and adds the parts / swatches whose code or card isn't in the library yet. **Reject** deletes the proposed pack; the file stays listed so it isn't imported again.
+  - Proposed packs don't show on the dashboard or in Start from… until approved.
+- Migration 0021: `archive_imports` (name, url, hash unique, pages, status, pack, result, error) and `packs.import_status`.
+- **Not yet:** proposed house standards (most common values per brand × category) from the imported set, and Excel BOM imports — they need the house-standards admin, which isn't built. Listed for Jon.
+- The "Dashboard" link to Batch create ships with this commit (it sits beside the archive filter on the same page).
