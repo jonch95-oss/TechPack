@@ -107,7 +107,7 @@ test("Review screen, editable setup and background PDF", async ({ page }) => {
   /* ---- Multi-style packs (V2.1 §4): a colourway's own style #, unique across the studio ---- */
   await page.getByTestId("setup-cw-style--A").fill("PINK013");
   await page.getByLabel("Name of -A").click(); // blur saves
-  await expect(page.getByRole("alert")).toContainText("PINK013 already exists.");
+  await expect(page.getByRole("alert").filter({ hasText: "PINK013 already exists." })).toBeVisible();
   await page.getByTestId("setup-cw-style--A").fill("PINK996C");
   await page.getByLabel("Name of -A").click();
   await expect(page.getByRole("status").filter({ hasText: "Style # saved." })).toBeVisible();
