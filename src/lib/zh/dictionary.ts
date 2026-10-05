@@ -311,7 +311,9 @@ export const TRADE_ZH: Record<string, string> = {
   MEASUREMENTS: "尺寸",
   HEIGHT: "高度",
   WIDTH: "宽度",
-  DEPTH: "厚度",
+  // Bag depth is 深度; 厚度 is material thickness on swatch cards (V2.1 §11).
+  DEPTH: "深度",
+  THICKNESS: "厚度",
   LENGTH: "长度",
   OVERALL: "整体",
   DIMENSIONS: "尺寸",

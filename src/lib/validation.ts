@@ -14,6 +14,7 @@ import {
   type MaterialEntry,
 } from "@/lib/questions";
 import type { SpellFlag } from "@/lib/spellcheck/core";
+import type { Finding } from "@/lib/checks";
 import { productionProblem, refText, splitReferences } from "@/lib/reference-answer";
 
 export type RuleGroup = "Completeness" | "Geometry" | "Consistency" | "Language" | "Licensor" | "Claims";
@@ -47,6 +48,8 @@ export type ValidationInput = {
   /** Reference / construction photos: their comment letter and caption. */
   photos?: { letter: string; note: string; actualWidthMm?: number | null }[];
   spelling: SpellFlag[];
+  /** Consistency findings from the built pack (V2.1 §11): fail at PRODUCTION, warn at PROTO; info always warns. */
+  findings?: Finding[];
 };
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -278,6 +281,8 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     [a["cool.seams"] === "RF/HEAT-WELDED LEAKPROOF", "Leakproof claim", "cool.seams"],
   ];
   for (const [on, rule, q] of claims) if (on) push({ group: "Claims", rule, status: "warn", fix: "Claim requires a test report.", questionId: q });
+
+  for (const f of input.findings ?? []) push({ group: "Consistency", rule: f.rule, status: f.info ? "warn" : "fail", fix: f.fix, questionId: f.questionId });
 
   if (stage === "PRODUCTION") return out;
   // PROTO: only missing PROTO answers and the hard geometry rules block; the rest are warnings.

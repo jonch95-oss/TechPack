@@ -16,6 +16,7 @@ import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, opti
 import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
 import { printableCardRegion } from "@/lib/privacy";
+import { accentFindings, chipFindings, colourNameFindings, finishFindings, flatDimFindings, hiddenTextFindings, seeNextPageFindings, setPieceFindings, textureFindings, type Finding } from "@/lib/checks";
 import { PACKAGING_PAGES } from "@/lib/questions/common";
 import { caseHalves, logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
@@ -468,7 +469,40 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     ? new Set([...(await db.select({ c: packs.styleNo }).from(packs)).map((r) => r.c), ...(await db.select({ c: hardware.code }).from(hardware)).map((r) => r.c)].map((c) => c.toUpperCase()))
     : new Set<string>();
   const team = (await db.select({ name: users.name }).from(users)).flatMap((u) => u.name.split(/\s+/));
-  const spelling = spellcheckParts(answerTexts(a), [...team, p.brand.name, p.pack.styleName, ...p.brand.name.split(/\s+/)]);
+  // Spell-check everything the pack prints: the answers, and the text it takes from the library and
+  // from its files (part records, card descriptions, photo captions) (V2.1 §11).
+  const libraryTexts = [
+    ...[...usedHw.values()].flatMap((h) => stringsOf({ name: h.name, notes: h.notes, finish: h.finish, logo: h.logoTreatment, record: h.record })),
+    ...[...matById.values()].flatMap((m) => [m.articleName, m.colourName, m.finish, m.composition, m.backing].filter(Boolean)),
+    ...p.files.map((f) => f.note).filter(Boolean),
+  ];
+  const spelling = spellcheckParts([...answerTexts(a), ...libraryTexts], [...team, p.brand.name, p.pack.styleName, ...p.brand.name.split(/\s+/)]);
+  // Consistency checks from errors found in real packs (V2.1 §11).
+  const lastPageOf = (pages: string[]) => Math.max(0, ...plan.pages.filter((x) => pages.includes(x.section)).map((x) => x.n)) || null;
+  const trimList = ((a["materials.trims"] as { name?: string }[] | undefined) ?? []).map((t, i) => ({ name: t?.name ?? "", key: `trim_${i + 1}` })).filter((t) => t.name);
+  const findings: Finding[] = [
+    ...flatRows.flatMap((f) => [...flatDimFindings(f.view, f.svg, { w: n("dims.w"), h: n("dims.h"), d: n("dims.d") }), ...hiddenTextFindings(f.view, f.svg)]),
+    ...seeNextPageFindings(comments.map((c) => ({ letter: c.letter, text: c.text, lastPage: lastPageOf(c.pages) })), plan.pages.length),
+    ...colourNameFindings(answerTexts(a)),
+    ...chipFindings(
+      p.pack.colorways.flatMap((cw) =>
+        matList.map((m) => {
+          const cell = matrix[cw]?.[`mat_${m.callout}`];
+          return { colorway: cw, column: `MATERIAL ${m.callout}`, text: cell?.text ?? "", cardShade: (cell?.lib && matById.get(cell.lib.id)?.colourNo) || null };
+        }),
+      ),
+    ),
+    ...setPieceFindings(a["cube.set"] as { piece?: string; size?: string; l?: number; w?: number }[] | undefined),
+    ...finishFindings(String(a["hardware.finish"] ?? ""), [...usedHw.values()].map((h) => ({ code: h.code, finish: h.finish }))),
+    ...textureFindings(
+      matList.map((m) => {
+        const id = p.pack.colorways.map((cw) => matrix[cw]?.[`mat_${m.callout}`]?.lib?.id).find(Boolean);
+        const card = id ? matById.get(id) : undefined;
+        return { callout: m.callout, name: m.name ?? "", card: card ? [card.articleName, card.finish].join(" ") : "" };
+      }),
+    ),
+    ...accentFindings(trimList.map((t) => ({ name: t.name, values: Object.fromEntries(p.pack.colorways.map((cw) => [cw, String(matrix[cw]?.[t.key]?.text ?? "")])) }))),
+  ];
   const validation: RuleResult[] = validatePack({
     category: p.pack.category,
     brand: p.brand,
@@ -484,6 +518,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     logoMarked: !!render?.marks?.dot || !render || !a["branding.logo_type"] || !!logoPointFor(String(a["branding.placement"] ?? "")),
     photos: refs.map((r) => ({ letter: r.tag, note: r.note, actualWidthMm: r.marks?.actualWidthMm ?? null })),
     spelling,
+    findings,
   });
 
   /* ---------- matrix rows (cross-references resolve against the final plan, in html) ---------- */

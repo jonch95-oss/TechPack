@@ -23,11 +23,17 @@ export const TRADE_TERMS = [
   "ANTIQUE", "CHAMPAGNE", "IRIDESCENT", "HOLOGRAPHIC", "TONAL", "ORG", "REMAINING", "PROTO", "PROTOS", "HARDSIDE", "SOFTSIDE", "PICKUP",
   // brands, suppliers, places that appear on packs
   "ICON", "PINK", "LONDON", "TED", "BAKER", "CHAMPION", "OFF-WHITE", "PALM", "ANGELS", "PLAY", "JUNFA", "JINXIN", "BETSY", "JOHNSON",
+  // V2.1 §11 trade terms
+  "WETPOUCH", "MULTI", "MULTI-COLOR", "MULTI-COLOUR", "SWIFTACH", "FPO", "RN#", "SKU#", "PE", "TRAPUNTO", "BEVELED", "BEVELLED", "KNOCK-OUT", "KNOCKOUT",
+  "CRM", "SCREENPRINT", "SCREENPRINTED", "HUBCAP", "HUBCAPS", "PVC-BACKED", "UNLINED", "RHINESTONE", "RHINESTONES", "HOTFIX", "PIPING", "BUNGEE",
   "TJ", "MAXX", "MARSHALLS", "HOMEGOODS", "SIERRA", "WINNERS", "BEALLS", "ROSS", "BURLINGTON", "JODIE", "SHARKSKIN",
 ];
 
 /** Known misspellings → correction (checked first; these also come from the reference packs). */
 export const KNOWN_CORRECTIONS: Record<string, string> = {
+  SCREEPRINT: "SCREENPRINT",
+  RIPTSTOP: "RIPSTOP",
+  MENS: "MEN'S",
   CLOURE: "CLOSURE",
   CLOSUER: "CLOSURE",
   RECIEVE: "RECEIVE",

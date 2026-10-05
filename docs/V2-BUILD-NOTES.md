@@ -301,3 +301,17 @@ The nine golden packs were printed through the standard layout and compared with
 - **Multi-image read:** pre-fill sends the render plus up to 3 colourway renders and 3 reference photos, each labelled in the prompt.
 - **Reference products:** the prompt says reference photos are for shape / construction only; any answer whose note says REFERENCE PRODUCT is downgraded (estimate / inferred, low confidence) and noted "TAKEN FROM REFERENCE PRODUCT — CONFIRM".
 - **Auto-crop** is the existing render crop (R3.4); boards are read uncropped.
+
+### Validator rules (§11)
+Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in the Consistency group (warnings at PROTO, fails at PRODUCTION; info never blocks):
+- a line-art dimension whose printed length differs from its drawn line (by the dimensions layer's px-per-unit) or from the entered size it stands for;
+- "SEE NEXT PAGE" in a comment printed on the pack's last page (or nowhere);
+- one Pantone TCX code written with two colour names;
+- a breakdown cell's "#n FROM SWATCH CARD" / "SWATCH #n" not matching the linked card's shade;
+- a set piece without L × W;
+- hidden, transparent or empty text in a drawing;
+- the pack's stated finish against a used part's record finish (by finish family: gold / silver / gunmetal / black / brass / rose / multi);
+- a material named with one texture (smooth, pebble, saffiano, croc, patent, suede, quilted) linked to a card of another;
+- interior vs exterior accent trims (an "INTERIOR X" trim column against "X") differing — info only.
+- **Spell-check:** corrections SCREEPRINT, RIPTSTOP, MENS, and a hyphenated word broken by a space ("MULTI- COLOR"); trade terms from §11 accepted. The check now covers the library and file text a pack prints (part records, card descriptions, photo captions) as well as its answers.
+- **Glossary:** DEPTH → 深度 (bag depth); THICKNESS → 厚度 (material thickness, as on swatch cards).

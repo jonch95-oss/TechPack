@@ -69,6 +69,14 @@ export function spellcheckText(
     if (isAbbreviation(t) && !KNOWN_CORRECTIONS[w]) continue;
     if (!ok(w)) counts.set(w, (counts.get(w) ?? 0) + 1);
   }
+  // A hyphenated word broken by a space ("MULTI- COLOR") is one word (V2.1 §11).
+  const broken = new Map<string, string>();
+  for (const m of text.matchAll(/\b([A-Za-z]{2,})- ([A-Za-z]{2,})\b/g)) {
+    const w = `${m[1]}- ${m[2]}`.toUpperCase();
+    counts.set(w, (counts.get(w) ?? 0) + 1);
+    broken.set(w, `${m[1]}-${m[2]}`.toUpperCase());
+  }
+  if (broken.size) return [...counts].map(([word, count]) => ({ word, count, suggestion: broken.get(word) ?? suggest(word, suggestFrom) }));
   return [...counts].map(([word, count]) => ({ word, count, suggestion: suggest(word, suggestFrom) }));
 }
 
