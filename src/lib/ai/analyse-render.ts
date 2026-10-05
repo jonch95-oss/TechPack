@@ -115,6 +115,8 @@ export function buildAnalyseInstructions(opts: {
   styleName: string;
   colorways: string[];
   hardwareLibrary: { code: string; type: string; name: string }[];
+  /** Images after the render, in order: "COLOURWAY -B RENDER", "REFERENCE PHOTO — <caption>". */
+  extraImages?: string[];
 }): string {
   const qs = prefillableQuestions(opts.category).map((q) => {
     const base: Record<string, unknown> = { id: q.id, label: q.label, kind: q.kind };
@@ -127,6 +129,7 @@ export function buildAnalyseInstructions(opts: {
   return [
     `Analyse the attached product render for a new ${opts.category.toUpperCase()} pack.`,
     `Brand: ${opts.brand}. Style: ${opts.styleNo} ${opts.styleName}. Colorways: ${opts.colorways.join(", ")}.`,
+    ...(opts.extraImages?.length ? ["Images: 1 = THIS STYLE'S RENDER; " + opts.extraImages.map((l, i) => `${i + 2} = ${l}`).join("; ") + "."] : []),
     "",
     "Pre-fill every question below that the render lets you answer. Rules:",
     "- value_json is the JSON-encoded value: chips → one option string; multi → array of option strings; toggle → true/false; stepper → number; dims2 → {\"w\":n,\"h\":n}; lib → hardware CODE string; text → string.",
@@ -137,6 +140,8 @@ export function buildAnalyseInstructions(opts: {
     "- materials: FABRICS AND LEATHERS ONLY (e.g. MAIN BODY MTL, TRIM MTL), each with its locations (FRONT, BACK, FLAP, GUSSET, STRAP, HANDLE…). They become numbered yellow callouts. Never list hardware, zippers, webbing hardware or trims made of metal here.",
     "- Turn what you SEE into structured rows, not notes: exterior_pockets (every outside pocket), hardware (every part with a quantity — plates, buckles, rings, eyelets, rivets, zip pulls, snaps), zippers (one entry per zipper position with qty), colorways (the colourway names shown, e.g. BLACK). Count carefully; give qty as the number of identical parts.",
     "- Ignore any text printed on the board around the product (labels like \"(REFER TO SPEC)\", dimensions, arrows) — read the product only.",
+    "- Image 1 is this style's render. Any further images are labelled in the list below: other colourways of this style (one style # per render — note a feature one colourway has and the others don't), and reference photos.",
+    "- Reference photos often show OTHER brands' products, for shape or construction only. Never take a spec (material, colour, logo, size) off a reference product. If a dimension can only come from a reference product, give basis \"estimated\", confidence \"low\" and put REFERENCE PRODUCT in the note.",
     "- visible_features / not_visible: short CAPITALS phrases.",
     "",
     "QUESTIONS:",
@@ -209,7 +214,14 @@ export function normaliseAiAnswers(
       status = "inferred";
       confidence = "low";
     }
-    answers.push({ questionId: q.id, value, status, note: (a.note ?? "").toUpperCase(), confidence });
+    let note = (a.note ?? "").toUpperCase();
+    // A value read off another brand's reference product is never this style's spec (V2.1 §11).
+    if (/REFERENCE PRODUCT/.test(note)) {
+      status = isMeasurement ? "est" : "inferred";
+      confidence = "low";
+      if (!/CONFIRM/.test(note)) note = `${note} — TAKEN FROM REFERENCE PRODUCT — CONFIRM`;
+    }
+    answers.push({ questionId: q.id, value, status, note, confidence });
   }
   const materials: MaterialEntry[] = (out.materials ?? [])
     .filter((m) => m.name?.trim() && !NOT_A_MATERIAL.test(m.name.toUpperCase()))

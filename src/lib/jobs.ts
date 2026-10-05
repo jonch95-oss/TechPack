@@ -57,7 +57,7 @@ export async function runJob(id: string) {
       else await update(id, { status: "DONE", step: "", result: { url: res.url, name: res.name, pages: res.pages, revision: res.revision } });
     } else if (job.kind === "BOARD") {
       const p = await loadPack(job.packId);
-      const board = p ? await readBoard(job.packId, job.params.fileId ?? "", p.pack.styleNo) : null;
+      const board = p ? await readBoard(job.packId, job.params.fileId ?? "", p.pack.styleNo, user) : null;
       await update(id, { status: "DONE", step: "", result: { board } });
     } else {
       const p = await loadPack(job.packId);

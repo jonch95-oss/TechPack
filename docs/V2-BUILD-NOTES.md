@@ -292,3 +292,12 @@ The nine golden packs were printed through the standard layout and compared with
 - **Privacy:**
   - Every read of a swatch card, library sheet or source file is scrubbed in the AI client before anything sees it (`scrubDeep`): lines labelled as phone / fax / mobile / e-mail / address / bank / account / IBAN / SWIFT (and the Chinese labels) are dropped, e-mails masked, and runs of 7+ digits masked in free text. The read is also told never to return them.
   - **Decision:** printed swatch cards are cropped from just above the highest chip to the bottom of the card (full width), so supplier headers above the chips never print; a card with no chip box loses its top 20 %. The stored photo is unchanged (it is private, served only through the authenticated route). Jon: confirm headers are always above the chips on your suppliers' cards; if not, the crop should go to the chip area only.
+
+## V2.1 step 7 — AI read, validator, eval
+### AI read (§11)
+- **Board OCR:** `read_board` now returns the board sorted: SKU blocks (style + colour), colour-key chips (chip → component → value), PLEASE instructions, "<SKU> ONLY" notes, ACTUAL SIZE panels, red-frame captions, and whether a reference product is shown. All stored on the file (`marks.board`).
+- What the board says becomes **AI suggestions to confirm** for questions not already settled: instructions → comments (on OVERVIEW until placed), ONLY notes → product features scoped to that colourway, SKU blocks → colourway names. Colour-key values are stored, not written into the breakdown (a chip-to-callout match is the designer's call).
+- Colourway renders are read as boards too (one style # per render).
+- **Multi-image read:** pre-fill sends the render plus up to 3 colourway renders and 3 reference photos, each labelled in the prompt.
+- **Reference products:** the prompt says reference photos are for shape / construction only; any answer whose note says REFERENCE PRODUCT is downgraded (estimate / inferred, low confidence) and noted "TAKEN FROM REFERENCE PRODUCT — CONFIRM".
+- **Auto-crop** is the existing render crop (R3.4); boards are read uncropped.

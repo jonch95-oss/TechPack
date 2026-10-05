@@ -31,6 +31,12 @@ export async function prefillPack(packId: string, user: { id: string }, progress
   try {
     await progress("Reading the render");
     const img = await readCroppedFile(render);
+    // Several images in one read (V2.1 §11): the other colourways' renders, then reference photos.
+    const extra = [
+      ...loaded.files.filter((f) => f.kind === "colorway_render").slice(0, 3).map((f) => ({ f, label: `COLOURWAY ${f.tag || ""} RENDER`.replace(/\s+/g, " ") })),
+      ...loaded.files.filter((f) => f.kind === "reference").slice(0, 3).map((f) => ({ f, label: `REFERENCE PHOTO${f.note ? ` — ${f.note}` : ""}` })),
+    ];
+    const extraImgs = (await Promise.all(extra.map(async (x) => ({ label: x.label, img: await readCroppedFile(x.f).catch(() => null) })))).filter((x): x is { label: string; img: { data: Buffer; contentType: string } } => !!x.img);
     const res = await callTechnicalDesigner<AnalyseRenderOutput>({
       task: "analyse_render",
       instructions: buildAnalyseInstructions({
@@ -40,8 +46,9 @@ export async function prefillPack(packId: string, user: { id: string }, progress
         styleName: loaded.pack.styleName,
         colorways: loaded.pack.colorways,
         hardwareLibrary: await brandHardware(loaded.brand.id),
+        extraImages: extraImgs.map((x) => x.label),
       }),
-      images: [img],
+      images: [img, ...extraImgs.map((x) => x.img)],
       schema: ANALYSE_RENDER_SCHEMA,
       fixtureName: `analyse_render.${loaded.pack.styleNo}`,
     });

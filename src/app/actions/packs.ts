@@ -311,7 +311,8 @@ export async function addPackFile(
     .returning({ id: packFiles.id });
   await audit({ userId: user.id, entity: "pack", entityId: packId, action: "create", field: `file:${file.kind}`, after: { id: f.id, name: file.name, tag } });
   // Read the board's own notes ("REFER TO SPEC" …) straight away, in the background.
-  if (file.kind === "render") await startJob(packId, "BOARD", { fileId: f.id }, user.id);
+  // Renders and colourway renders are boards too: one style # per render (V2.1 §11).
+  if (file.kind === "render" || file.kind === "colorway_render") await startJob(packId, "BOARD", { fileId: f.id }, user.id);
   revalidatePath(`/packs/${packId}`);
   return { ok: true, id: f.id, crop };
 }

@@ -246,7 +246,18 @@ export type FileMarks = {
   /** Red dot a leader line points to (on the render: the logo). */
   dot?: { x: number; y: number } | null;
   /** Render / board: text written around the product, read by the AI at upload ("REFER TO SPEC" …). */
-  board?: { text: string[]; refersToSpec: boolean; reference: string } | null;
+  board?: {
+    text: string[];
+    refersToSpec: boolean;
+    reference: string;
+    skus?: { style: string; colour: string }[];
+    colourKey?: { chip: string; component: string; value: string }[];
+    instructions?: string[];
+    only?: { style: string; feature: string }[];
+    actualSize?: string[];
+    captions?: string[];
+    referenceProduct?: boolean;
+  } | null;
   /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. BACK / SIDE: a view printed beside the front on OVERVIEW. */
   role?: "SIDE_VIEW" | "APPLICATION" | "BACK" | "SIDE" | null;
   /** The photo's real width: it then prints at actual size (1:1) with a scale note. */

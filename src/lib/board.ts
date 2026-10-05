@@ -4,40 +4,34 @@ import { db } from "@/db";
 import { packFiles } from "@/db/schema";
 import { callTechnicalDesigner } from "@/lib/ai/client";
 import { readStoredFile } from "@/lib/storage";
-
-const READ_BOARD_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["board_text", "refers_to_spec", "reference"],
-  properties: {
-    board_text: { type: "array", items: { type: "string" }, description: "Every note written on the board around the product, CAPITALS, as written." },
-    refers_to_spec: { type: "boolean", description: "True when a note sends the reader to another document: REFER TO SPEC, SEE SPEC SHEET, SEE TECH PACK, PER SPEC, MEASUREMENTS TO FOLLOW …" },
-    reference: { type: "string", description: "That note exactly, e.g. \"(REFER TO SPEC)\"; empty when none." },
-  },
-} as const;
-
-type ReadBoardOutput = { board_text: string[]; refers_to_spec: boolean; reference: string };
+import { loadPack } from "@/lib/data";
+import { writeAnswer } from "@/lib/answer-write";
+import { BOARD_INSTRUCTIONS, READ_BOARD_SCHEMA, boardAnswers, normaliseBoard, type ReadBoardOutput } from "@/lib/board-read";
 
 /**
  * read_board: the full (uncropped) render or design board, read for notes around the product — so a
  * board that says "REFER TO SPEC" asks the designer for the spec sheet straight away.
  */
-export async function readBoard(packId: string, fileId: string, styleNo: string) {
+export async function readBoard(packId: string, fileId: string, styleNo: string, user: { id: string } = { id: "" }) {
   const [file] = await db.select().from(packFiles).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));
   if (!file) return null;
   const img = await readStoredFile(file.url);
   const res = await callTechnicalDesigner<ReadBoardOutput>({
     task: "read_board",
-    instructions: "Read only the TEXT written on this design board / render around the product (labels, notes, arrows' captions). Ignore the product itself and any logo on it.",
+    instructions: BOARD_INSTRUCTIONS,
     images: [img],
     schema: READ_BOARD_SCHEMA,
     fixtureName: [`read_board.${styleNo}`],
     effort: "low",
   });
-  const text = (res.output.board_text ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean).slice(0, 30);
-  const reference = (res.output.reference ?? "").trim().toUpperCase();
-  const refersToSpec = !!res.output.refers_to_spec || text.some((t) => /REFER TO SPEC|SEE SPEC|PER SPEC|SEE TECH ?PACK|MEASUREMENTS? TO FOLLOW/.test(t));
-  const board = { text, refersToSpec, reference: reference || text.find((t) => /SPEC/.test(t)) || "" };
+  const board = normaliseBoard(res.output);
   await db.update(packFiles).set({ marks: { ...file.marks, board } }).where(eq(packFiles.id, file.id));
+  // What the board says becomes answers to confirm, for questions not already settled.
+  const p = await loadPack(packId);
+  if (p)
+    for (const s of boardAnswers(board, p.pack, p.answers)) {
+      const m = p.meta[s.questionId];
+      await writeAnswer({ packId, questionId: s.questionId, value: s.value, origin: "AI", status: "ai", source: "BOARD", note: s.note, userId: user.id || null }, m ? { value: p.answers[s.questionId], origin: m.origin, status: p.statuses[s.questionId], aiValue: m.aiValue } : null);
+    }
   return board;
 }
