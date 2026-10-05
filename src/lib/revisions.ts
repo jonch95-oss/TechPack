@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { flats, revisions, users, type Revision } from "@/db/schema";
 import type { LoadedPack } from "@/lib/data";
 import { changeLine, diffSnapshots, type Snapshot } from "@/lib/revision-diff";
+import { studioDay } from "@/lib/dates";
 
 const hash = (s: string) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);
 
@@ -29,7 +30,7 @@ export async function revisionState(p: LoadedPack, snap?: Snapshot) {
     .leftJoin(users, eq(users.id, revisions.createdBy))
     .where(eq(revisions.packId, p.pack.id))
     .orderBy(asc(revisions.number));
-  const list = rows.map(({ r, by }) => ({ id: r.id, number: r.number, label: revLabel(r.number), date: r.createdAt.toISOString().slice(0, 10), by: by ?? "", changes: r.changes, pdfUrl: r.pdfUrl, pages: r.pages }));
+  const list = rows.map(({ r, by }) => ({ id: r.id, number: r.number, label: revLabel(r.number), date: studioDay(r.createdAt), by: by ?? "", changes: r.changes, pdfUrl: r.pdfUrl, pages: r.pages }));
   const latest = rows.at(-1)?.r ?? null;
   const now = snap ?? (await currentSnapshot(p));
   const pending = latest ? diffSnapshots(latest.snapshot as Snapshot, now, p.pack.category) : [];

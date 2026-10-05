@@ -9,6 +9,7 @@ import { ChipRow } from "@/components/chips";
 import { CommitText } from "@/components/commit-text";
 import { Badge, Button, Empty, cx } from "@/components/ui";
 import { FileButton } from "@/components/library/hardware-form";
+import { studioDay } from "@/lib/dates";
 
 type Comment = { id: string; letter: string; text: string; photoUrl: string | null; markup: Markup; status: string; carried: boolean };
 type Round = { id: string; stage: "PROTO" | "SMS" | "PP" | "TOP"; number: number; receivedAt: string; factory: string; verdict: string; notes: string; comments: Comment[] };
@@ -20,7 +21,7 @@ export function SampleLog({ packId, rounds, factory, canEdit }: { packId: string
   const router = useRouter();
   const [sel, setSel] = useState(rounds.at(-1)?.id ?? "");
   const [creating, setCreating] = useState(rounds.length === 0);
-  const [draft, setDraft] = useState({ stage: (rounds.length ? NEXT_STAGE[rounds.at(-1)!.stage] : "PROTO") as Round["stage"], receivedAt: new Date().toISOString().slice(0, 10), factory });
+  const [draft, setDraft] = useState({ stage: (rounds.length ? NEXT_STAGE[rounds.at(-1)!.stage] : "PROTO") as Round["stage"], receivedAt: studioDay(), factory });
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const round = rounds.find((r) => r.id === sel) ?? rounds.at(-1);

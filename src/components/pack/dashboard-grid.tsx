@@ -8,6 +8,7 @@ import { Badge, Thumb } from "@/components/ui";
 import { STATUS_LABEL, statusTone } from "@/lib/status";
 import { PIPELINE } from "@/lib/dashboard";
 import type { PackStatus } from "@/db/schema";
+import { fmtDate } from "@/lib/dates";
 
 export type DashPack = {
   id: string;
@@ -82,7 +83,7 @@ export function PackGrid({ packs, view, canEdit, isAdmin, designers, archivedVie
         <div className={`${compact ? "pl-7" : "mt-3 pt-3 border-t border-hairline"} text-[10px] tracking-[0.18em] uppercase text-mist`}>
           {r.due ? <span className={r.due === "ASAP" ? "text-signal" : "text-ink-soft"}>DUE {r.due} · </span> : null}
           {r.assignee ? `${r.assignee} · ` : r.by ? `${r.by} · ` : ""}
-          {new Date(r.updatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+          {fmtDate(r.updatedAt)}
         </div>
       </Link>
     </div>

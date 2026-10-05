@@ -2,6 +2,7 @@
  * Dashboard at volume (V2 §8): the filters a URL carries, parsed and normalised. Pure.
  */
 import { CATEGORIES } from "@/lib/questions/types";
+import { studioDay } from "@/lib/dates";
 
 export const PAGE_SIZE = 24;
 export const PIPELINE = ["DRAFT", "IN_REVIEW", "APPROVED", "SENT", "PROTO_RECEIVED", "CLOSED"] as const;
@@ -65,8 +66,7 @@ export function filterHref(f: DashFilters, change: Partial<DashFilters>): string
 
 /** ISO dates for the due filters, from today. */
 export function dueWindow(today: Date) {
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
   const week = new Date(today);
   week.setDate(week.getDate() + 7);
-  return { today: iso(today), week: iso(week) };
+  return { today: studioDay(today), week: studioDay(week) };
 }
