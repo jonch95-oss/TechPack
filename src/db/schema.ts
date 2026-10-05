@@ -62,6 +62,9 @@ export const brands = pgTable("brands", {
   licensorRequired: boolean("licensor_required").notNull().default(false),
   /** The unit the brand works in (V2.1 §5): a new pack starts in it. CM | INCHES. */
   defaultUnit: text("default_unit").notNull().default("CM"),
+  /** Second-designer sign-off before the final PDF, per stage (V2 §3 step 5): off for proto, on for production by default. */
+  signoffProto: boolean("signoff_proto").notNull().default(false),
+  signoffProduction: boolean("signoff_production").notNull().default(true),
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

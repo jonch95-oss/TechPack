@@ -8,7 +8,7 @@ import { Button, Label, TextInput, cx } from "@/components/ui";
 import { Toggle } from "@/components/chips";
 import { FileButton } from "@/components/library/hardware-form";
 
-type B = { id?: string; name: string; codePrefix: string; codeFormat: string; logoUrl: string | null; licensorRequired: boolean; defaultUnit?: "CM" | "INCHES"; next?: string };
+type B = { id?: string; name: string; codePrefix: string; codeFormat: string; logoUrl: string | null; licensorRequired: boolean; defaultUnit?: "CM" | "INCHES"; signoffProto?: boolean; signoffProduction?: boolean; next?: string };
 
 export function BrandsAdmin({ brands }: { brands: B[] }) {
   const [adding, setAdding] = useState(false);
@@ -82,6 +82,11 @@ function BrandRow({ b, onDone }: { b: B; onDone?: () => void }) {
           <option value="CM">CM</option>
           <option value="INCHES">INCHES</option>
         </select>
+      </div>
+      <div className="text-[12px] space-y-1" data-testid="brand-signoff">
+        <Label>Sign-off before final PDF</Label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={!!v.signoffProto} onChange={(e) => setV({ ...v, signoffProto: e.target.checked })} className="accent-ink" /> Proto</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={v.signoffProduction !== false} onChange={(e) => setV({ ...v, signoffProduction: e.target.checked })} className="accent-ink" /> Production</label>
       </div>
       <div className="flex flex-col items-end gap-2">
         <Button

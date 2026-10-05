@@ -72,6 +72,9 @@ export async function saveBrand(input: {
   licensorRequired?: boolean;
   /** The unit the brand works in: new packs start in it (V2.1 §5). */
   defaultUnit?: "CM" | "INCHES";
+  /** Second-designer sign-off before the final PDF, per stage. */
+  signoffProto?: boolean;
+  signoffProduction?: boolean;
 }): Promise<ActionResult> {
   const admin = await requireRole("admin");
   const name = input.name.trim();
@@ -91,6 +94,8 @@ export async function saveBrand(input: {
     logoUrl: input.logoUrl ?? null,
     licensorRequired: Boolean(input.licensorRequired),
     defaultUnit: input.defaultUnit === "INCHES" ? "INCHES" : "CM",
+    ...(input.signoffProto !== undefined ? { signoffProto: !!input.signoffProto } : {}),
+    ...(input.signoffProduction !== undefined ? { signoffProduction: !!input.signoffProduction } : {}),
     updatedBy: admin.id,
     updatedAt: new Date(),
   };

@@ -43,7 +43,7 @@ import { QuestionField } from "./question-field";
 import { FilesPanel } from "./files-panel";
 import { ExportPanel } from "./export-panel";
 import { SignOff } from "./signoff";
-import { SIGNED_OFF } from "@/lib/status";
+import { SIGNED_OFF, signoffRequired } from "@/lib/status";
 import { DuplicatePack } from "./duplicate";
 import { StartFrom } from "./start-from";
 import { SetupEditor } from "./setup-editor";
@@ -77,7 +77,7 @@ export type WorkspaceProps = {
   factoryQuestions: { id: string; askedBy: string; question: string; answer: string; answeredByName: string | null; createdAt: string; answeredAt: string | null }[];
   sampleSummary: { rounds: number; open: number };
   flatSummary: { count: number; inferred: number };
-  brand: { id: string; name: string; logoUrl: string | null; licensorRequired: boolean };
+  brand: { id: string; name: string; logoUrl: string | null; licensorRequired: boolean; signoffProto?: boolean; signoffProduction?: boolean };
   sentBy: string;
   answers: AnswerMap;
   statuses: Record<string, AnswerStatus>;
@@ -845,7 +845,7 @@ export function PackWorkspace(props: WorkspaceProps) {
               factoryStyleNo={pack.factoryStyleNo}
               canEdit={canEdit}
             />
-            <ExportPanel packId={pack.id} version={version} onJump={jump} canEdit={canEdit} signedOff={SIGNED_OFF.includes(pack.status)} />
+            <ExportPanel packId={pack.id} version={version} onJump={jump} canEdit={canEdit} signedOff={SIGNED_OFF.includes(pack.status) || !signoffRequired(stage, props.brand)} />
             <a href={`/api/packs/${pack.id}/techpack`} target="_blank" className="block pb-5 text-center text-[9.5px] tracking-[0.2em] uppercase text-mist hover:text-ink">
               TechPack JSON
             </a>

@@ -169,6 +169,13 @@
       "when": 1791172957374,
       "tag": "0023_change_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791173111215,
+      "tag": "0024_brand_signoff",
+      "breakpoints": true
     }
   ]
 }

@@ -15,3 +15,11 @@ export function statusTone(s: PackStatus): "ok" | "ai" | "neutral" | "gold" {
 
 /** Statuses at which the final PDF may be exported (a second designer has signed off). */
 export const SIGNED_OFF: PackStatus[] = ["APPROVED", "SENT", "PROTO_RECEIVED", "CLOSED"];
+
+/**
+ * Whether the final PDF needs a second designer's sign-off: a brand × stage setting (V2 §3 step 5),
+ * off for proto and on for production unless the brand says otherwise.
+ */
+export function signoffRequired(stage: "PROTO" | "PRODUCTION", brand: { signoffProto?: boolean; signoffProduction?: boolean }) {
+  return stage === "PRODUCTION" ? brand.signoffProduction !== false : brand.signoffProto === true;
+}

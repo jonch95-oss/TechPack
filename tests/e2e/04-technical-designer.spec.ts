@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
-import { hardware, materials, packAnswers, packs, users } from "../../src/db/schema";
+import { brands, hardware, materials, packAnswers, packs, users } from "../../src/db/schema";
 import { referenceAssets } from "./assets";
 import { login } from "./helpers";
 
@@ -136,6 +136,9 @@ test("technical designer: POM, BOM, approvals, duplicate, sign-off, factory Q&A,
   await expect.poll(() => failing(page, copyId), { timeout: 20_000 }).toEqual([]);
 
   /* ---------- second-designer sign-off before the final PDF ---------- */
+  // Sign-off is a brand × stage setting (V2 §3 step 5), off for proto by default: this brand turns it on.
+  const [copyRow] = await db.select({ brandId: packs.brandId }).from(packs).where(eq(packs.id, copyId));
+  await db.update(brands).set({ signoffProto: true }).where(eq(brands.id, copyRow.brandId));
   const finalPdf = () => page.request.get(`/api/packs/${copyId}/pdf`, { timeout: 180_000 });
   const unsigned = await finalPdf();
   expect(unsigned.status()).toBe(409);

@@ -62,7 +62,7 @@ export default async function PackPage(props: PageProps<"/packs/[id]">) {
         }))}
         sampleSummary={{ rounds: rounds.length, open: openComments }}
         flatSummary={{ count: flatRows.length, inferred: flatRows.filter((f) => f.status === "INFERRED").length }}
-        brand={{ id: p.brand.id, name: p.brand.name, logoUrl: p.brand.logoUrl, licensorRequired: p.brand.licensorRequired }}
+        brand={{ id: p.brand.id, name: p.brand.name, logoUrl: p.brand.logoUrl, licensorRequired: p.brand.licensorRequired, signoffProto: p.brand.signoffProto, signoffProduction: p.brand.signoffProduction }}
         sentBy={p.sentBy}
         answers={p.answers}
         statuses={p.statuses}

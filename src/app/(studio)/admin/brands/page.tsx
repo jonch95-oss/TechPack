@@ -15,7 +15,7 @@ export default async function BrandsPage() {
       <PageHeader eyebrow="Administration" title="Brands">
         One ICON template; the brand logo in the masthead is the only visual differentiator. Each brand has a style / code prefix and a code format.
       </PageHeader>
-      <BrandsAdmin brands={rows.map((b, i) => ({ id: b.id, name: b.name, codePrefix: b.codePrefix, codeFormat: b.codeFormat, logoUrl: b.logoUrl, licensorRequired: b.licensorRequired, defaultUnit: b.defaultUnit === "INCHES" ? "INCHES" : "CM", next: next[i] }))} />
+      <BrandsAdmin brands={rows.map((b, i) => ({ id: b.id, name: b.name, codePrefix: b.codePrefix, codeFormat: b.codeFormat, logoUrl: b.logoUrl, licensorRequired: b.licensorRequired, defaultUnit: b.defaultUnit === "INCHES" ? "INCHES" : "CM", signoffProto: b.signoffProto, signoffProduction: b.signoffProduction, next: next[i] }))} />
     </>
   );
 }

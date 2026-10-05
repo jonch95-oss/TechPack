@@ -3,7 +3,7 @@ import { loadPack } from "@/lib/data";
 import { audit } from "@/lib/audit";
 import { buildPackDoc } from "@/lib/pdf/doc";
 import { gatePasses, type RuleResult } from "@/lib/validation";
-import { SIGNED_OFF } from "@/lib/status";
+import { SIGNED_OFF, signoffRequired } from "@/lib/status";
 import { attachRevisionPdf, issueRevision, revLabel, withdrawRevision } from "@/lib/revisions";
 import { storeFile } from "@/lib/storage";
 import { makePackPdf, pdfName } from "@/lib/pdf/make";
@@ -25,7 +25,7 @@ export async function exportPackPdf(packId: string, user: { id: string; canEdit:
   const doc = await buildPackDoc(p);
   if (!draft && !gatePasses(doc.validation))
     return { ok: false, status: 409, error: "Export is blocked until every rule passes.", failing: doc.validation.filter((r) => r.status === "fail") };
-  if (!draft && !SIGNED_OFF.includes(p.pack.status)) return { ok: false, status: 409, error: "A second designer has to sign the pack off before the final PDF.", failing: [] };
+  if (!draft && signoffRequired(p.pack.stage, p.brand) && !SIGNED_OFF.includes(p.pack.status)) return { ok: false, status: 409, error: "A second designer has to sign the pack off before the final PDF.", failing: [] };
   let finalDoc = doc;
   let revision: Awaited<ReturnType<typeof issueRevision>> | null = null;
   if (!draft) {
