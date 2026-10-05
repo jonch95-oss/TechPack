@@ -76,7 +76,15 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   const withImages = opts.images !== false;
   // Templates read plain values; reference answers ("SAME AS …", "FOLLOW REFERENCE IMAGE") print as written.
   const { values: a, refs: refAnswers } = splitReferences(p.answers);
-  const refNotes = Object.entries(refAnswers).map(([qid, r]) => ({ questionId: qid, label: (findQuestion(p.pack.category, qid)?.label ?? qid).toUpperCase(), text: refText(r) }));
+  // A packaging page that prints carries its own artwork note, so page 1 doesn't repeat it. Where two
+  // reference answers share a question label ("ARTWORK"), each says what it belongs to.
+  const pkgByArtwork = new Map(PACKAGING_PAGES.map((pg) => [`${pg.id}.artwork`, pg]));
+  const sectionTitle = (qid: string) => sectionsFor(p.pack.category).find((s) => s.questions.some((q) => q.id === qid))?.title ?? "";
+  const refNotesRaw = Object.entries(refAnswers)
+    .filter(([qid]) => !(pkgByArtwork.has(qid) && a[optionalToggleId(pkgByArtwork.get(qid)!.id)] === true))
+    .map(([qid, r]) => ({ questionId: qid, label: (findQuestion(p.pack.category, qid)?.label ?? qid).toUpperCase(), text: refText(r) }));
+  const labelUses = refNotesRaw.reduce<Record<string, number>>((m, n) => ((m[n.label] = (m[n.label] ?? 0) + 1), m), {});
+  const refNotes = refNotesRaw.map((n) => (labelUses[n.label] > 1 ? { ...n, label: `${(pkgByArtwork.get(n.questionId)?.title ?? sectionTitle(n.questionId)).toUpperCase()} ${n.label}`.trim() } : n));
   // Parts identified by a description (no library item yet, V2.1 §1.3) print as written, with the
   // other hardware rows, in the SPECIFICATIONS block.
   const ctx = { category: p.pack.category, answers: a, brand: p.brand };

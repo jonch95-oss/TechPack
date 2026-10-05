@@ -1093,7 +1093,15 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
       };
       // Enlarged views beside the 100% set, so every detail dimension reads.
       const tallest = front ? trueSize(h.dimsMm, front.w / front.h).hMm : 30;
-      const enlarge = Math.max(1.5, Math.min(3, ((panelH - 0.9) * 25.4) / tallest));
+      // Enlarged as far as the panel allows, leaving room for the caption. A part already too tall to
+      // enlarge 1.2× (it was forced to 1.5× and clipped) shows its 100% set only.
+      const fit = Math.min(3, ((panelH - 1.05) * 25.4) / tallest);
+      const enlarge = exact ? fit : Math.max(1.5, fit);
+      const showEnlarged = !exact || fit >= 1.2; // without a size, the enlarged drawing is the only one
+      // The 100% set sits under the type / code / size label (~1.95in of the panel). A part taller than
+      // the space left there was clipped by the box, so it gets its own column beside the label instead.
+      const hundred = exact ? `<div style="display:flex;gap:0.2in;align-items:flex-end">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}${view("top", "TOP")}</div>` : "";
+      const ownColumn = exact && tallest / 25.4 + 0.35 > panelH - 1.95;
       const fs = h.finishSpec as { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
       const notes = [
         ...h.use.map((u) => `PLACEMENT: ${u}`),
@@ -1127,8 +1135,9 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
       return `<div class="box" style="display:flex;gap:0.35in;align-items:flex-start;margin-bottom:${TRIMS.gap}in;height:${panelH}in;overflow:hidden;padding:14px 18px">
         <div style="width:1.9in;flex:none"><div style="font-size:15pt">${up(h.type)}<br/>${up(h.code)}</div>${h.dimsMm ? `<div style="font-size:14pt;margin-top:4px">${esc(h.dimsMm)} MM</div>` : ""}
           <div style="display:inline-block;margin-top:10px;padding:4px 14px;border-radius:14px;background:${exact ? "#5ab4e6" : "#999"};color:#fff;font-size:${exact ? 15 : 11}pt">${exact ? "SIZE 100%" : "NOT TO SCALE — SIZE NOT GIVEN"}</div>
-          ${exact ? `<div style="display:flex;gap:0.2in;align-items:flex-end;margin-top:0.25in">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}${view("top", "TOP")}</div>` : ""}</div>
-        <div style="display:flex;gap:0.3in;align-items:flex-end;flex:none">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>
+          ${exact && !ownColumn ? `<div style="margin-top:0.25in">${hundred}</div>` : ""}</div>
+        ${ownColumn ? `<div style="flex:none">${hundred}</div>` : ""}
+        ${showEnlarged ? `<div style="display:flex;gap:0.3in;align-items:flex-end;flex:none">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>` : ""}
         ${dims}
         <div style="flex:1;min-width:1.5in">${relief}<div style="font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div></div>
         ${std}
@@ -1164,8 +1173,10 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
  */
 function logoPanel(doc: PackDoc, p: PackDoc["logo"]["panels"][number]) {
   const inches = doc.unit === "in";
-  const maxW = 2.9 * 25.4,
-    maxH = 1.45 * 25.4; // mm the artwork can take in the panel
+  // mm the artwork can take in the panel. 1.9in leaves the notes beside it a ~1.2in column (at 2.9in
+  // they wrapped one word per line); large logos print "REDUCED TO FIT" with their true size on the dim line.
+  const maxW = (p.photo ? 2.9 : 1.9) * 25.4,
+    maxH = 1.45 * 25.4;
   // Only the given dimensions are drawn: a width-only logo keeps its artwork's own proportions.
   const aspect = p.art ? p.art.h / p.art.w : 0.3;
   const wmm = p.w ?? (p.h != null ? p.h / aspect : 40),
@@ -1182,7 +1193,7 @@ function logoPanel(doc: PackDoc, p: PackDoc["logo"]["panels"][number]) {
   const width = logoPanelWidth(p);
   return `<div style="width:${width}in;display:flex;gap:0.25in;align-items:flex-start;flex:none">
       <div style="position:relative;padding:0.4in 0 0 0.55in;flex:none">${wLine}${hLine}${art}<div class="muted" style="font-size:8pt;margin-top:3px">${scale}</div></div>
-      <div style="min-width:0;flex:1"><div style="font-size:${fitPt(p.title.toUpperCase(), p.photo ? 2.2 : 1.6, 2, 15, 9)}pt;line-height:1.1">${up(p.title)}</div>${p.primary ? toolingNote(doc) : ""}${p.notes.length ? `<div style="font-size:9.5pt;line-height:1.3;margin-top:4px;color:#1a8bd0">${p.notes.map((x) => up(x)).join("<br/>")}</div>` : ""}</div>
+      <div style="min-width:0;flex:1"><div style="font-size:${fitPt(p.title.toUpperCase(), p.photo ? 2.2 : 1.2, 2, 15, 9)}pt;line-height:1.1">${up(p.title)}</div>${p.primary ? toolingNote(doc) : ""}${p.notes.length ? `<div style="font-size:9.5pt;line-height:1.3;margin-top:4px;color:#1a8bd0">${p.notes.map((x) => up(x)).join("<br/>")}</div>` : ""}</div>
       ${p.photo ? `<div style="position:relative;width:3.2in;height:1.4in;flex:none">${imgIn(p.photo, { x: 0, y: 0, w: 3.2, h: 1.4 })}</div>` : ""}
     </div>`;
 }
