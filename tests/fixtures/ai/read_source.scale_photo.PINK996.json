@@ -1,0 +1,17 @@
+{
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 — an Off-White-style micro-mesh shoulder bag on a design board.",
+ "answers": [
+  {
+   "question_id": "hb.strap.drop",
+   "value_json": "52",
+   "unit": "CM",
+   "note": "RULER: STRAP DROP ~52CM"
+  }
+ ],
+ "row_values": [],
+ "new_rows": [],
+ "measurements": [],
+ "hardware": [],
+ "board_notes": [],
+ "notes": ""
+}

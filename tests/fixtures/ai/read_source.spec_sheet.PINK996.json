@@ -1,0 +1,160 @@
+{
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 — an Off-White-style micro-mesh shoulder bag on a design board.",
+ "answers": [
+  {
+   "question_id": "dims.h",
+   "value_json": "185",
+   "unit": "MM",
+   "note": "SPEC: TOTAL HEIGHT 185"
+  },
+  {
+   "question_id": "dims.w",
+   "value_json": "255",
+   "unit": "MM",
+   "note": "SPEC: TOTAL WIDTH 255"
+  },
+  {
+   "question_id": "dims.d",
+   "value_json": "70",
+   "unit": "MM",
+   "note": "SPEC: TOTAL DEPTH 70"
+  },
+  {
+   "question_id": "hb.strap.width",
+   "value_json": "38",
+   "unit": "MM",
+   "note": "SPEC: STRAP WIDTH 38"
+  },
+  {
+   "question_id": "hb.strap.length",
+   "value_json": "120",
+   "unit": "CM",
+   "note": "SPEC: STRAP LENGTH 120CM"
+  }
+ ],
+ "row_values": [
+  {
+   "question_id": "hb.ext_pockets",
+   "row": 0,
+   "column": "w",
+   "value_json": "160",
+   "unit": "MM",
+   "note": "SPEC: POCKET W 160"
+  },
+  {
+   "question_id": "hb.ext_pockets",
+   "row": 0,
+   "column": "h",
+   "value_json": "90",
+   "unit": "MM",
+   "note": "SPEC: POCKET H 90"
+  },
+  {
+   "question_id": "zippers.list",
+   "row": 0,
+   "column": "length",
+   "value_json": "140",
+   "unit": "MM",
+   "note": "SPEC: ZIP OPENING 140"
+  }
+ ],
+ "new_rows": [],
+ "measurements": [
+  {
+   "point": "TOTAL HEIGHT",
+   "value": 185,
+   "unit": "MM",
+   "tolerance": 5,
+   "how": "CENTRE FRONT"
+  },
+  {
+   "point": "STRAP DROP",
+   "value": 550,
+   "unit": "MM",
+   "tolerance": 10,
+   "how": ""
+  }
+ ],
+ "hardware": [
+  {
+   "type": "LOGO PLATE",
+   "description": "ARROWS LOGO PLATE",
+   "supplier_code": "N/A",
+   "dims_mm": "50 X 32",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "FRONT CENTRE"
+  },
+  {
+   "type": "BUCKLE",
+   "description": "SQUARE PRONG BUCKLE",
+   "supplier_code": "N/A",
+   "dims_mm": "INNER 40",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "STRAP"
+  },
+  {
+   "type": "HARDWARE",
+   "description": "RECTANGULAR STRAP RING",
+   "supplier_code": "-",
+   "dims_mm": "40 X 15",
+   "material": "ZINC ALLOY",
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "BOTH TOP CORNERS"
+  },
+  {
+   "type": "EYELET",
+   "description": "METAL EYELET",
+   "supplier_code": "TBC",
+   "dims_mm": "DIA 8",
+   "material": "BRASS",
+   "finish": "BLACK NICKEL",
+   "finish_stated": true,
+   "qty": null,
+   "location": "FRONT"
+  },
+  {
+   "type": "ZIPPER PULL",
+   "description": "RING ZIP PULL",
+   "supplier_code": "N/A",
+   "dims_mm": "",
+   "material": "ZINC ALLOY",
+   "finish": "NOT STATED ON SPEC SHEET — CONFIRM (GUNMETAL PER RENDER)",
+   "finish_stated": false,
+   "qty": null,
+   "location": "FRONT POCKET ZIPS"
+  }
+ ],
+ "board_notes": [],
+ "notes": "",
+ "materials": [
+  {
+   "callout": 1,
+   "colorway": "",
+   "description": "BLACK NYLON MICRO MESH",
+   "part": "MAIN BODY",
+   "locations": [
+    "FRONT",
+    "BACK",
+    "GUSSET"
+   ]
+  },
+  {
+   "callout": 0,
+   "colorway": "",
+   "description": "BLACK SMOOTH LEATHER 1.2MM",
+   "part": "TRIM",
+   "locations": [
+    "TRIM",
+    "STRAP"
+   ]
+  }
+ ]
+}

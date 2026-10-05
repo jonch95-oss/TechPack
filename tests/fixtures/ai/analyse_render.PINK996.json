@@ -1,0 +1,118 @@
+{
+ "_comment": "TEST FIXTURE (not recorded model output) for e2e spec 09 \u2014 an Off-White-style micro-mesh shoulder bag on a design board.",
+ "answers": [
+  {
+   "question_id": "hb.silhouette",
+   "value_json": "\"SHOULDER BAG\"",
+   "basis": "seen",
+   "note": "SOFT SHOULDER BAG"
+  },
+  {
+   "question_id": "hb.strap",
+   "value_json": "true",
+   "basis": "seen",
+   "note": "WEBBING SHOULDER STRAP WITH BUCKLE"
+  },
+  {
+   "question_id": "dims.h",
+   "value_json": "18",
+   "basis": "estimated",
+   "note": "FROM PROPORTIONS"
+  },
+  {
+   "question_id": "dims.w",
+   "value_json": "25",
+   "basis": "estimated",
+   "note": "FROM PROPORTIONS"
+  },
+  {
+   "question_id": "dims.d",
+   "value_json": "7",
+   "basis": "estimated",
+   "note": "FROM PROPORTIONS"
+  }
+ ],
+ "materials": [
+  {
+   "name": "MICRO MESH",
+   "locations": [
+    "FRONT",
+    "BACK",
+    "GUSSET"
+   ]
+  },
+  {
+   "name": "#5 METAL ZIPPER",
+   "locations": [
+    "FRONT"
+   ]
+  }
+ ],
+ "exterior_pockets": [
+  {
+   "type": "ZIP POCKET",
+   "position": "FRONT",
+   "qty": 2,
+   "detail": "curved, ring pull"
+  }
+ ],
+ "hardware": [
+  {
+   "type": "LOGO PLATE",
+   "description": "ARROWS PLATE",
+   "qty": 1,
+   "placement": "FRONT CENTRE",
+   "library_code": ""
+  },
+  {
+   "type": "BUCKLE",
+   "description": "SQUARE PRONG BUCKLE",
+   "qty": 1,
+   "placement": "STRAP",
+   "library_code": ""
+  },
+  {
+   "type": "ZIPPER PULL",
+   "description": "RING ZIP PULL",
+   "qty": 2,
+   "placement": "FRONT POCKETS",
+   "library_code": ""
+  },
+  {
+   "type": "SQUARE RING",
+   "description": "RECTANGULAR STRAP RING",
+   "qty": 2,
+   "placement": "SIDES",
+   "library_code": ""
+  },
+  {
+   "type": "EYELET",
+   "description": "EYELET",
+   "qty": 1,
+   "placement": "FRONT",
+   "library_code": ""
+  }
+ ],
+ "zippers": [
+  {
+   "position": "FRONT POCKET",
+   "size": "#5",
+   "type": "METAL",
+   "qty": 2
+  }
+ ],
+ "colorways": [
+  {
+   "name": "black"
+  }
+ ],
+ "visible_features": [
+  "2 CURVED FRONT ZIP POCKETS",
+  "ARROWS PLATE"
+ ],
+ "not_visible": [
+  "INTERIOR",
+  "BACK"
+ ],
+ "agent_notes": ""
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "packs" ADD COLUMN "assigned_to" uuid;--> statement-breakpoint
+ALTER TABLE "packs" ADD CONSTRAINT "packs_assigned_to_users_id_fk" FOREIGN KEY ("assigned_to") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;

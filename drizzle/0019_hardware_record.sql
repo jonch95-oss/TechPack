@@ -1,0 +1,1 @@
+ALTER TABLE "hardware" ADD COLUMN "record" jsonb DEFAULT '{}'::jsonb NOT NULL;

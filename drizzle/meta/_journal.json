@@ -1,0 +1,181 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790890892893,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790895744559,
+      "tag": "0001_must_change_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790900323152,
+      "tag": "0002_workflow_samples_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790904684691,
+      "tag": "0003_phase3_4_flats_revisions_glossary",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790908376837,
+      "tag": "0004_reference_marks_detail_dims",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790912337118,
+      "tag": "0005_pack_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790912348954,
+      "tag": "0006_remove_smoke_test_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790914459300,
+      "tag": "0007_background_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790914608507,
+      "tag": "0008_remove_smoke_test_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790915500095,
+      "tag": "0009_ai_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790966651560,
+      "tag": "0010_cleanup_test_packs_ow001",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790972108564,
+      "tag": "0011_hardware_field_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790972109471,
+      "tag": "0012_cleanup_finish_notes_ow_90004",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790972741610,
+      "tag": "0013_answer_origin_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790973404400,
+      "tag": "0014_pdf_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790975328440,
+      "tag": "0015_pack_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790977524732,
+      "tag": "0016_standard_page_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791124708032,
+      "tag": "0017_hardware_view_crops",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791163810321,
+      "tag": "0018_multi_style_and_brand_unit",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791169190654,
+      "tag": "0019_hardware_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791171060552,
+      "tag": "0020_material_card_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791172404936,
+      "tag": "0021_archive_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791172717617,
+      "tag": "0022_pack_assignee",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791172957374,
+      "tag": "0023_change_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791173111215,
+      "tag": "0024_brand_signoff",
+      "breakpoints": true
+    }
+  ]
+}

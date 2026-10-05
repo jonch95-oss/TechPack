@@ -1,0 +1,1 @@
+ALTER TABLE "hardware" ADD COLUMN "view_crops" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -1,26 +1,135 @@
 @import "tailwindcss";
 
+/*
+ * ICON — house palette.
+ * Ivory paper, ink, a hairline taupe and one restrained antique-gold accent.
+ * Red is reserved for ★ required / errors (as on the printed packs); yellow for material callouts.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ivory: #f7f4ee;
+  --paper: #fbf9f5;
+  --ink: #15130f;
+  --ink-soft: #3a352e;
+  --taupe: #8a8175;
+  --mist: #b9b1a5;
+  --hairline: #e3ddd2;
+  --hairline-strong: #cfc6b8;
+  --gold: #a5844c;
+  --gold-soft: #efe5d2;
+  --signal: #a8261d;
+  --signal-soft: #f6e3df;
+  --callout: #f3d43a;
+  --ok: #3f5b45;
+  --ok-soft: #e4ebe2;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ivory: var(--ivory);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-taupe: var(--taupe);
+  --color-mist: var(--mist);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-callout: var(--callout);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--ivory);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ivory);
+  color: var(--ink);
+  font-family: var(--font-sans), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+::selection {
+  background: var(--gold-soft);
+  color: var(--ink);
+}
+
+/* Tracked small capitals used for labels and navigation. */
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--taupe);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.hairline {
+  border-color: var(--hairline);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Underlined inputs show focus with their ink rule, not a box. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* Thin, quiet scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent, var(--gold-soft), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
 }
