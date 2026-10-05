@@ -5,7 +5,7 @@
  */
 import bcrypt from "bcryptjs";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import postgres from "postgres";
 import { brands, glossary, users } from "../src/db/schema";
 import { DEFAULT_GLOSSARY } from "../src/lib/zh/dictionary";
@@ -16,8 +16,8 @@ const LAUNCH_BRANDS = [
   { name: "Palm Angels", codePrefix: "PA", licensorRequired: false },
   { name: "PLAY Palm Angels", codePrefix: "PPA", licensorRequired: false },
   { name: "L/AB c/o Off-White", codePrefix: "LAB", licensorRequired: false },
-  { name: "Ted Baker", codePrefix: "TB", licensorRequired: true },
-  { name: "Champion", codePrefix: "CH", licensorRequired: true },
+  { name: "Ted Baker", codePrefix: "TB", licensorRequired: true, defaultUnit: "INCHES" },
+  { name: "Champion", codePrefix: "CH", licensorRequired: true, defaultUnit: "INCHES" },
 ];
 
 async function main() {
@@ -29,6 +29,10 @@ async function main() {
   for (const b of LAUNCH_BRANDS) {
     const existing = await db.select({ id: brands.id }).from(brands).where(eq(brands.name, b.name));
     if (!existing.length) await db.insert(brands).values({ ...b, codeFormat: `${b.codePrefix}###` });
+    // Brands created before units existed sit on the CM column default. Move the inch brands over,
+    // but never one an admin has edited (updated_by set) — their choice stands.
+    else if (b.defaultUnit === "INCHES")
+      await db.update(brands).set({ defaultUnit: "INCHES" }).where(and(eq(brands.name, b.name), eq(brands.defaultUnit, "CM"), isNull(brands.updatedBy)));
   }
   // Starter trade glossary (BRIEF 1.5) — only when empty, so admins' edits are never overwritten.
   if (!(await db.select({ id: glossary.id }).from(glossary).limit(1)).length) {
