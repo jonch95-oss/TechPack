@@ -55,6 +55,30 @@ export const LOGO_TYPES = [
   "METAL LETTERING",
 ];
 
+/** Logo and embellishment methods seen on real packs (V2.1 §6). */
+export const EMBELLISHMENT_METHODS = [
+  "SCREEN PRINT",
+  "TPU PRINT",
+  "RAISED TPU PRINT",
+  "PRINT ON WEBBING",
+  "EMBROIDERY",
+  "PATCH",
+  "SEWN-ON PATCH",
+  "DEBOSS",
+  "EMBOSS",
+  "TONAL EMBOSS",
+  "HEAT STAMP",
+  "FOIL",
+  "TRAPUNTO",
+  "RHINESTONE / HOTFIX",
+  "METAL PLATE",
+  "METAL PLAQUE MOULDED FLUSH",
+  "ENAMEL BADGE",
+  "WOVEN LABEL",
+  "KNOCK-OUT",
+  "POP STITCHING",
+];
+
 export const RETAILERS = ["TJX/MARSHALLS", "TJ MAXX", "HOMEGOODS", "SIERRA", "WINNERS", "BEALLS", "ROSS", "BURLINGTON"];
 export const SEASONS = ["SS26", "FW26", "HOLIDAY 26", "SS27", "FW27", "HOLIDAY 27"];
 
@@ -232,6 +256,18 @@ export const COMMON_SECTIONS: Section[] = [
         required: true,
       },
       {
+        // Breakdown trim columns (V2.1 §6): plastic components, cord, buckles, piping, pop stitching,
+        // interior pop colour … — each a column headed by its callout (T1, T2 …), filled per colourway.
+        id: "materials.trims",
+        label: "Trim columns in the breakdown",
+        kind: "rows",
+        addLabel: "Add trim column",
+        columns: [
+          { key: "name", label: "Trim", kind: "text", required: true },
+          { key: "note", label: "Note", kind: "text" },
+        ],
+      },
+      {
         id: "materials.matrix",
         label: "Material / colour breakdown — per colorway",
         kind: "colorway_matrix",
@@ -287,6 +323,31 @@ export const COMMON_SECTIONS: Section[] = [
         showIf: { q: "branding.logo_type", in: ["DEBOSS PATCH", "EMBOSS", "TONAL HEAT STAMP", "FOIL HEAT STAMP", "ENGRAVED HARDWARE", "METAL LOGO PLATE"] },
       },
       { id: "branding.new_tooling", label: "New die / mould needed", kind: "toggle" },
+      { id: "branding.artwork_print", label: "Logo artwork (print library)", kind: "lib", lib: "print", help: "Shown at the logo's size on the TRIMS & HARDWARE page." },
+      {
+        // Many logos and embellishments per product, per colourway (V2.1 §6). Sizes in mm; an inch
+        // pack prints them in inches with the mm in brackets.
+        id: "branding.items",
+        label: "More logos & embellishments",
+        kind: "rows",
+        addLabel: "Add logo / embellishment",
+        columns: [
+          { key: "method", label: "Method", kind: "chips", options: EMBELLISHMENT_METHODS, required: true },
+          { key: "artwork", label: "Artwork (print library)", kind: "lib", lib: "print" },
+          { key: "file", label: "Artwork file name", kind: "text" },
+          { key: "w", label: "W", kind: "stepper", unit: "mm" },
+          { key: "h", label: "H", kind: "stepper", unit: "mm" },
+          { key: "colour", label: "Colour / Pantone", kind: "text" },
+          { key: "placement", label: "Placement", kind: "text", required: true },
+          { key: "position", label: "Position", kind: "text" },
+          { key: "relief", label: "Relief (depth / height)", kind: "stepper", unit: "mm" },
+          { key: "orientation", label: "Orientation", kind: "chips", options: ["HORIZONTAL", "VERTICAL — READS TOP TO BOTTOM", "VERTICAL — READS BOTTOM TO TOP"] },
+          { key: "border", label: "Border / finish", kind: "text" },
+          { key: "count", label: "Count", kind: "stepper", unit: "qty", showIf: { key: "method", in: ["RHINESTONE / HOTFIX"] } },
+          { key: "motif", label: "Motif", kind: "text", showIf: { key: "method", in: ["TRAPUNTO", "RHINESTONE / HOTFIX", "EMBROIDERY"] } },
+          { key: "only", label: "Only on (colourway or style #)", kind: "text" },
+        ],
+      },
     ],
   },
   {

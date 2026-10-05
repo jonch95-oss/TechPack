@@ -218,3 +218,26 @@ The nine golden packs were printed through the standard layout and compared with
   - nesting runs within each piece type.
 - **Size families:** `header.size_family` and `header.sample_size` print on page 1 (SIZES / SAMPLE SIZE).
 - **Unit per brand:** a brand's unit (admin → brands) is the unit a new pack starts in.
+
+## V2.1 step 5 — branding, embellishment, trims, components
+### Logos and embellishments
+- `branding.items` holds every logo and embellishment after the main one. Each has:
+  - method (screen print, TPU / raised TPU, print on webbing, embroidery, patch / sewn-on patch, deboss / emboss / tonal emboss, heat stamp, foil, trapunto, rhinestone / hotfix, metal plate / plaque, enamel badge, woven label, knock-out, pop stitching);
+  - artwork (print library) or file name, W / H (mm), colour / Pantone;
+  - placement and position, relief, orientation, border / finish;
+  - count and motif (rhinestones, trapunto);
+  - the colourway(s) it is only on.
+- `branding.artwork_print` gives the main logo artwork from the print library.
+- **Artwork panel for every method** (TRIMS & HARDWARE):
+  - the artwork at its stated size, with a dimension line for each given dimension (inches with mm in brackets in an inch pack);
+  - "ACTUAL SIZE (1:1)" when it fits the panel, otherwise reduced and said so;
+  - a width-only logo keeps its artwork's own proportions and gets no H line;
+  - panels pack into rows across the page (`logoRows`); TRIMS & HARDWARE paginates over component panels, then logo rows, then photos.
+- **Decision:** logos made as hardware (metal plate / plaque, enamel badge, engraved hardware, metal lettering) print as their component's panel, not as an artwork panel. They are parts, with their own sheet.
+- **Golden:** a study's proposed `_new.branding.items` (type, width in inches, colour, placement) is now entered as `branding.items`.
+
+### Breakdown trim columns
+- `materials.trims` lists the pack's own trim columns (name, note). Each becomes a breakdown column after the materials, keyed `trim_<n>` and headed by a `T<n>` callout, filled per colourway like any other cell.
+- A trim column always prints, even before its cells are filled, so a missing value shows.
+- **Decision:** a removed trim keeps the numbers of the ones after it (`trim_<n>` follows the row index), so filled cells never move to another trim.
+- **Golden:** a study's proposed `_new.materials.matrix_trims` (colourway → trim → value) is entered as `materials.trims` plus the `trim_<n>` cells.

@@ -13,7 +13,7 @@ import { intoCrop, readCroppedFile } from "@/lib/crop";
 import { spellcheckParts } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
-import { planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
+import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
 import { logoPointFor, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
@@ -237,7 +237,41 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   }
   const logoSize = a["branding.logo_size"] as Dims2Value | undefined;
   const logoHw = hwById.get(lib(a["branding.logo_code"])?.id ?? "");
-  const logoPanel = logoSize?.w != null && logoSize?.h != null && /PATCH|DEBOSS|EMBOSS/.test(String(a["branding.logo_type"] ?? "")) ? { w: logoSize.w, h: logoSize.h, photo: logoHw?.photoUrl ?? null } : null;
+  /*
+   * Logo / embellishment artwork panels (V2.1 §6): every logo and embellishment with a size, whatever
+   * its method, drawn at its stated size. Logos made as hardware (a metal plate, plaque, badge or
+   * lettering) are components: they print as their part's panel instead.
+   */
+  const MADE_AS_HARDWARE = /METAL (LOGO )?PLATE|METAL PLAQUE|ENAMEL BADGE|ENGRAVED HARDWARE|METAL LETTERING/;
+  type LogoItem = { method?: string; artwork?: LibValue; file?: string; w?: number; h?: number; colour?: string; placement?: string; position?: string; relief?: number; orientation?: string; border?: string; count?: number; motif?: string; only?: string };
+  const logoType = String(a["branding.logo_type"] ?? "");
+  const sized = (w?: number | null, h?: number | null) => typeof w === "number" || typeof h === "number";
+  const logoPanelsRaw = [
+    ...(logoType && !MADE_AS_HARDWARE.test(logoType) && sized(logoSize?.w, logoSize?.h)
+      ? [{ primary: true, title: `LOGO ${logoType.replace(" PATCH", "")}${a["branding.fill"] ? ` WITH ${a["branding.fill"]}` : ""}`, w: logoSize?.w ?? null, h: logoSize?.h ?? null, artId: lib(a["branding.artwork_print"])?.id, photoUrl: logoHw?.photoUrl ?? null, notes: [] as string[] }]
+      : []),
+    ...((a["branding.items"] as LogoItem[] | undefined) ?? [])
+      .filter((i) => i.method && !MADE_AS_HARDWARE.test(i.method) && sized(i.w, i.h))
+      .map((i) => ({
+        primary: false,
+        title: `${i.method}${i.colour ? ` — ${i.colour}` : ""}`,
+        w: typeof i.w === "number" ? i.w : null,
+        h: typeof i.h === "number" ? i.h : null,
+        artId: i.artwork?.id,
+        photoUrl: null as string | null,
+        notes: [
+          [i.placement, i.position].filter(Boolean).join(", "),
+          i.border,
+          typeof i.relief === "number" && `RELIEF ${mmText(i.relief, unit === "in")}`,
+          i.orientation,
+          typeof i.count === "number" && `${i.count} PCS`,
+          i.motif && `MOTIF: ${i.motif}`,
+          i.file && `FILE: ${i.file}`,
+          i.only?.trim() && `${i.only.trim().toUpperCase()} ONLY`,
+        ].filter((x): x is string => !!x),
+      })),
+  ];
+  const logoPanelsN = logoPanelsRaw.length;
 
   /* ---------- lining artwork ---------- */
   const liningPrintId = lib(a["interior.lining_print"])?.id ?? Object.values(matrix).map((r) => r?.lining?.lib?.id).find((id) => id && printById.has(id));
@@ -356,7 +390,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
 
   /* ---------- trims & hardware pages: panels that don't fit continue on the next page ---------- */
   const trimsPhotoCount = photoPages.filter((x) => x === "TRIMS & HARDWARE").length;
-  const trims = trimsLayout(detail.length, !!logoPanel, trimsPhotoCount > 0);
+  const logoRowList = logoRows(logoPanelsRaw.map(logoPanelWidth));
+  const trims = trimsLayout(detail.length, logoRowList.map((r) => r.reduce((t, i) => t + logoPanelWidth(logoPanelsRaw[i]) + 0.3, -0.3)), trimsPhotoCount > 0);
 
   // A feature one colourway has and the others don't prints "<STYLE #> ONLY" (V2.1 §4).
   const styleOf = (cw: string) => p.pack.colorwayStyles?.[cw] ?? (p.pack.colorways.length > 1 && cw.startsWith("-") ? `${p.pack.styleNo}${cw}` : cw);
@@ -376,7 +411,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     referencePhotoCount: photoPages.filter((x) => x === "REFERENCE IMAGES").length,
     hasLiningArtwork: !!liningPrint,
     liningArtworkOnInterior: artworkOnInterior,
-    detailPanelCount: detail.length + (logoPanel ? 1 : 0),
+    detailPanelCount: detail.length + logoPanelsN,
     swatches: cards.map((c) => ({ colorway: c.chips[0].colorways[0], materialCallout: c.chips[0].callout })),
     swatchUse,
     swatchesOnOnePage: a["pages.swatches"] === "ALL ON ONE PAGE",
@@ -510,7 +545,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       placement: (a["branding.placement"] as string) ?? "",
       placementRef,
       onBack: logoBack,
-      panel: logoPanel ? { ...logoPanel, photo: await img(logoPanel.photo) } : null,
+      panels: await Promise.all(logoPanelsRaw.map(async (lp) => ({ ...lp, art: lp.artId && printById.get(lp.artId) ? await img(printById.get(lp.artId)!.motifUrl) : null, photo: await img(lp.photoUrl) }))),
+      rows: logoRowList,
       fill: (a["branding.fill"] as string) ?? "",
     },
     measures,

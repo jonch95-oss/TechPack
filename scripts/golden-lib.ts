@@ -21,6 +21,45 @@ export type GoldenPack = { library?: LibPart[]; colorwayStyles?: Record<string, 
 
 /* ------------------------------ loading ------------------------------ */
 
+/**
+ * Ids the studies proposed that now exist in the bank, with how their study shape maps onto the
+ * question (so they count as entered facts, no longer as proposed ones).
+ */
+const ADOPTED: Record<string, { id: string; map: (v: unknown) => unknown; also?: (v: unknown, answers: Record<string, unknown>) => void }> = {
+  // { "-A": { "PIPING": "SELF FABRIC", … } } → trim columns + their cells in the breakdown.
+  "materials.matrix_trims": {
+    id: "materials.trims",
+    map: (v) => {
+      const names = [...new Set(Object.values((v ?? {}) as Record<string, Record<string, unknown>>).flatMap((row) => Object.keys(row ?? {})))];
+      return names.map((name) => ({ name }));
+    },
+    also: (v, answers) => {
+      const rows = (v ?? {}) as Record<string, Record<string, unknown>>;
+      const names = [...new Set(Object.values(rows).flatMap((row) => Object.keys(row ?? {})))];
+      const m = ((answers["materials.matrix"] as Record<string, Record<string, unknown>>) ?? {}) as Record<string, Record<string, unknown>>;
+      for (const [cw, row] of Object.entries(rows)) {
+        m[cw] = { ...(m[cw] ?? {}) };
+        names.forEach((n, i) => {
+          const x = (row ?? {})[n];
+          if (x != null && String(x).trim()) m[cw][`trim_${i + 1}`] = typeof x === "string" ? x : String(x);
+        });
+      }
+      answers["materials.matrix"] = m;
+    },
+  },
+  "branding.items": {
+    id: "branding.items",
+    map: (v) =>
+      Array.isArray(v)
+        ? v.map((r) => {
+            const o = (r ?? {}) as Record<string, unknown>;
+            const inch = typeof o.width_in === "number" ? o.width_in : null;
+            return { method: o.type ?? o.method, w: inch != null ? Math.round(inch * 25.4 * 10) / 10 : o.w, colour: o.colour, placement: o.placement };
+          })
+        : v,
+  },
+};
+
 const jsonBlock = (file: string) => {
   const m = /```json\n([\s\S]*?)```/.exec(readFileSync(file, "utf8"));
   if (!m) throw new Error(`${path.basename(file)}: no JSON block`);
@@ -72,11 +111,18 @@ export function fromStudy(file: string): GoldenPack[] {
   if ("pack.brand" in e) {
     const answers: Record<string, unknown> = {};
     const extra: string[] = [];
+    const later: (() => void)[] = [];
     for (const [k, v] of Object.entries(e)) {
       if (k.startsWith("pack.")) continue;
-      if (k.startsWith("_new.")) extra.push(k.slice(5));
+      if (k.startsWith("_new.") && ADOPTED[k.slice(5)] && v !== null) {
+        const ad = ADOPTED[k.slice(5)];
+        answers[ad.id] = ad.map(unwrap(v));
+        later.push(() => ad.also?.(unwrap(v), answers));
+      }
+      else if (k.startsWith("_new.")) extra.push(k.slice(5));
       else if (v !== null) answers[k] = unwrap(v);
     }
+    later.forEach((f) => f());
     return [{ label, brand: String(e["pack.brand"]), category: category(e["pack.category"]), colorways: colorwaysOf(e["pack.colorways"], answers["colorways.names"], answers["materials.matrix"]), answers, extra }];
   }
   // Format 2: {brand, category, pack, answers, proposed_new}.

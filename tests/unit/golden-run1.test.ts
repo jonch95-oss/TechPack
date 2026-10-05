@@ -4,9 +4,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { missingFrom, mmText, specItems, tight, valueOf } from "@/lib/pdf/specs";
-import { planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
+import { logoRows, planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
 import { calloutPoint, logoPointFor, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
-import { completeness, findQuestion } from "@/lib/questions";
+import { completeness, findQuestion, matrixColumns } from "@/lib/questions";
 import { validatePack } from "@/lib/validation";
 
 const base: PlanInput = {
@@ -67,15 +67,15 @@ describe("P0.2 — comments and photos make their page print", () => {
 
 describe("P0.3 — TRIMS & HARDWARE paginates", () => {
   it("seven parts run over four pages, two to a page, the logo row on the last", () => {
-    const pages = trimsLayout(7, true);
+    const pages = trimsLayout(7, [7.4]);
     expect(pages.map((p) => p.to - p.from)).toEqual([2, 2, 2, 1]);
-    expect(pages[3].row).toBe(true);
+    expect(pages[3].rows).toEqual([0]);
     const plan = planPages({ ...base, detailPanelCount: 7, trimsPages: pages.length });
     expect(plan.pages.filter((p) => p.section === "TRIMS & HARDWARE").map((p) => ("part" in p ? `${p.part.i}/${p.part.of}` : ""))).toEqual(["1/4", "2/4", "3/4", "4/4"]);
   });
 
   it("a full last page puts the logo row on a page of its own", () => {
-    expect(trimsLayout(2, true).map((p) => [p.to - p.from, p.row])).toEqual([[2, false], [0, true]]);
+    expect(trimsLayout(2, [7.4]).map((p) => [p.to - p.from, p.rows.length])).toEqual([[2, 0], [0, 1]]);
   });
 
   it("SPECIFICATIONS pages follow OVERVIEW; a Hardware pack is one component sheet", () => {
@@ -155,10 +155,12 @@ describe("golden run 2", () => {
   });
 
   it("#3 trims photos get 3 in of room or a page of their own", () => {
-    expect(trimsLayout(1, true, true).map((p) => [p.to - p.from, p.row, p.photos])).toEqual([[1, true, "row"]]);
-    expect(trimsLayout(1, false, true).map((p) => [p.to - p.from, p.photos])).toEqual([[1, "grid"]]);
-    expect(trimsLayout(2, false, true).map((p) => [p.to - p.from, p.photos])).toEqual([[2, false], [0, "grid"]]);
-    expect(trimsLayout(0, false, true).map((p) => p.photos)).toEqual(["grid"]);
+    expect(trimsLayout(1, [7.4], true).map((p) => [p.to - p.from, p.rows.length, p.photos])).toEqual([[1, 1, "row"]]);
+    expect(trimsLayout(1, [], true).map((p) => [p.to - p.from, p.photos])).toEqual([[1, "grid"]]);
+    expect(trimsLayout(2, [], true).map((p) => [p.to - p.from, p.photos])).toEqual([[2, false], [0, "grid"]]);
+    expect(trimsLayout(0, [], true).map((p) => p.photos)).toEqual(["grid"]);
+    // A full-width logo row leaves no room beside it: the photos get their own page.
+    expect(trimsLayout(1, [16], true).map((p) => p.photos)).toEqual([false, "grid"]);
   });
 
   it("#3 a caption saying actual size without a real width is flagged, never guessed", () => {
@@ -237,5 +239,21 @@ describe("V2.1 step 4 — multi-style packs, sets, size families", () => {
   it("size family and sample size are answers that print", () => {
     const items = specItems("Hardside luggage", { "header.size_family": '20", 24", 28"', "header.sample_size": '28"' });
     expect(items.map((i) => i.qid)).toEqual(["header.size_family", "header.sample_size"]);
+  });
+});
+
+describe("V2.1 step 5 — logos and embellishments", () => {
+  it("logo panels pack into rows by width", () => {
+    expect(logoRows([3.9, 3.9, 3.9, 3.9, 7.4])).toEqual([[0, 1, 2], [3, 4]]);
+    expect(logoRows([])).toEqual([]);
+  });
+});
+
+describe("V2.1 step 5 — breakdown trim columns", () => {
+  it("each pack trim is a breakdown column headed by a T callout, after the materials", () => {
+    const cols = matrixColumns({ category: "Handbags", answers: { "materials.list": [{ callout: 1, name: "BODY", locations: [] }], "materials.trims": [{ name: "piping" }, { name: "" }, { name: "binding" }] } });
+    const keys = cols.map((c) => c.key);
+    expect(keys.slice(0, 3)).toEqual(["mat_1", "trim_1", "trim_3"]);
+    expect(cols.find((c) => c.key === "trim_1")).toMatchObject({ label: "PIPING", trim: "T1" });
   });
 });

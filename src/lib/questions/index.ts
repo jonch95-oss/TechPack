@@ -116,7 +116,7 @@ function allQuestionIds(category: Category) {
 /* Colorway matrix                                                     */
 /* ------------------------------------------------------------------ */
 
-export type MatrixColumn = { key: string; label: string; lib?: "material" | "print"; callout?: number };
+export type MatrixColumn = { key: string; label: string; lib?: "material" | "print"; callout?: number; /** A trim column's callout: T1, T2 … */ trim?: string };
 
 export function hasZipper(ctx: EvalContext): boolean {
   const a = ctx.answers;
@@ -141,6 +141,10 @@ export function bodyMaterials(list: MaterialEntry[] | undefined): MaterialEntry[
 export function matrixColumns(ctx: EvalContext): MatrixColumn[] {
   const mats = bodyMaterials(ctx.answers["materials.list"] as MaterialEntry[] | undefined);
   const cols: MatrixColumn[] = mats.map((m) => ({ key: `mat_${m.callout}`, label: m.name || `MATERIAL ${m.callout}`, lib: "material", callout: m.callout }));
+  // The pack's own trim columns, after the materials (V2.1 §6).
+  ((ctx.answers["materials.trims"] as { name?: string }[] | undefined) ?? []).forEach((t, i) => {
+    if (t?.name?.trim()) cols.push({ key: `trim_${i + 1}`, label: t.name.trim().toUpperCase(), trim: `T${i + 1}` });
+  });
   const interior = sectionsFor(ctx.category).some((s) => s.id === "interior" && evalCondition(s.showIf, ctx));
   if (interior) cols.push({ key: "lining", label: "LINING", lib: "print" });
   cols.push({ key: "edge_paint", label: "EDGE PAINT" });

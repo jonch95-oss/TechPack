@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PackDoc } from "./doc";
 import { missingFrom, mmText, tight, type SpecItem } from "./specs";
-import { planPages, TRIMS } from "./plan";
+import { logoPanelWidth, planPages, TRIMS } from "./plan";
 import { calloutPoint, spreadPoints, usDate } from "./hints";
 import { inlineFlat } from "@/lib/lineart/geometry";
 
@@ -620,13 +620,15 @@ function measurementsPage(doc: PackDoc, n: number) {
  * column unless a cell uses it. Below it, each colourway's render with its SKU block.
  */
 function colourwaysPage(doc: PackDoc, n: number) {
-  const used = doc.matrixColumns.filter((c, i) => c.key.startsWith("mat_") || doc.rows.some((r) => String(r.cells[i]?.text ?? "").trim()));
+  const used = doc.matrixColumns.filter((c, i) => c.key.startsWith("mat_") || c.trim || doc.rows.some((r) => String(r.cells[i]?.text ?? "").trim()));
   const idx = used.map((c) => doc.matrixColumns.indexOf(c));
   // "HARDWARE & SNAP" only when the pack has snaps (golden run 1 #16).
   const hasSnaps = /SNAP/.test(JSON.stringify(doc.placements) + doc.closure + JSON.stringify(doc.refNotes));
   const headCell = (c: (typeof used)[number]) =>
     c.key.startsWith("mat_")
       ? `<th><span class="callout" style="width:26px;height:26px;font-size:13pt">${c.callout}</span><br/>${up(c.label)}</th>`
+      : c.trim
+        ? `<th><span class="callout" style="width:30px;height:26px;font-size:11pt;background:#fff;border-radius:13px">${c.trim}</span><br/>${up(c.label)}</th>`
       : c.key === "logo"
         ? `<th class="red">LOGO${doc.logo.type ? `<br/>${up(doc.logo.type)}` : ""}${upd(doc, "branding.logo_type", "branding.logo_code", "branding.finish", "branding.fill")}</th>`
         : c.key === "hardware_finish"
@@ -1070,7 +1072,7 @@ function trimsUsed(doc: PackDoc, page: number) {
   const pg = doc.trims[page];
   if (!pg) return 0;
   const panelH = doc.detail.length > 1 ? TRIMS.panel : TRIMS.single;
-  return (pg.to - pg.from) * (panelH + TRIMS.gap) + (pg.row ? TRIMS.row : 0);
+  return (pg.to - pg.from) * (panelH + TRIMS.gap) + pg.rows.length * TRIMS.row;
 }
 
 function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = { i: 1, of: 1 }) {
@@ -1122,19 +1124,13 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
       </div>`;
     })
     .join("");
-  const lp = pg.row ? doc.logo.panel : null;
-  const logo = lp
-    ? `<div style="display:flex;gap:0.6in;align-items:center">
-        <div style="position:relative;padding:0.4in 0 0 0.55in">
-          <div class="dim" style="position:absolute;top:0;left:0.55in;width:${lp.w}mm;text-align:center;font-size:${doc.unit === "in" ? 12 : 15}pt;white-space:nowrap">${mmText(lp.w, doc.unit === "in")}</div>
-          <div class="dim" style="position:absolute;left:0;top:0.4in;height:${lp.h}mm;display:flex;align-items:center;font-size:15pt;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap">${mmText(lp.h, doc.unit === "in")}</div>
-          <div style="width:${lp.w}mm;height:${lp.h}mm;border:2px solid #111;display:flex;align-items:center;justify-content:center;font-size:12pt;outline:1px dashed #111;outline-offset:-5px;letter-spacing:0.3em">${up(doc.brand.name)}</div>
-        </div>
-        <div style="text-align:center"><div style="font-size:16pt">LOGO ${up(doc.logo.type.replace(" PATCH", ""))}${doc.logo.fill ? ` WITH ${up(doc.logo.fill)}` : ""}</div>${toolingNote(doc)}${lp.photo ? `<div style="position:relative;width:3.2in;height:1.4in;margin-top:8px">${imgIn(lp.photo, { x: 0, y: 0, w: 3.2, h: 1.4 })}</div>` : ""}</div>
-      </div>`
-    : "";
+  // Logo / embellishment artwork panels on this page, a row at a time (V2.1 §6).
+  const logoRowsHtml = pg.rows.map((r, k) => {
+    const last = k === pg.rows.length - 1;
+    return `<div style="display:flex;gap:0.3in;align-items:flex-start;justify-content:flex-start;margin-top:0.1in;height:${TRIMS.row - 0.2}in">${doc.logo.rows[r].map((i) => logoPanel(doc, doc.logo.panels[i])).join("")}${last && pg.photos === "row" ? `<div style="display:flex;gap:0.3in;margin-left:auto">${photos.map((ph) => rowPhoto(ph)).join("")}</div>` : ""}</div>`;
+  });
   // Photos take the space the panels leave (golden run 2 #3): one photo gets half the page, several share it.
-  const panelsH = (pg.to - pg.from) * (panelH + TRIMS.gap) + (lp ? TRIMS.row : 0);
+  const panelsH = (pg.to - pg.from) * (panelH + TRIMS.gap) + pg.rows.length * TRIMS.row;
   const free: R = { x: 0.4, y: 1.35 + panelsH + 0.05, w: 16.2, h: 10.5 - (1.35 + panelsH + 0.05) };
   const photoArea = photos.length === 1 ? { ...free, w: Math.min(free.w, 8.1) } : free;
   // A Hardware-category pack is this one page: its leftover answers print under the panel.
@@ -1142,11 +1138,41 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
   const title = doc.componentOnly ? "COMPONENT SHEET" : "TRIMS & HARDWARE";
   return `${openPage(doc, n, `${title}${part.of > 1 ? ` (${part.i}/${part.of})` : ""}`, { comments: "TRIMS & HARDWARE", extra: doc.componentOnly ? doc.refNotes : [] })}
     <div class="abs" style="left:0.4in;right:0.4in;top:1.35in">${panels}
-      ${logo ? `<div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.1in;height:${TRIMS.row - 0.2}in">${logo}${pg.photos === "row" ? `<div style="display:flex;gap:0.3in">${photos.map((ph) => rowPhoto(ph)).join("")}</div>` : ""}</div>` : ""}
+      ${logoRowsHtml.join("")}
       ${specs.length ? `<div class="specs" style="column-count:${photos.length ? 2 : 3};column-gap:0.35in;margin-top:0.1in;${photos.length ? "margin-left:8.4in" : ""}">${specBlock(specs)}</div>` : ""}
     </div>
     ${photos.length && pg.photos === "grid" ? photoGrid(photos, specs.length ? { ...free, w: 8.1 } : photoArea) : ""}
   ${CLOSE_PAGE}`;
+}
+
+/**
+ * One logo / embellishment artwork panel (V2.1 §6): the artwork (print-library file, the part photo,
+ * or the brand name boxed) at its stated size with a dimension line for each given dimension — at
+ * actual size when it fits the panel, reduced (and said so) when it doesn't — then its notes.
+ */
+function logoPanel(doc: PackDoc, p: PackDoc["logo"]["panels"][number]) {
+  const inches = doc.unit === "in";
+  const maxW = 2.9 * 25.4,
+    maxH = 1.45 * 25.4; // mm the artwork can take in the panel
+  // Only the given dimensions are drawn: a width-only logo keeps its artwork's own proportions.
+  const aspect = p.art ? p.art.h / p.art.w : 0.3;
+  const wmm = p.w ?? (p.h != null ? p.h / aspect : 40),
+    hmm = p.h ?? wmm * aspect;
+  const k = Math.min(1, maxW / wmm, maxH / hmm);
+  const dw = wmm * k,
+    dh = hmm * k;
+  const scale = k >= 0.999 ? "ACTUAL SIZE (1:1)" : `REDUCED TO FIT — ${Math.round(k * 100)}% OF ACTUAL SIZE`;
+  const art = p.art
+    ? `<img src="${p.art.src}" style="width:${r2(dw)}mm;height:${r2(dh)}mm;object-fit:contain;display:block"/>`
+    : `<div style="width:${r2(dw)}mm;height:${r2(dh)}mm;border:2px solid #111;display:flex;align-items:center;justify-content:center;font-size:${Math.max(7, Math.min(12, dh * 0.9))}pt;outline:1px dashed #111;outline-offset:-5px;letter-spacing:0.3em;overflow:hidden">${up(doc.brand.name)}</div>`;
+  const wLine = p.w != null ? `<div class="dim" style="position:absolute;top:0;left:0.55in;width:${r2(dw)}mm;text-align:center;font-size:${inches ? 11 : 13}pt;white-space:nowrap;border-bottom:1.5px solid ${RED}">${mmText(p.w, inches)}</div>` : "";
+  const hLine = p.h != null ? `<div class="dim" style="position:absolute;left:0;top:0.4in;height:${r2(dh)}mm;display:flex;align-items:center;font-size:${inches ? 11 : 13}pt;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;border-left:1.5px solid ${RED}">${mmText(p.h, inches)}</div>` : "";
+  const width = logoPanelWidth(p);
+  return `<div style="width:${width}in;display:flex;gap:0.25in;align-items:flex-start;flex:none">
+      <div style="position:relative;padding:0.4in 0 0 0.55in;flex:none">${wLine}${hLine}${art}<div class="muted" style="font-size:8pt;margin-top:3px">${scale}</div></div>
+      <div style="min-width:0;flex:1"><div style="font-size:${fitPt(p.title.toUpperCase(), p.photo ? 2.2 : 1.6, 2, 15, 9)}pt;line-height:1.1">${up(p.title)}</div>${p.primary ? toolingNote(doc) : ""}${p.notes.length ? `<div style="font-size:9.5pt;line-height:1.3;margin-top:4px;color:#1a8bd0">${p.notes.map((x) => up(x)).join("<br/>")}</div>` : ""}</div>
+      ${p.photo ? `<div style="position:relative;width:3.2in;height:1.4in;flex:none">${imgIn(p.photo, { x: 0, y: 0, w: 3.2, h: 1.4 })}</div>` : ""}
+    </div>`;
 }
 
 /** A photo in the logo row: as large as the row allows, captioned. */
