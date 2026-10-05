@@ -101,6 +101,22 @@ export const materials = pgTable(
 export type Approval = { status: "PENDING" | "APPROVED" | "REJECTED"; type: string; date: string; note: string };
 export type FinishSpec = { plating?: string; coating?: string; nickelFree?: boolean; mouldNo?: string; newMould?: boolean; platingThickness?: string };
 
+/**
+ * The rest of a component's record (V2.1 §7): colour of a non-metal part, relief treatments (each a
+ * callout: depth + treatment + location), orientation, mounting, parent part, where each style uses it,
+ * and the shared finish standard (a FINISH STANDARD library item: its photo + plating spec).
+ */
+export type HardwareRecord = {
+  colour?: string;
+  relief?: { treatment: string; mm?: number | null; location: string }[];
+  orientation?: string;
+  mounting?: string;
+  parent?: string;
+  usage?: { style: string; qty?: number | null; location: string }[];
+  finishStandardId?: string | null;
+  logoFile?: string;
+};
+
 export type HardwareViews = { front?: string; side?: string; rear?: string; top?: string };
 export type ViewCrop = { x: number; y: number; w: number; h: number };
 export type HardwareViewCrops = { front?: ViewCrop | null; side?: ViewCrop | null; rear?: ViewCrop | null; top?: ViewCrop | null };
@@ -130,6 +146,7 @@ export const hardware = pgTable(
     detailDims: jsonb("detail_dims").$type<{ label: string; mm?: number | null }[]>().notNull().default([]),
     /** Plating / coating spec, nickel-free, mould number, new mould needed. */
     finishSpec: jsonb("finish_spec").$type<FinishSpec>().notNull().default({}),
+    record: jsonb("record").$type<HardwareRecord>().notNull().default({}),
     /** Plating sample / mould / sample approval. */
     approval: jsonb("approval").$type<Approval>().notNull().default({ status: "PENDING", type: "", date: "", note: "" }),
     /** Fields an AI read filled without a printed value (e.g. finish taken from the render): "ai" until a designer confirms. */

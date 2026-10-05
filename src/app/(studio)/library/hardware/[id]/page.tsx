@@ -17,6 +17,7 @@ export default async function HardwareItemPage(props: PageProps<"/library/hardwa
   const item = isNew ? null : (await db.select().from(hardware).where(eq(hardware.id, id)))[0];
   if (!isNew && !item) notFound();
   const all = (await db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)));
+  const standards = (await db.select({ id: hardware.id, code: hardware.code, finish: hardware.finish, name: hardware.name }).from(hardware).where(eq(hardware.type, "FINISH STANDARD")).orderBy(asc(hardware.code))).map((h) => ({ id: h.id, label: [h.code, h.finish || h.name].filter(Boolean).join(" · ") }));
   const used = item ? (await usedIn([item.id])).get(item.id) ?? [] : undefined;
   return (
     <>
@@ -24,7 +25,7 @@ export default async function HardwareItemPage(props: PageProps<"/library/hardwa
       <PageHeader eyebrow={item ? item.type : "New component"} title={item ? item.code : "New component"}>
         {isNew && "Type, dimensions, views, material, logo treatment, enamel and hollow/solid. Enter the code — it is checked against every component and style number."}
       </PageHeader>
-      {isNew ? <HardwareCreated brands={all} /> : <HardwareForm item={item!} brands={all} canEdit={can(user, "designer")} usedIn={used} />}
+      {isNew ? <HardwareCreated brands={all} /> : <HardwareForm item={item!} brands={all} canEdit={can(user, "designer")} usedIn={used} standards={standards} />}
     </>
   );
 }

@@ -134,6 +134,13 @@
       "when": 1791163810321,
       "tag": "0018_multi_style_and_brand_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791169190654,
+      "tag": "0019_hardware_record",
+      "breakpoints": true
     }
   ]
 }

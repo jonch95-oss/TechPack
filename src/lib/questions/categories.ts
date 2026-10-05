@@ -1,4 +1,4 @@
-import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "./common";
+import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES, MOUNTINGS, RELIEF_TREATMENTS } from "./common";
 import type { Category, Question, Section } from "./types";
 
 const ZIP_TYPES = ["COIL", "METAL", "MOLDED", "PLASTIC W/ METAL FINISH"];
@@ -522,7 +522,7 @@ const hardwareSheet: Section = {
   questions: [
     { id: "hw.type", label: "Type", kind: "chips", options: HARDWARE_TYPES, required: true },
     { id: "hw.component", label: "Component (library)", kind: "lib", lib: "hardware", required: true, help: "Pick the component or + New to assign the next code." },
-    { id: "hw.views", label: "Views to draw", kind: "multi", options: ["FRONT", "SIDE", "REAR", "TOP"], required: true },
+    { id: "hw.views", label: "Views to draw", kind: "multi", options: ["FRONT", "SIDE", "REAR", "TOP", "SECTION"], required: true },
     { id: "hw.scale", label: "Drawing scale", kind: "chips", options: ["100%"], noOther: true, required: true },
     { id: "hw.overall_w", label: "Overall width", kind: "stepper", unit: "mm", required: true },
     { id: "hw.overall_h", label: "Overall height", kind: "stepper", unit: "mm", required: true },
@@ -540,6 +540,8 @@ const hardwareSheet: Section = {
     },
     { id: "hw.material", label: "Material", kind: "chips", options: HARDWARE_MATERIALS, required: true },
     { id: "hw.finish", label: "Finish", kind: "chips", options: HARDWARE_FINISHES, required: true },
+    { id: "hw.colour", label: "Colour / Pantone", kind: "text", help: "Non-metal parts (plastic, rubber, TPU) and Pantone-matched finishes." },
+    { id: "hw.finish_standard", label: "Finish standard (shared)", kind: "lib", lib: "hardware", hardwareTypes: ["FINISH STANDARD"], help: "The finish-standard photo and plating spec shared by every part in this finish." },
     {
       id: "hw.logo_treatment",
       label: "Logo treatment",
@@ -552,7 +554,31 @@ const hardwareSheet: Section = {
     { id: "hw.hollow_where", label: "Hollow where", kind: "comment", showIf: { q: "hw.hollow", eq: true } },
     { id: "hw.edge", label: "Edge", kind: "chips", options: ["BEVELLED", "ROUNDED", "SQUARE"] },
     { id: "hw.etched_sides", label: "Etched side pattern", kind: "toggle" },
-    { id: "hw.attachment", label: "Attachment", kind: "chips", options: ["SCREW", "RIVET", "PRONG", "SEWN TAB"] },
+    { id: "hw.attachment", label: "Mounting / attachment", kind: "chips", options: MOUNTINGS },
+    {
+      id: "hw.relief",
+      label: "Relief and surface treatments",
+      kind: "rows",
+      addLabel: "Add treatment",
+      columns: [
+        { key: "treatment", label: "Treatment", kind: "chips", options: RELIEF_TREATMENTS, required: true },
+        { key: "mm", label: "Depth / height (mm)", kind: "stepper", unit: "mm" },
+        { key: "location", label: "On", kind: "text", required: true },
+      ],
+    },
+    { id: "hw.orientation", label: "Orientation", kind: "text", help: "E.g. LOGO READS UPRIGHT WHEN THE CASE STANDS." },
+    { id: "hw.parent", label: "Parent part", kind: "lib", lib: "hardware" },
+    {
+      id: "hw.usage",
+      label: "Used on",
+      kind: "rows",
+      addLabel: "Add style",
+      columns: [
+        { key: "style", label: "Style #", kind: "text", required: true },
+        { key: "qty", label: "Qty", kind: "stepper", unit: "qty" },
+        { key: "location", label: "Location", kind: "text", required: true },
+      ],
+    },
   ],
 };
 

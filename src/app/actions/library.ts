@@ -4,7 +4,7 @@ import { friendlyAIError } from "@/lib/ai/errors";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type HardwareViewCrops, type PantoneColour } from "@/db/schema";
+import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type HardwareRecord, type HardwareViewCrops, type PantoneColour } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { checkComponentCode } from "@/lib/data";
@@ -158,6 +158,7 @@ export type HardwareInput = {
   finishSpec?: FinishSpec;
   approval?: Approval;
   detailDims?: { label: string; mm?: number | null }[];
+  record?: HardwareRecord;
   /** AI-suggested fields the designer accepted. */
   confirmFields?: string[];
 };
@@ -171,6 +172,20 @@ function cleanCrops(c: HardwareViewCrops, views: HardwareInput["views"]): Hardwa
     if (views[k] && b) out[k] = { x: f(b.x), y: f(b.y), w: Math.max(0.02, f(b.w)), h: Math.max(0.02, f(b.h)) };
   }
   return out;
+}
+
+/** A component record as stored: capitals, empty rows dropped, numbers finite or null. */
+function cleanRecord(r: HardwareRecord): HardwareRecord {
+  const num = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n : null);
+  return {
+    colour: up(r.colour ?? ""),
+    mounting: up(r.mounting ?? ""),
+    orientation: up(r.orientation ?? ""),
+    parent: up(r.parent ?? ""),
+    finishStandardId: r.finishStandardId || null,
+    relief: (r.relief ?? []).map((x) => ({ treatment: up(x.treatment), mm: num(x.mm), location: up(x.location) })).filter((x) => x.treatment),
+    usage: (r.usage ?? []).map((x) => ({ style: up(x.style), qty: num(x.qty), location: up(x.location) })).filter((x) => x.style),
+  };
 }
 
 /** Live check while a designer types a code: errors block saving, warnings are called out. */
@@ -203,6 +218,7 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
     notes: up(input.notes),
     ...(input.finishSpec ? { finishSpec: { ...input.finishSpec, plating: up(input.finishSpec.plating), coating: up(input.finishSpec.coating), mouldNo: up(input.finishSpec.mouldNo), platingThickness: up(input.finishSpec.platingThickness) } } : {}),
     ...(input.approval ? { approval: cleanApproval(input.approval) } : {}),
+    ...(input.record ? { record: cleanRecord(input.record) } : {}),
     ...(input.detailDims ? { detailDims: input.detailDims.map((d) => ({ label: up(d.label), mm: typeof d.mm === "number" && Number.isFinite(d.mm) ? d.mm : null })).filter((d) => d.label) } : {}),
     updatedBy: user.id,
     updatedAt: new Date(),

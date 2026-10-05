@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { Hardware } from "@/db/schema";
+import type { Hardware, HardwareRecord } from "@/db/schema";
 import { checkHardwareCode, saveHardware, type HardwareInput } from "@/app/actions/library";
 import type { CodeCheck } from "@/lib/codes";
-import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES } from "@/lib/questions/common";
+import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES, MOUNTINGS, NON_METAL, RELIEF_TREATMENTS } from "@/lib/questions/common";
 import { uploadFile } from "@/lib/client/upload";
-import { Badge, Button, Label, TextInput, Thumb, cx } from "@/components/ui";
+import { Badge, Button, Label, Select, TextInput, Thumb, cx } from "@/components/ui";
 import { ChipRow, Toggle } from "@/components/chips";
 import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
 import { ViewCropDrawer } from "./view-crop";
@@ -21,6 +21,7 @@ export function HardwareForm({
   defaultType,
   onSaved,
   usedIn,
+  standards = [],
 }: {
   item: Hardware | null;
   brands: { id: string; name: string }[];
@@ -29,6 +30,8 @@ export function HardwareForm({
   defaultType?: string;
   onSaved?: (h: { id: string; label: string }) => void;
   usedIn?: string[];
+  /** FINISH STANDARD library items a part can point at. */
+  standards?: { id: string; label: string }[];
 }) {
   const [v, setV] = useState<HardwareInput>({
     id: item?.id,
@@ -49,6 +52,7 @@ export function HardwareForm({
     finishSpec: item?.finishSpec ?? {},
     detailDims: item?.detailDims ?? [],
     approval: item?.approval ?? EMPTY_APPROVAL,
+    record: item?.record ?? {},
   });
   // Finish an AI read took from the render (the sheet printed none): shown as a value, flagged until confirmed.
   const [finishAi, setFinishAi] = useState(item?.fieldStatus?.finish === "ai");
@@ -57,6 +61,8 @@ export function HardwareForm({
   const [pending, start] = useTransition();
   const [cropping, setCropping] = useState<"front" | "side" | "rear" | null>(null);
   const set = <K extends keyof HardwareInput>(k: K, val: HardwareInput[K]) => setV((x) => ({ ...x, [k]: val }));
+  const rec = v.record ?? {};
+  const setRec = (patch: Partial<HardwareRecord>) => setV((x) => ({ ...x, record: { ...(x.record ?? {}), ...patch } }));
 
   // Live code check (debounced): errors block saving, warnings are called out. A new component
   // gets the brand's next free code pre-filled; the designer can type over it.
@@ -223,6 +229,64 @@ export function HardwareForm({
               <Label>New mould needed</Label>
               <Toggle value={v.finishSpec?.newMould ?? null} onChange={(x) => set("finishSpec", { ...v.finishSpec, newMould: x })} disabled={!canEdit} />
             </div>
+          </div>
+        </div>
+        <div className="border border-hairline bg-paper p-5 space-y-5" data-testid="component-record">
+          <div className="eyebrow">Component record</div>
+          {(NON_METAL.includes(v.material) || v.finish === "PANTONE-MATCHED PLASTIC") && (
+            <div>
+              <Label>Colour / Pantone</Label>
+              <TextInput value={rec.colour ?? ""} disabled={!canEdit} placeholder="PANTONE 19-4005 TCX" onChange={(e) => setRec({ colour: e.target.value.toUpperCase() })} />
+            </div>
+          )}
+          <div>
+            <Label>Mounting / attachment</Label>
+            <ChipRow options={MOUNTINGS} value={rec.mounting} onChange={(x) => setRec({ mounting: x })} disabled={!canEdit} allowOther />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5">
+            <div>
+              <Label>Orientation</Label>
+              <TextInput value={rec.orientation ?? ""} disabled={!canEdit} placeholder="LOGO READS UPRIGHT" onChange={(e) => setRec({ orientation: e.target.value.toUpperCase() })} />
+            </div>
+            <div>
+              <Label>Parent part</Label>
+              <TextInput value={rec.parent ?? ""} disabled={!canEdit} placeholder="WHEEL" onChange={(e) => setRec({ parent: e.target.value.toUpperCase() })} />
+            </div>
+          </div>
+          <div>
+            <Label>Finish standard (shared)</Label>
+            <Select value={rec.finishStandardId ?? ""} disabled={!canEdit} onChange={(e) => setRec({ finishStandardId: e.target.value || null })}>
+              <option value="">— none —</option>
+              {standards.filter((x) => x.id !== v.id).map((x) => (
+                <option key={x.id} value={x.id}>{x.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-3">
+            <div className="eyebrow text-ink-soft">Relief and surface treatments</div>
+            {(rec.relief ?? []).map((r, k) => (
+              <div key={k} className="space-y-2">
+                <ChipRow options={RELIEF_TREATMENTS} value={r.treatment} onChange={(x) => setRec({ relief: (rec.relief ?? []).map((y, i) => (i === k ? { ...y, treatment: x ?? "" } : y)) })} disabled={!canEdit} allowOther />
+                <div className="flex items-end gap-3">
+                  <TextInput value={r.mm ?? ""} disabled={!canEdit} placeholder="MM" inputMode="decimal" aria-label={`Relief ${k + 1} mm`} className="w-24" onChange={(e) => setRec({ relief: (rec.relief ?? []).map((y, i) => (i === k ? { ...y, mm: e.target.value === "" ? null : Number(e.target.value) } : y)) })} />
+                  <TextInput value={r.location} disabled={!canEdit} placeholder="LOGO ART" aria-label={`Relief ${k + 1} location`} className="flex-1 uppercase" onChange={(e) => setRec({ relief: (rec.relief ?? []).map((y, i) => (i === k ? { ...y, location: e.target.value.toUpperCase() } : y)) })} />
+                  {canEdit && <button type="button" className="text-taupe hover:text-signal pb-2" aria-label={`Remove relief ${k + 1}`} onClick={() => setRec({ relief: (rec.relief ?? []).filter((_, i) => i !== k) })}>✕</button>}
+                </div>
+              </div>
+            ))}
+            {canEdit && <button type="button" className="eyebrow hover:text-ink" onClick={() => setRec({ relief: [...(rec.relief ?? []), { treatment: "", mm: null, location: "" }] })}>+ Add treatment</button>}
+          </div>
+          <div className="space-y-3">
+            <div className="eyebrow text-ink-soft">Used on</div>
+            {(rec.usage ?? []).map((u, k) => (
+              <div key={k} className="flex items-end gap-3">
+                <TextInput value={u.style} disabled={!canEdit} placeholder="STYLE #" aria-label={`Usage ${k + 1} style`} className="w-40 uppercase" onChange={(e) => setRec({ usage: (rec.usage ?? []).map((y, i) => (i === k ? { ...y, style: e.target.value.toUpperCase() } : y)) })} />
+                <TextInput value={u.qty ?? ""} disabled={!canEdit} placeholder="QTY" inputMode="numeric" aria-label={`Usage ${k + 1} qty`} className="w-20" onChange={(e) => setRec({ usage: (rec.usage ?? []).map((y, i) => (i === k ? { ...y, qty: e.target.value === "" ? null : Number(e.target.value) } : y)) })} />
+                <TextInput value={u.location} disabled={!canEdit} placeholder="LOCATION" aria-label={`Usage ${k + 1} location`} className="flex-1 uppercase" onChange={(e) => setRec({ usage: (rec.usage ?? []).map((y, i) => (i === k ? { ...y, location: e.target.value.toUpperCase() } : y)) })} />
+                {canEdit && <button type="button" className="text-taupe hover:text-signal pb-2" aria-label={`Remove usage ${k + 1}`} onClick={() => setRec({ usage: (rec.usage ?? []).filter((_, i) => i !== k) })}>✕</button>}
+              </div>
+            ))}
+            {canEdit && <button type="button" className="eyebrow hover:text-ink" onClick={() => setRec({ usage: [...(rec.usage ?? []), { style: "", qty: null, location: "" }] })}>+ Add style</button>}
           </div>
         </div>
         <ApprovalBlock value={v.approval ?? EMPTY_APPROVAL} onChange={(a) => set("approval", a)} types={["PLATING SAMPLE", "MOULD", "SAMPLE", "BULK"]} disabled={!canEdit} />

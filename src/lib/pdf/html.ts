@@ -1099,6 +1099,7 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
         ...h.use.map((u) => `PLACEMENT: ${u}`),
         h.material,
         h.finish,
+        h.colour && `COLOUR: ${h.colour}`,
         fs.plating && `PLATING: ${fs.plating}${fs.platingThickness ? ` ${fs.platingThickness}` : ""}`,
         fs.coating && `COATING: ${fs.coating}`,
         fs.nickelFree && "NICKEL-FREE",
@@ -1108,8 +1109,18 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
         h.enamel && `ENAMEL ${h.enamel}`,
         h.construction,
         h.notes,
+        h.mounting && `MOUNTING: ${h.mounting}`,
+        h.orientation && `ORIENTATION: ${h.orientation}`,
+        h.parent && `PART OF: ${h.parent}`,
+        ...h.usage.map((u) => `USED ON: ${u}`),
         h.approval !== "APPROVED" && `SAMPLE APPROVAL: ${h.approval}`,
       ].filter(Boolean);
+      // Relief / surface treatments as red callouts: depth + treatment + location (V2.1 §7).
+      const relief = h.relief.length ? `<div style="font-size:14pt;line-height:1.45;color:#d0021b;margin-bottom:6px">${h.relief.map((r, i) => `<div><span class="callout" style="width:22px;height:22px;font-size:10pt;background:#fff;border-color:#d0021b;color:#d0021b">R${i + 1}</span> ${esc(r)}</div>`).join("")}</div>` : "";
+      // The shared finish standard: headline + its photo.
+      const std = h.finishStandard
+        ? `<div style="width:1.5in;flex:none;font-size:11pt;text-align:center"><div style="margin-bottom:4px">FINISH STANDARD<br/>${up(h.finishStandard.title)}${h.finishStandard.plating ? `<br/>${up(h.finishStandard.plating)}` : ""}</div>${h.finishStandard.photo ? `<div style="position:relative;width:1.5in;height:1.6in">${imgIn(h.finishStandard.photo, { x: 0, y: 0, w: 1.5, h: 1.6 })}</div>` : ""}</div>`
+        : "";
       const dims = h.detailDims.length
         ? `<div style="font-size:${h.detailDims.length > 8 ? 12 : 15}pt;line-height:1.35;max-width:3.6in"><div style="font-size:12pt;margin-bottom:4px">DETAIL DIMENSIONS</div>${h.detailDims.map((d) => `<div>${d.mm != null ? `<span class="red">${d.mm}MM</span> ` : ""}${up(d.label)}</div>`).join("")}</div>`
         : "";
@@ -1119,7 +1130,8 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
           ${exact ? `<div style="display:flex;gap:0.2in;align-items:flex-end;margin-top:0.25in">${view("front", "FRONT")}${view("side", "SIDE")}${view("rear", "REAR")}${view("top", "TOP")}</div>` : ""}</div>
         <div style="display:flex;gap:0.3in;align-items:flex-end;flex:none">${view("front", "FRONT", enlarge)}${view("side", "SIDE", enlarge)}${view("top", "TOP", enlarge)}</div>
         ${dims}
-        <div style="flex:1;min-width:1.5in;font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div>
+        <div style="flex:1;min-width:1.5in">${relief}<div style="font-size:14pt;line-height:1.45;color:#1a8bd0">${notes.map((x) => up(x)).join("<br/>")}</div></div>
+        ${std}
         ${h.photo ? `<div style="position:relative;width:1.8in;height:2.4in;flex:none">${imgIn(h.photo, { x: 0, y: 0, w: 1.8, h: 2.4 })}</div>` : ""}
       </div>`;
     })

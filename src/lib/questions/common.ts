@@ -24,8 +24,18 @@ export const HARDWARE_TYPES = [
   "WOVEN LABEL",
   "TPU/RUBBER PATCH",
   "WHEEL",
+  "HUBCAP",
   "TROLLEY HANDLE",
+  "TROLLEY TUBE / HANDLE SYSTEM",
+  "PUSH BUTTON",
+  "CARRY HANDLE",
+  "CORNER GUARD",
+  "STRAP SLIDER / ADJUSTER",
+  "CORD LOCK",
+  "BUNGEE-CORD PULLER",
+  "WEBBING PULLER",
   "LOCK",
+  "FINISH STANDARD",
 ];
 
 export const HARDWARE_FINISHES = [
@@ -36,9 +46,21 @@ export const HARDWARE_FINISHES = [
   "SHINY NICKEL",
   "MATTE BLACK",
   "ROSE GOLD",
+  "MULTI-COLOR (VACUUM-PLATED IRIDESCENT)",
+  "AGED SILVER",
+  "BLACK",
+  "PANTONE-MATCHED PLASTIC",
 ];
 
-export const HARDWARE_MATERIALS = ["ZINC ALLOY", "BRASS", "IRON", "PLASTIC W/ METAL FINISH", "ALUMINIUM"];
+export const HARDWARE_MATERIALS = ["ZINC ALLOY", "BRASS", "IRON", "PLASTIC W/ METAL FINISH", "ALUMINIUM", "PLASTIC", "RUBBER", "TPU"];
+
+/** Non-metal materials: their parts take a colour (Pantone) instead of a plating. */
+export const NON_METAL = ["PLASTIC", "RUBBER", "TPU"];
+
+/** Relief / surface treatments on a component; each prints as "1.5MM DEBOSSED LOGO ART". */
+export const RELIEF_TREATMENTS = ["DEBOSSED", "EMBOSSED", "BEVELLED EMBOSSED", "ENGRAVED", "LASER ETCHED", "PRINTED", "ENAMEL INLAY"];
+
+export const MOUNTINGS = ["SCREW", "RIVET", "PRONG", "SEWN TAB", "MOLDED FLUSH", "RIVETED THROUGH SHELL", "SNAP-FIT", "GLUED", "CLIPPED"];
 
 export const LOGO_TYPES = [
   "METAL LOGO PLATE",

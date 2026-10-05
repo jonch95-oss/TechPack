@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { missingFrom, mmText, specItems, tight, valueOf } from "@/lib/pdf/specs";
 import { logoRows, planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
-import { calloutPoint, logoPointFor, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
+import { calloutPoint, logoPointFor, reliefCallout, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
 import { completeness, findQuestion, matrixColumns } from "@/lib/questions";
 import { validatePack } from "@/lib/validation";
 
@@ -255,5 +255,19 @@ describe("V2.1 step 5 — breakdown trim columns", () => {
     const keys = cols.map((c) => c.key);
     expect(keys.slice(0, 3)).toEqual(["mat_1", "trim_1", "trim_3"]);
     expect(cols.find((c) => c.key === "trim_1")).toMatchObject({ label: "PIPING", trim: "T1" });
+  });
+});
+
+describe("V2.1 step 5 — component record", () => {
+  it("a relief prints as depth + treatment + location", () => {
+    expect(reliefCallout({ treatment: "debossed", mm: 1.5, location: "logo art" })).toBe("1.5MM DEBOSSED LOGO ART");
+    expect(reliefCallout({ treatment: "ENGRAVED", mm: null, location: "FACE" })).toBe("ENGRAVED FACE");
+  });
+  it("the record's questions exist on the component sheet, with the new types, finishes and materials", () => {
+    for (const id of ["hw.colour", "hw.relief", "hw.orientation", "hw.parent", "hw.usage", "hw.finish_standard"]) expect(findQuestion("Hardware", id), id).toBeTruthy();
+    const opts = (id: string) => ((findQuestion("Hardware", id) as { options?: string[] }).options ?? []);
+    for (const t of ["HUBCAP", "TROLLEY TUBE / HANDLE SYSTEM", "PUSH BUTTON", "CARRY HANDLE", "CORNER GUARD", "CORD LOCK", "BUNGEE-CORD PULLER", "WEBBING PULLER", "EYELET", "WHEEL", "ZIPPER SLIDER", "FINISH STANDARD"]) expect(opts("hw.type")).toContain(t);
+    for (const f of ["MULTI-COLOR (VACUUM-PLATED IRIDESCENT)", "AGED SILVER", "BLACK", "PANTONE-MATCHED PLASTIC"]) expect(opts("hw.finish")).toContain(f);
+    for (const m of ["PLASTIC", "RUBBER", "TPU"]) expect(opts("hw.material")).toContain(m);
   });
 });

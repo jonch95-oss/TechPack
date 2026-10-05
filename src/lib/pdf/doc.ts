@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { flats as flatsTable, hardware, materials, packs, prints, sampleComments, sampleRounds, users, type Hardware, type Material, type FileMarks, type Print } from "@/db/schema";
+import { flats as flatsTable, hardware, materials, packs, prints, sampleComments, sampleRounds, users, type Hardware, type HardwareRecord, type Material, type FileMarks, type Print } from "@/db/schema";
 import sharp from "sharp";
 import { calloutsOn, inlineFlat } from "@/lib/lineart/geometry";
 import { pantoneHex, repeatTileSvg, svgDataUri } from "./artwork";
@@ -15,7 +15,7 @@ import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
-import { logoPointFor, styleCodesOf, wallName } from "./hints";
+import { logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
 
 export type Img = { src: string; w: number; h: number } | null;
@@ -101,6 +101,9 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       ])
     : [[] as Hardware[], [] as Material[], [] as Print[]];
   const hwById = new Map(hws.map((h) => [h.id, h]));
+  // Finish standards the parts' records point at (V2.1 §7), and the one a component sheet picks.
+  const stdIds = [...new Set([...hws.map((h) => h.record?.finishStandardId), (a["hw.finish_standard"] as LibValue | undefined)?.id].filter((x): x is string => !!x && !hwById.has(x)))];
+  if (stdIds.length) for (const h of await db.select().from(hardware).where(inArray(hardware.id, stdIds))) hwById.set(h.id, h);
   const matById = new Map(mats.map((m) => [m.id, m]));
   const printById = new Map(prs.map((x) => [x.id, x]));
   const lib = (v: unknown) => v as LibValue | undefined;
@@ -220,7 +223,21 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     const wanted = new Set(((a["hw.views"] as string[] | undefined) ?? ["FRONT", "SIDE", "REAR", "TOP"]).map((v) => v.toLowerCase()));
     const views = Object.fromEntries(Object.entries(base?.views ?? {}).filter(([k]) => wanted.has(k)));
     const rows = ((a["hw.detail_dims"] as { label?: string; mm?: number }[] | undefined) ?? []).filter((r) => r.label);
-    const extras = [a["hw.hollow"] === true && `HOLLOW${a["hw.hollow_where"] ? `: ${a["hw.hollow_where"]}` : ""}`, a["hw.edge"] && `${a["hw.edge"]} EDGE`, a["hw.etched_sides"] === true && "ETCHED SIDE PATTERN", a["hw.attachment"] && `ATTACHMENT: ${a["hw.attachment"]}`].filter(Boolean);
+    const extras = [a["hw.hollow"] === true && `HOLLOW${a["hw.hollow_where"] ? `: ${a["hw.hollow_where"]}` : ""}`, a["hw.edge"] && `${a["hw.edge"]} EDGE`, a["hw.etched_sides"] === true && "ETCHED SIDE PATTERN"].filter(Boolean);
+    // The pack's answers over the library record (V2.1 §7).
+    const rec = base?.record ?? {};
+    const rows2 = <T,>(k: string) => ((a[k] as T[] | undefined) ?? []).filter(Boolean);
+    const relief = rows2<{ treatment?: string; mm?: number; location?: string }>("hw.relief").filter((r) => r.treatment);
+    const usage = rows2<{ style?: string; qty?: number; location?: string }>("hw.usage").filter((r) => r.style);
+    const record: HardwareRecord = {
+      colour: (a["hw.colour"] as string | undefined) ?? rec.colour,
+      relief: relief.length ? relief.map((r) => ({ treatment: String(r.treatment), mm: typeof r.mm === "number" ? r.mm : null, location: String(r.location ?? "") })) : rec.relief,
+      orientation: (a["hw.orientation"] as string | undefined) ?? rec.orientation,
+      mounting: (a["hw.attachment"] as string | undefined) ?? rec.mounting,
+      parent: lib(a["hw.parent"])?.label || rec.parent,
+      usage: usage.length ? usage.map((r) => ({ style: String(r.style), qty: typeof r.qty === "number" ? r.qty : null, location: String(r.location ?? "") })) : rec.usage,
+      finishStandardId: lib(a["hw.finish_standard"])?.id || rec.finishStandardId,
+    };
     const own = {
       ...(base ?? ({ id: "pack", code: lib(a["hw.component"])?.label || p.pack.styleNo, name: p.pack.styleName, photoUrl: null, finishSpec: {}, approval: { status: "PENDING" }, construction: "", enamelPantone: "", notes: "" } as unknown as Hardware)),
       type: String(a["hw.type"] ?? base?.type ?? ""),
@@ -232,6 +249,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       notes: [base?.notes, ...extras].filter(Boolean).join(" · "),
       detailDims: rows.length ? rows.map((r) => ({ label: String(r.label), mm: typeof r.mm === "number" ? r.mm : null })) : (base?.detailDims ?? []),
       views,
+      record,
     } as Hardware;
     detail = [own, ...detail.filter((h) => h.id !== own.id)];
   }
@@ -614,6 +632,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
           top: await cropped(h.views.top ? { url: h.views.top, marks: { crop: h.viewCrops?.top ?? null } } : null),
         },
         photo: await img(h.photoUrl),
+        ...(await componentRecord(h.record ?? {}, hwById, img)),
       })),
     ),
     trims,
@@ -722,4 +741,18 @@ function closureText(a: AnswerMap) {
   const snaps = typeof a["hb.closure.snap_qty"] === "number" ? `${a["hb.closure.snap_qty"]} SNAPS TOTAL${a["hb.closure.snap_spacing"] ? `, ${a["hb.closure.snap_spacing"]} UNDER FLAP` : ""}.` : "";
   const title = c.startsWith("FLAP") ? "FRONT FLAP SNAP CLOSURE" : `${c} CLOSURE`;
   return [title, snaps].filter(Boolean).join(" — ");
+}
+
+/** The component-record facts a panel prints, with the shared finish standard's photo (V2.1 §7). */
+async function componentRecord(rec: HardwareRecord, hwById: Map<string, Hardware>, img: (url?: string | null) => Promise<Img>) {
+  const std = rec.finishStandardId ? hwById.get(rec.finishStandardId) : undefined;
+  return {
+    colour: rec.colour ?? "",
+    relief: (rec.relief ?? []).filter((r) => r.treatment).map(reliefCallout),
+    orientation: rec.orientation ?? "",
+    mounting: rec.mounting ?? "",
+    parent: rec.parent ?? "",
+    usage: (rec.usage ?? []).filter((u) => u.style).map((u) => `${u.style}${typeof u.qty === "number" ? ` × ${u.qty}` : ""}${u.location ? ` — ${u.location}` : ""}`.toUpperCase()),
+    finishStandard: std ? { title: [std.finish || std.name, std.code].filter(Boolean).join(" · "), photo: await img(std.photoUrl), plating: std.finishSpec?.plating ?? "" } : null,
+  };
 }

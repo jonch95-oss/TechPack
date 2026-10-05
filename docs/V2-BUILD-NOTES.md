@@ -241,3 +241,14 @@ The nine golden packs were printed through the standard layout and compared with
 - A trim column always prints, even before its cells are filled, so a missing value shows.
 - **Decision:** a removed trim keeps the numbers of the ones after it (`trim_<n>` follows the row index), so filled cells never move to another trim.
 - **Golden:** a study's proposed `_new.materials.matrix_trims` (colourway → trim → value) is entered as `materials.trims` plus the `trim_<n>` cells.
+
+### Component record (§7)
+- **Types added:** hubcap, trolley tube / handle system, push button, carry handle, corner guard, strap slider / adjuster, cord lock, bungee-cord puller, webbing puller, finish standard (wheel, zipper slider, eyelet were already there).
+- **Finishes added:** MULTI-COLOR (VACUUM-PLATED IRIDESCENT), AGED SILVER, BLACK, PANTONE-MATCHED PLASTIC. **Materials added:** PLASTIC, RUBBER, TPU. Section is a new view option.
+- **Library record:** a new `hardware.record` jsonb (migration 0019) holds colour, relief treatments (treatment + depth mm + location), orientation, mounting, parent part, usage per style (style, qty, location) and the finish standard. The hardware form has a "Component record" block for them.
+- **Component sheet questions:** `hw.colour`, `hw.relief`, `hw.orientation`, `hw.parent`, `hw.usage`, `hw.finish_standard`; `hw.attachment` is now "Mounting / attachment" with the record's mounting options. The sheet's answers win over the library record.
+- **Print:** each relief is a red R<n> callout phrased depth + treatment + location ("1.5MM DEBOSSED LOGO ART"); colour, mounting, orientation, parent ("PART OF") and each usage ("USED ON") print in the panel notes. Library parts used in style packs print the same facts from their record.
+- **Decision — shared finish standard:** a finish standard is a library item of type FINISH STANDARD (its photo is the standard photo, its finish spec the plating). Parts point at one, so every part in that finish shares the same photo and spec; the panel prints "FINISH STANDARD" + its headline + photo.
+- **Decision:** `hw.colour` is offered on every component sheet (not only non-metal) because sheets give a colour for parts whose material isn't stated.
+- **Golden:** component sheets now enter colour, mounting, orientation, parent and usage, and the study's RELIEF-kind detail dimensions as `hw.relief` rows instead of detail dimensions.
+- **Not yet:** the CSV / XLSX hardware import does not read the record columns.

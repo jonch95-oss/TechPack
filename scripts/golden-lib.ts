@@ -151,6 +151,15 @@ export function fromStudy(file: string): GoldenPack[] {
     // Each component sheet as a Hardware-category pack: the hw.* answers its sheet states.
     const sheets = (d.hardware_library as Record<string, unknown>[]).map((h, i): GoldenPack => {
       const dims = String(h.dimsMm ?? "").match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+      // Reliefs the study marks by kind (RELIEF_DOWN / RELIEF_UP) are treatments, not detail dimensions (V2.1 §7).
+      const dd = Array.isArray(h.detailDims) ? (h.detailDims as { label?: string; mm?: number; kind?: string }[]) : [];
+      const dimRows = dd.filter((x) => !/^RELIEF/.test(x.kind ?? ""));
+      const relief = dd.filter((x) => /^RELIEF/.test(x.kind ?? "")).map((x) => {
+        const label = String(x.label ?? "").replace(/\s*—\s*(UP|DOWN)$/i, "");
+        const t = label.match(/^(BEVELL?ED EMBOSSED|DEBOSSED|EMBOSSED|ENGRAVED)\s+/i)?.[1];
+        return { treatment: (t ?? (x.kind === "RELIEF_DOWN" ? "DEBOSSED" : "EMBOSSED")).toUpperCase().replace("BEVELED", "BEVELLED"), mm: typeof x.mm === "number" ? x.mm : undefined, location: t ? label.slice(t.length).trim() : label };
+      });
+      const usage = Array.isArray(h.usage) ? (h.usage as Record<string, unknown>[]).map((u) => ({ style: str(u.style), qty: typeof unwrap(u.qty) === "number" ? unwrap(u.qty) : undefined, location: str(u.location) })).filter((u) => u.style) : [];
       const a: Record<string, unknown> = {
         "hw.type": unwrap(h.type),
         "hw.component": { id: `golden-${i}`, label: String(h.code ?? "") },
@@ -159,7 +168,13 @@ export function fromStudy(file: string): GoldenPack[] {
         "hw.overall_w": dims[0],
         "hw.overall_h": dims[1],
         "hw.overall_d": dims[2],
-        "hw.detail_dims": Array.isArray(h.detailDims) ? h.detailDims : undefined,
+        "hw.detail_dims": dimRows.length ? dimRows : undefined,
+        "hw.relief": relief.length ? relief : undefined,
+        "hw.colour": str(h.colour) || undefined,
+        "hw.attachment": str(h.mounting) || undefined,
+        "hw.orientation": str(h.logo_orientation) || undefined,
+        "hw.parent": str(h.parent) ? { id: "", label: str(h.parent) } : undefined,
+        "hw.usage": usage.length ? usage : undefined,
         "hw.material": unwrap(h.material),
         "hw.finish": unwrap(h.finish),
         "hw.logo_treatment": unwrap(h.logoTreatment) || undefined,

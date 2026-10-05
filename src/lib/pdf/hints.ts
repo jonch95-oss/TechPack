@@ -77,3 +77,8 @@ export function styleCodesOf(pack: { styleNo: string; colorways: string[]; color
   const list = pack.colorways.map((c) => own[c] ?? pack.styleNo);
   return [...new Set([...(list.includes(pack.styleNo) || !Object.keys(own).length ? [pack.styleNo] : []), ...list])];
 }
+
+/** A relief / surface treatment as its callout: depth + treatment + location ("1.5MM DEBOSSED LOGO ART"). */
+export function reliefCallout(r: { treatment: string; mm?: number | null; location: string }) {
+  return [typeof r.mm === "number" ? `${r.mm}MM` : "", r.treatment, r.location].filter(Boolean).join(" ").toUpperCase();
+}
