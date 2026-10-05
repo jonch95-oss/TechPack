@@ -1,5 +1,9 @@
 "use server";
 
+import Papa from "papaparse";
+import { checkRow, parseBatchTable, type BatchRow } from "@/lib/batch";
+import { sheetText } from "@/lib/sources";
+import { startFromBase } from "./workflow";
 import { cleanCrop, detectProductBox, type CropBox } from "@/lib/crop";
 import { normalizePage, PAGE_SECTIONS } from "@/lib/page-names";
 import { and, eq, ne, sql } from "drizzle-orm";
@@ -418,4 +422,71 @@ export async function detectCrop(packId: string, fileId: string): Promise<{ ok: 
   const [f] = await db.select().from(packFiles).where(and(eq(packFiles.id, fileId), eq(packFiles.packId, packId)));
   if (!f) return { ok: false, error: "File not found." };
   return { ok: true, crop: await detectProductBox((await readStoredFile(f.url)).data).catch(() => null) };
+}
+
+/* ------------------------------ batch create (V2 §8) ------------------------------ */
+
+/** Reads an uploaded sheet (CSV / XLSX) of styles and checks every row; nothing is created yet. */
+export async function batchParse(form: FormData): Promise<{ rows: BatchRow[]; errors: string[] }> {
+  await requireRole("designer");
+  const file = form.get("sheet");
+  const files = form.getAll("files").map(String);
+  if (!(file instanceof File)) return { rows: [], errors: ["Choose the spreadsheet."] };
+  const text = await sheetText(Buffer.from(await file.arrayBuffer()), file.name);
+  const table = text.split("\n").filter((l) => !l.startsWith("# SHEET")).map((l) => (/\.csv$/i.test(file.name) ? (Papa.parse<string[]>(l).data[0] ?? []) : l.split("\t")));
+  const parsed = parseBatchTable(table);
+  return { rows: await batchCheck(parsed.rows, files), errors: parsed.errors };
+}
+
+/** Each row's issues against the studio: brand, free style #, base style, uploaded renders. */
+export async function batchCheck(rows: BatchRow[], files: string[]): Promise<BatchRow[]> {
+  await requireRole("designer");
+  const brandNames = (await db.select({ name: brands.name }).from(brands)).map((b) => b.name);
+  const all = await db.select({ styleNo: packs.styleNo, styles: packs.colorwayStyles }).from(packs);
+  const taken = new Set(all.flatMap((p) => [p.styleNo, ...Object.values(p.styles ?? {})]).map((s) => s.toUpperCase()));
+  const codes = new Set((await db.select({ code: hardware.code }).from(hardware)).map((h) => h.code.toUpperCase()));
+  const seen = new Set<string>();
+  return rows.map((r) => {
+    const issues = checkRow(r, { brands: brandNames, taken: (s) => taken.has(s) || codes.has(s), bases: (s) => taken.has(s), files, seen });
+    seen.add(r.styleNo);
+    return { ...r, issues };
+  });
+}
+
+/**
+ * Creates a draft pack for every row that passes its checks: brand unit, colourways and names, the
+ * base style's settled answers (as BASE STYLE), and the row's renders (first = render, the rest =
+ * colourway renders) — each read as a board in the background. Rows with issues are skipped.
+ */
+export async function batchCreate(rows: BatchRow[], files: { name: string; url: string }[]): Promise<ActionResult & { created?: { id: string; styleNo: string }[]; skipped?: string[] }> {
+  const user = await requireRole("designer");
+  const checked = await batchCheck(rows, files.map((f) => f.name));
+  const brandRows = await db.select().from(brands);
+  const created: { id: string; styleNo: string }[] = [];
+  const skipped: string[] = [];
+  for (const r of checked) {
+    if (r.issues.length) {
+      skipped.push(`${r.styleNo || `line ${r.line}`}: ${r.issues[0]}`);
+      continue;
+    }
+    const brand = brandRows.find((b) => b.name.toUpperCase() === r.brand.toUpperCase())!;
+    const colorways = r.colorways.length ? r.colorways.map((c) => c.code) : suffixesFor(1);
+    const [p] = await db
+      .insert(packs)
+      .values({ brandId: brand.id, category: r.category as Category, styleNo: r.styleNo, styleName: r.styleName, colorways, sentBy: user.id, createdBy: user.id, updatedBy: user.id })
+      .returning({ id: packs.id });
+    await db.insert(packAnswers).values({ packId: p.id, questionId: "dims.unit", value: brand.defaultUnit === "INCHES" ? "INCHES" : "CM", status: "confirmed", origin: "HOUSE", updatedBy: user.id });
+    const names = Object.fromEntries(r.colorways.filter((c) => c.name).map((c) => [c.code, c.name]));
+    if (Object.keys(names).length) await db.insert(packAnswers).values({ packId: p.id, questionId: "colorways.names", value: names, status: "confirmed", origin: "DESIGNER", updatedBy: user.id });
+    if (r.base) {
+      const [base] = await db.select({ id: packs.id }).from(packs).where(eq(packs.styleNo, r.base));
+      if (base) await startFromBase(p.id, base.id);
+    }
+    const mine = r.renders.map((n) => files.find((f) => f.name.split(/[\\/]/).pop()!.toLowerCase() === n.toLowerCase())).filter((f): f is { name: string; url: string } => !!f);
+    for (const [i, f] of mine.entries()) await addPackFile(p.id, { kind: i === 0 ? "render" : "colorway_render", url: f.url, name: f.name, tag: i === 0 ? "" : (colorways[i] ?? "") });
+    await audit({ userId: user.id, entity: "pack", entityId: p.id, action: "create", after: { batch: true, brand: brand.name, category: r.category, styleNo: r.styleNo, base: r.base || null } });
+    created.push({ id: p.id, styleNo: r.styleNo });
+  }
+  revalidatePath("/");
+  return { ok: true, created, skipped, message: `${created.length} pack(s) created${skipped.length ? `, ${skipped.length} skipped` : ""}.` };
 }

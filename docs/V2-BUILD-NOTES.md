@@ -327,3 +327,11 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - **New colourway:** type the new colourway(s) ("-C RED, -D NAVY") and the colourway to seed from; each new colourway's breakdown row starts as a copy of that one (same materials, finishes, trims — change the colour), and the colourway names follow.
 - **Start from…:** a pack with no base and few settled answers shows the 3 most similar packs (same brand +3, same category +3, same silhouette / type +2, shared name words +1; at least brand or category must match; most recent first among equals). "Use as base" writes the base's settled answers into this pack as BASE STYLE through the normal priority rules (blanks and AI reads are filled; a designer's different value becomes a conflict chip). "Fresh" hides it.
 - **Decision:** similarity uses brand / category / silhouette / name, not image similarity — there is no image-embedding service in the stack yet. Listed for Jon.
+
+### Batch create
+- `/packs/batch` (designers; "Batch create" on the dashboard):
+  - **Spreadsheet + renders:** CSV or XLSX with Style #, Style name, Brand, Category, Base style, Colourways ("BLACK, RED" → -A BLACK, -B RED; or "-C NAVY"), Render (file name(s)). "Check" lists every row with its problems (bad / taken / repeated style #, missing name, unknown brand or category, base style not found, render not uploaded); "Create" makes a draft pack for every clean row and skips the rest.
+  - **Folder of renders:** pick brand and category; files are grouped by name (STYLE-A.png + STYLE-B.png → one pack, two colourways; STYLE.png → one colourway); the style name starts as the style #.
+- Each pack: the brand's unit, colourways and their names, the base style's settled answers (as BASE STYLE, via Start from…), the first render as the render and the rest as colourway renders (each read as a board in the background).
+- Renders upload straight from the browser to storage; only their URLs reach the server.
+- **Decision:** batch create doesn't start an AI pre-fill per pack (cost at volume); each pack's board read runs, and pre-fill is one click on the pack. Listed for Jon.

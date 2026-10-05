@@ -20,7 +20,7 @@ export type SourceResult = { answered: number; skippedConfirmed: number; created
 export const SOURCE_KINDS = ["spec_sheet", "view_photo", "scale_photo", "swatch_photo", "hardware_sheet"] as const;
 
 /** A spreadsheet as tab-separated text (every sheet), for the model to read. */
-async function sheetText(data: Buffer, name: string): Promise<string> {
+export async function sheetText(data: Buffer, name: string): Promise<string> {
   if (/\.csv$/i.test(name)) return data.toString("utf8");
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(data as unknown as ArrayBuffer);
