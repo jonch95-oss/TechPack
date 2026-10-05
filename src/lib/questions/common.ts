@@ -54,6 +54,21 @@ export const HARDWARE_FINISHES = [
 
 export const HARDWARE_MATERIALS = ["ZINC ALLOY", "BRASS", "IRON", "PLASTIC W/ METAL FINISH", "ALUMINIUM", "PLASTIC", "RUBBER", "TPU"];
 
+/** The halves a hardside case opens into. */
+export const CASE_HALVES = ["LID HALF", "BASE HALF", "BOTH HALVES"];
+
+export const CASE_INTERIOR_FEATURES = [
+  "ZIPPERED DIVIDER PANEL",
+  "ZIPPERED POCKET",
+  "ZIPPERED COMPRESSION COMPARTMENT",
+  "MESH POCKET",
+  "ELASTIC COMPRESSION STRAPS",
+  "X STRAPS WITH CENTRE BUCKLE",
+  "SHOE BAG",
+  "WET POCKET",
+  "LABEL",
+];
+
 /** Non-metal materials: their parts take a colour (Pantone) instead of a plating. */
 export const NON_METAL = ["PLASTIC", "RUBBER", "TPU"];
 
@@ -496,6 +511,21 @@ export const COMMON_SECTIONS: Section[] = [
       { id: "interior.label_centered", label: "Label centered", kind: "toggle" },
       { id: "interior.seam_binding", label: "Interior binding on seams", kind: "toggle", visibility: "inferred" },
       { id: "interior.compartments", label: "Compartments", kind: "stepper", unit: "qty", visibility: "inferred" },
+      {
+        // Hardside cases open into two halves: the interior is described by half, not by bag walls (V2.1 §9).
+        id: "interior.layout",
+        label: "Interior layout (lid half / base half)",
+        kind: "rows",
+        addLabel: "Add feature",
+        visibility: "inferred",
+        showIf: { category: ["Hardside luggage"] },
+        columns: [
+          { key: "half", label: "Half", kind: "chips", options: CASE_HALVES },
+          { key: "feature", label: "Feature", kind: "chips", options: CASE_INTERIOR_FEATURES, required: true },
+          { key: "qty", label: "Qty", kind: "stepper", unit: "qty" },
+          { key: "note", label: "Note", kind: "text" },
+        ],
+      },
       { id: "interior.base_board", label: "Base board / insert", kind: "toggle", visibility: "inferred" },
       { id: "interior.base_board_mm", label: "Base board thickness", kind: "stepper", unit: "mm", step: 0.5, showIf: { q: "interior.base_board", eq: true } },
       { id: "interior.base_board_material", label: "Base board material", kind: "chips", options: ["EVA", "PE BOARD", "LEATHERBOARD", "CARDBOARD", "PLASTIC"], showIf: { q: "interior.base_board", eq: true } },

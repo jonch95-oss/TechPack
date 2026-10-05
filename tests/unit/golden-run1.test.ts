@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { missingFrom, mmText, specItems, tight, valueOf } from "@/lib/pdf/specs";
 import { logoRows, planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
-import { calloutPoint, logoPointFor, reliefCallout, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
+import { calloutPoint, caseHalves, logoPointFor, reliefCallout, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
 import { completeness, findQuestion, matrixColumns } from "@/lib/questions";
 import { validatePack } from "@/lib/validation";
 
@@ -269,5 +269,20 @@ describe("V2.1 step 5 — component record", () => {
     for (const t of ["HUBCAP", "TROLLEY TUBE / HANDLE SYSTEM", "PUSH BUTTON", "CARRY HANDLE", "CORNER GUARD", "CORD LOCK", "BUNGEE-CORD PULLER", "WEBBING PULLER", "EYELET", "WHEEL", "ZIPPER SLIDER", "FINISH STANDARD"]) expect(opts("hw.type")).toContain(t);
     for (const f of ["MULTI-COLOR (VACUUM-PLATED IRIDESCENT)", "AGED SILVER", "BLACK", "PANTONE-MATCHED PLASTIC"]) expect(opts("hw.finish")).toContain(f);
     for (const m of ["PLASTIC", "RUBBER", "TPU"]) expect(opts("hw.material")).toContain(m);
+  });
+});
+
+describe("V2.1 step 5 — hardside interior by half", () => {
+  it("groups features lid → base → both → unstated, numbering each half", () => {
+    const h = caseHalves([{ half: "BASE HALF", feature: "x straps with centre buckle" }, { feature: "ZIPPERED POCKET" }, { half: "LID HALF", feature: "ZIPPERED DIVIDER PANEL", qty: 1 }, { half: "LID HALF", feature: "MESH POCKET", qty: 2, note: "on divider" }, { half: "BASE HALF" }]);
+    expect(h).toEqual([
+      { half: "LID HALF", lines: ["ZIPPERED DIVIDER PANEL", "2 × MESH POCKET — ON DIVIDER"] },
+      { half: "BASE HALF", lines: ["X STRAPS WITH CENTRE BUCKLE"] },
+      { half: "INTERIOR", lines: ["ZIPPERED POCKET"] },
+    ]);
+  });
+  it("the layout question is asked for hardside cases only", () => {
+    expect(findQuestion("Hardside luggage", "interior.layout")).toBeTruthy();
+    expect(findQuestion("Handbags", "interior.layout")?.showIf).toEqual({ category: ["Hardside luggage"] });
   });
 });

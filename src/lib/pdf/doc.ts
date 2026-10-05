@@ -15,7 +15,7 @@ import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
-import { logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
+import { caseHalves, logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
 
 export type Img = { src: string; w: number; h: number } | null;
@@ -582,6 +582,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       seamBinding: a["interior.seam_binding"] === true,
       lined: a["interior.lined"] === true,
       liningName: liningPrint?.name ?? lib(a["interior.lining_material"])?.label ?? "",
+      /** A hardside case's interior by half (V2.1 §9): features without a half print under INTERIOR. */
+      halves: caseHalves((a["interior.layout"] as { half?: string; feature?: string; qty?: number; note?: string }[] | undefined) ?? []),
       padding: a["cos.padding"] === true ? [typeof a["cos.padding_mm"] === "number" && mmText(a["cos.padding_mm"] as number, unit === "in"), "PADDING", a["cos.padding_where"]].filter(Boolean).join(" ") : "",
     },
     /** The wall the interior page is about (the first pocket's, else the back wall). */

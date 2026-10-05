@@ -17,7 +17,9 @@ export const OUT = path.join(ROOT, ".data", "golden");
 export type Hw = { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string };
 /** A library part the study describes (pack G): seeded into the hardware library by golden:pdf. */
 export type LibPart = { code: string; type: string; name: string; dimsMm: string; detailDims: { label: string; mm?: number | null }[]; material: string; finish: string; logoTreatment: string };
-export type GoldenPack = { library?: LibPart[]; colorwayStyles?: Record<string, string> } & { label: string; brand: string; category: Category; colorways: string[]; answers: Record<string, unknown>; extra: string[]; hardware?: Hw[] };
+/** A print the study's lining sheet records (V2.1 §7: a lining sheet is a print record + an interior layout). */
+export type GoldenPrint = { name: string; motif: string; repeatType: string; tileW: string; tileH: string; tileUnit: string; colours: { system: "C" | "TCX" | "OTHER"; code: string }[]; application: string; baseFabricText: string };
+export type GoldenPack = { library?: LibPart[]; prints?: GoldenPrint[]; colorwayStyles?: Record<string, string> } & { label: string; brand: string; category: Category; colorways: string[]; answers: Record<string, unknown>; extra: string[]; hardware?: Hw[] };
 
 /* ------------------------------ loading ------------------------------ */
 
@@ -148,8 +150,26 @@ export function fromStudy(file: string): GoldenPack[] {
       logoTreatment: str(h.logoTreatment),
     }));
     style.library = library;
+    // A lining sheet isn't a part: its print record goes to the print library and its interior layout
+    // (the features called out on the open case) to the style pack's interior.
+    const lining = (d.hardware_library as Record<string, unknown>[]).filter((h) => h.print_record && typeof h.print_record === "object" && !Array.isArray(h.print_record));
+    for (const h of lining) {
+      const pr = h.print_record as Record<string, unknown>;
+      const name = str(pr.name);
+      if (name) {
+        const colours = Array.isArray(pr.colours) ? (unwrap(pr.colours) as { system?: string; code?: string }[]).filter((c) => c?.code).map((c) => ({ system: (["C", "TCX"].includes(String(c.system)) ? c.system : "OTHER") as "C" | "TCX" | "OTHER", code: String(c.code) })) : [];
+        const txt = (v: unknown) => (unwrap(v) == null ? "" : String(unwrap(v)));
+        (style.prints ??= []).push({ name, motif: txt(pr.motif), repeatType: txt(pr.repeatType), tileW: txt(pr.tileW), tileH: txt(pr.tileH), tileUnit: String((pr.tileW as { unit?: string } | null)?.unit ?? (pr.tileH as { unit?: string } | null)?.unit ?? "cm").toLowerCase(), colours, application: txt(pr.application), baseFabricText: txt(pr.baseFabric) });
+        style.answers["interior.lining_print"] = { id: "", label: name };
+      }
+      const il = (h.interior_layout ?? {}) as { callouts?: unknown[] };
+      const rows = (il.callouts ?? []).map((c) => ({ feature: String(unwrap(c) ?? "").toUpperCase() })).filter((r) => r.feature);
+      if (rows.length) style.answers["interior.layout"] = rows;
+    }
+    style.library = library.filter((_, i) => !lining.includes((d.hardware_library as Record<string, unknown>[])[i]));
     // Each component sheet as a Hardware-category pack: the hw.* answers its sheet states.
-    const sheets = (d.hardware_library as Record<string, unknown>[]).map((h, i): GoldenPack => {
+    const sheets = (d.hardware_library as Record<string, unknown>[]).flatMap((h, i): GoldenPack[] => {
+      if (lining.includes(h)) return [];
       const dims = String(h.dimsMm ?? "").match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
       // Reliefs the study marks by kind (RELIEF_DOWN / RELIEF_UP) are treatments, not detail dimensions (V2.1 §7).
       const dd = Array.isArray(h.detailDims) ? (h.detailDims as { label?: string; mm?: number; kind?: string }[]) : [];
@@ -180,7 +200,7 @@ export function fromStudy(file: string): GoldenPack[] {
         "hw.logo_treatment": unwrap(h.logoTreatment) || undefined,
       };
       for (const k of Object.keys(a)) if (a[k] === undefined || a[k] === null || a[k] === "") delete a[k];
-      return { label: `${label} component ${i + 1}`, brand: String(h.brand ?? pack.brand), category: "Hardware", colorways: ["-A"], answers: a, extra: [], library: [library[i]] };
+      return [{ label: `${label} component ${i + 1}`, brand: String(h.brand ?? pack.brand), category: "Hardware", colorways: ["-A"], answers: a, extra: [], library: [library[i]] }];
     });
     return [style, ...sheets];
   }

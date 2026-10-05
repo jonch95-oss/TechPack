@@ -82,3 +82,16 @@ export function styleCodesOf(pack: { styleNo: string; colorways: string[]; color
 export function reliefCallout(r: { treatment: string; mm?: number | null; location: string }) {
   return [typeof r.mm === "number" ? `${r.mm}MM` : "", r.treatment, r.location].filter(Boolean).join(" ").toUpperCase();
 }
+
+/** A hardside interior's features grouped by half, in LID / BASE / BOTH / unstated order: "2 × ZIPPERED POCKET — NOTE". */
+export function caseHalves(rows: { half?: string; feature?: string; qty?: number; note?: string }[]) {
+  const order = ["LID HALF", "BASE HALF", "BOTH HALVES", "INTERIOR"];
+  const out = new Map<string, string[]>();
+  for (const r of rows) {
+    if (!r?.feature) continue;
+    const half = r.half && order.includes(r.half.toUpperCase()) ? r.half.toUpperCase() : "INTERIOR";
+    const line = `${typeof r.qty === "number" && r.qty > 1 ? `${r.qty} × ` : ""}${r.feature}${r.note ? ` — ${r.note}` : ""}`.toUpperCase();
+    out.set(half, [...(out.get(half) ?? []), line]);
+  }
+  return order.filter((h) => out.has(h)).map((h) => ({ half: h, lines: out.get(h)! }));
+}

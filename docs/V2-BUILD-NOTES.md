@@ -252,3 +252,9 @@ The nine golden packs were printed through the standard layout and compared with
 - **Decision:** `hw.colour` is offered on every component sheet (not only non-metal) because sheets give a colour for parts whose material isn't stated.
 - **Golden:** component sheets now enter colour, mounting, orientation, parent and usage, and the study's RELIEF-kind detail dimensions as `hw.relief` rows instead of detail dimensions.
 - **Not yet:** the CSV / XLSX hardware import does not read the record columns.
+
+### Hardside interior and the lining sheet
+- `interior.layout` (hardside luggage only): rows of half (LID HALF / BASE HALF / BOTH HALVES), feature (zippered divider panel, zippered pocket, zippered compression compartment, mesh pocket, elastic compression straps, X straps with centre buckle, shoe bag, wet pocket, label), qty and note.
+- INTERIOR & LINING prints the layout half by half, numbered; features with no half stated print under INTERIOR (the half is never guessed).
+- **Decision — lining sheet:** a lining-and-interior sheet is not a part. Its print record is a print-library item (motif, repeat, tile with its own unit, colours, application, base fabric) that the style pack's `interior.lining_print` points at, so it prints on INTERIOR & LINING / LINING ARTWORK; its called-out features become the style pack's `interior.layout`. It no longer prints as a component sheet.
+- **Golden:** the study's lining sheet is entered that way. The style pack gains a LINING / PRINT ARTWORK page; the component sheets keep their original numbers (one number is now skipped).

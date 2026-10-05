@@ -16,10 +16,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../src/db";
 import sharp from "sharp";
-import { brands, hardware, packAnswers, packFiles, packs } from "../src/db/schema";
+import { brands, hardware, packAnswers, packFiles, packs, prints } from "../src/db/schema";
 import { storeFile } from "../src/lib/storage";
 import { loadPack } from "../src/lib/data";
 import { buildPackDoc } from "../src/lib/pdf/doc";
@@ -33,15 +33,15 @@ import { entered, loadGolden, OUT, ROOT, type GoldenPack } from "./golden-lib";
 const PDF_DIR = path.join(OUT, "pdf");
 
 /** Library values named by a part code ("XX_001", "XX_001 WHEEL") → the seeded part. */
-function linkParts(v: unknown, byCode: Map<string, { id: string; code: string }>): unknown {
-  if (Array.isArray(v)) return v.map((x) => linkParts(x, byCode));
+function linkParts(v: unknown, byCode: Map<string, { id: string; code: string }>, byName = new Map<string, { id: string; code: string }>()): unknown {
+  if (Array.isArray(v)) return v.map((x) => linkParts(x, byCode, byName));
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
     if ("label" in o && "id" in o && !o.id) {
-      const hit = byCode.get(String(o.label).split(/\s+/)[0].toUpperCase());
+      const hit = byName.get(String(o.label).toUpperCase()) ?? byCode.get(String(o.label).split(/\s+/)[0].toUpperCase());
       if (hit) return { id: hit.id, label: hit.code };
     }
-    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, linkParts(x, byCode)]));
+    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, linkParts(x, byCode, byName)]));
   }
   return v;
 }
@@ -62,7 +62,15 @@ async function seed(g: GoldenPack): Promise<string> {
     const [h] = row ? await db.update(hardware).set(values).where(eq(hardware.id, row.id)).returning() : await db.insert(hardware).values(values).returning();
     byCode.set(part.code.toUpperCase(), { id: h.id, code: h.code });
   }
-  const linked = linkParts(answers, byCode) as AnswerMap;
+  // Prints the study records (a lining sheet's print record), linked by name.
+  const byName = new Map<string, { id: string; code: string }>();
+  for (const pr of g.prints ?? []) {
+    const values = { ...pr, brandId: brand.id };
+    const [row] = await db.select().from(prints).where(and(eq(prints.name, pr.name), eq(prints.brandId, brand.id)));
+    const [x] = row ? await db.update(prints).set(values).where(eq(prints.id, row.id)).returning() : await db.insert(prints).values(values).returning();
+    byName.set(pr.name.toUpperCase(), { id: x.id, code: x.name });
+  }
+  const linked = linkParts(answers, byCode, byName) as AnswerMap;
   const styleNo = g.label;
   await db.delete(packs).where(eq(packs.styleNo, styleNo));
   // A multi-style pack's colourway style numbers must be free (an earlier run's copy is replaced).
