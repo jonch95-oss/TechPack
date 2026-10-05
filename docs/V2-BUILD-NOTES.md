@@ -315,3 +315,8 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - interior vs exterior accent trims (an "INTERIOR X" trim column against "X") differing — info only.
 - **Spell-check:** corrections SCREEPRINT, RIPTSTOP, MENS, and a hyphenated word broken by a space ("MULTI- COLOR"); trade terms from §11 accepted. The check now covers the library and file text a pack prints (part records, card descriptions, photo captions) as well as its answers.
 - **Glossary:** DEPTH → 深度 (bag depth); THICKNESS → 厚度 (material thickness, as on swatch cards).
+
+### AI eval on every golden pack
+- `npm run ai:eval` reads every golden pack it has a render for: PINK013 / TB25_ACC0023 from the e2e database; a study pack from `reference/real-packs/<pack>/` — `render.*` first, else any image, else page 1 of a PDF in that folder.
+- It now **holds the line**: it exits 1 when any pack has a confident-wrong value on a render-unsettled field or an invented measurement, and reports how many packs it evaluated.
+- In this environment there is no API key and no study-pack render, so only the PINK013 fixture runs (0 confident-wrong, 0 invented). **Jon / tech lead:** drop each pack's render (or its original PDF) into `reference/real-packs/<pack>/` and run `npm run ai:eval` with the key to get the live numbers for all eight.
