@@ -9,6 +9,8 @@ import { readStoredFile, storeFile } from "@/lib/storage";
 import type { Dims2Value, LibValue, MaterialEntry } from "@/lib/questions";
 import { generateFlatRaster } from "./generate";
 import { traceLineArt } from "./trace";
+import { templateFlat, templateFor } from "./templates";
+import { SILHOUETTE_IDS } from "@/lib/similar-score";
 import { annotate, flatSvg, readMeta, replaceLayer, setDimMeta, tracedLayers, type AnnotateInput, type Box, type View } from "./geometry";
 
 /** Everything auto-annotation needs from the pack answers (entered values only). */
@@ -72,7 +74,16 @@ export async function generateFlat(p: LoadedPack, view: FlatView, userId: string
     const render = p.files.find((f) => f.kind === "render");
     if (!render) throw new Error("Upload the render first.");
     const img = await readCroppedFile(render); // board text never gets traced
-    const r = await generateFlatRaster(img.data, view, p.pack.category);
+    let r: Awaited<ReturnType<typeof generateFlatRaster>>;
+    try {
+      r = await generateFlatRaster(img.data, view, p.pack.category);
+    } catch (e) {
+      // The image service can't draw it and the render won't trace (V2 §8): fall back to the base
+      // style's flat, then to a silhouette template at the entered size — never a raw trace.
+      const fb = await fallbackFlat(p, view, userId, (e as Error).message);
+      if (fb) return fb;
+      throw e;
+    }
     png = r.png;
     source = r.source;
     note = r.note;
@@ -90,6 +101,42 @@ export async function generateFlat(p: LoadedPack, view: FlatView, userId: string
     .insert(flats)
     .values({ packId: p.pack.id, view, status, source, sourceUrl, svg, updatedBy: userId })
     .onConflictDoUpdate({ target: [flats.packId, flats.view], set: { status, source, sourceUrl, svg, updatedBy: userId, updatedAt: new Date() } })
+    .returning();
+  return { flat, note };
+}
+
+/**
+ * Line-art fallbacks (V2 §8): (a) the base style's flat of this view, re-dimensioned to this pack;
+ * (b) a silhouette template scaled to the entered W × H. Both arrive INFERRED for the designer to adjust.
+ * Null when neither is possible (no base flat and no W × H).
+ */
+export async function fallbackFlat(p: LoadedPack, view: FlatView, userId: string, why: string): Promise<{ flat: Flat; note: string } | null> {
+  let svg: string | null = null;
+  let source = "";
+  let note = "";
+  if (p.pack.copiedFrom) {
+    const [base] = await db.select().from(flats).where(and(eq(flats.packId, p.pack.copiedFrom), eq(flats.view, view)));
+    if (base) {
+      svg = base.svg;
+      source = "BASE_STYLE";
+      note = `${why} Started from the base style's ${view.toLowerCase()} flat, re-dimensioned to this pack — adjust it in the editor.`;
+    }
+  }
+  const w = typeof p.answers["dims.w"] === "number" ? (p.answers["dims.w"] as number) : null;
+  const h = typeof p.answers["dims.h"] === "number" ? (p.answers["dims.h"] as number) : null;
+  if (!svg && view === "FRONT" && w && h) {
+    const sil = String(SILHOUETTE_IDS.map((k) => p.answers[k]).find((v) => typeof v === "string") ?? "");
+    const tpl = templateFor(p.pack.category, sil);
+    svg = templateFlat({ view, unit: p.answers["dims.unit"] === "INCHES" ? "in" : "cm", w, h, ...tpl });
+    source = "TEMPLATE";
+    note = `${why} Drew a ${tpl.shape.toLowerCase().replace("_", "-")} silhouette template at ${w} × ${h} instead — adjust it in the editor.`;
+  }
+  if (!svg) return null;
+  const { svg: out } = await reannotate(svg, p);
+  const [flat] = await db
+    .insert(flats)
+    .values({ packId: p.pack.id, view, status: "INFERRED", source, sourceUrl: null, svg: out, updatedBy: userId })
+    .onConflictDoUpdate({ target: [flats.packId, flats.view], set: { status: "INFERRED", source, sourceUrl: null, svg: out, updatedBy: userId, updatedAt: new Date() } })
     .returning();
   return { flat, note };
 }

@@ -362,3 +362,9 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - **Sign-off is a brand × stage setting** (V2 §3 step 5): `brands.signoff_proto` (default **off**) and `brands.signoff_production` (default **on**), migration 0024, edited on Admin → Brands. The final PDF needs a second designer's sign-off only where the brand's setting for the pack's stage says so; drafts are always available.
   - **Decision / change in behaviour:** until now every final PDF needed sign-off. With the brief's default, proto PDFs no longer do unless the brand turns it on. e2e 04 now turns it on for its brand before testing the sign-off. Jon: confirm or switch proto sign-off on for the brands that want it.
 - **Review queue** (`/review`, "Review" in the nav): every pack in review that someone else asked for, oldest first. `A` signs off (the gate must pass, as before), `C` jumps to the comment box and ⌘/Ctrl + Enter sends the pack back with it, `J` / `K` move, `O` opens the pack; the draft PDF is one click.
+
+## V2 §12 step 7 — line-art fallbacks
+- When the image service can't draw a flat (no key, an error) and the render can't be traced (dark or sheer — the raw trace stays off for those, as before), "Draw" no longer just stops:
+  - **(a) base style's flat:** a pack started from a base style takes that pack's flat of the same view, re-dimensioned to this pack's size (callouts and dimension lines redrawn);
+  - **(b) silhouette template:** otherwise, for the front view with W × H entered, a clean template outline at that size — rounded body, trapezoid (tote / bucket), half-moon (hobo / saddle) or case (luggage), with a carry handle where the silhouette has one and a stitch line — so the dimension lines read the entered W × H.
+  - Both arrive **INFERRED** (source BASE_STYLE / TEMPLATE) with a note saying what was drawn instead; the designer adjusts in the editor. With neither available the old message stands (retry later, or upload a drawing).
