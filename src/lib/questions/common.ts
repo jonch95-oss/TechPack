@@ -54,6 +54,8 @@ export const HARDWARE_FINISHES = [
 
 export const HARDWARE_MATERIALS = ["ZINC ALLOY", "BRASS", "IRON", "PLASTIC W/ METAL FINISH", "ALUMINIUM", "PLASTIC", "RUBBER", "TPU"];
 
+export const CARTON_FIELDS = ["BRAND", "COLLECTION", "STYLE", "COLOR", "SIZE", "PREPACK (IF APPLICABLE)", "REFERENCE (PO#)", "CARTON QTY", "BOX # OF #", "GROSS WT (LBS)", "NET WT (LBS)", "COUNTRY OF ORIGIN", "BARCODE"];
+
 /** The halves a hardside case opens into. */
 export const CASE_HALVES = ["LID HALF", "BASE HALF", "BOTH HALVES"];
 
@@ -762,4 +764,92 @@ export const COMMON_SECTIONS: Section[] = [
       { id: "opt.testing.notes", label: "Notes", kind: "comment" },
     ],
   },
+  /*
+   * Packaging, labels and compliance pages (V2.1 §8): off by default for every brand, switched on per
+   * pack. Each prints its own page. "To be provided" (a reference answer) is accepted for the artwork
+   * and copy at PROTO and blocks PRODUCTION.
+   */
+  {
+    id: "pkg.hangtag",
+    title: "Hangtag",
+    optional: true,
+    questions: [
+      { id: "pkg.hangtag.size", label: "Size (W × H)", kind: "dims2", unit: "dim", required: true },
+      { id: "pkg.hangtag.fold", label: "Construction", kind: "chips", options: ["FLAT", "FOLD-OVER (FRONT / INSIDE / BACK)"], required: true },
+      { id: "pkg.hangtag.paper", label: "Paper stock", kind: "text", placeholder: "12PT C2S" },
+      { id: "pkg.hangtag.coating", label: "Coating / finish notes", kind: "text" },
+      { id: "pkg.hangtag.colours", label: "PMS colours", kind: "text" },
+      { id: "pkg.hangtag.front", label: "Front panel copy", kind: "comment" },
+      { id: "pkg.hangtag.inside", label: "Inside panel copy", kind: "comment", showIf: { q: "pkg.hangtag.fold", eq: "FOLD-OVER (FRONT / INSIDE / BACK)" } },
+      { id: "pkg.hangtag.back", label: "Back panel copy", kind: "comment" },
+      { id: "pkg.hangtag.upc", label: "UPC placeholder (FPO)", kind: "toggle" },
+      { id: "pkg.hangtag.rn", label: "RN #", kind: "text" },
+      { id: "pkg.hangtag.coo", label: "Country of origin line", kind: "text" },
+      { id: "pkg.hangtag.prop65", label: "Bilingual Prop 65 warning", kind: "toggle" },
+      { id: "pkg.hangtag.licensor_line", label: "Licensor trademark line", kind: "text" },
+      { id: "pkg.hangtag.artwork", label: "Artwork", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "pkg.coo_label",
+    title: "Interior country-of-origin label",
+    optional: true,
+    questions: [
+      { id: "pkg.coo_label.size", label: "Size (W × H)", kind: "dims2", unit: "dim", required: true },
+      { id: "pkg.coo_label.content", label: "Content line", kind: "text", required: true },
+      { id: "pkg.coo_label.rn", label: "RN #", kind: "text" },
+      { id: "pkg.coo_label.made_in", label: "Made-in line (EN / FR)", kind: "text", required: true, placeholder: "MADE IN … / FABRIQUÉ EN …" },
+      { id: "pkg.coo_label.copy", label: "Other copy (logo, script …)", kind: "comment" },
+      { id: "pkg.coo_label.placement", label: "Placement", kind: "text" },
+      { id: "pkg.coo_label.artwork", label: "Artwork", kind: "file" },
+    ],
+  },
+  {
+    id: "pkg.carton_label",
+    title: "Master carton label",
+    optional: true,
+    questions: [
+      { id: "pkg.carton_label.per_carton", label: "Labels per carton", kind: "stepper", unit: "qty", required: true },
+      { id: "pkg.carton_label.label_size", label: "Label size", kind: "text", required: true },
+      { id: "pkg.carton_label.sku_pt", label: "Minimum SKU text size in points", kind: "stepper", unit: "qty", min: 80 },
+      { id: "pkg.carton_label.placement", label: "Placement on the carton", kind: "comment", required: true },
+      { id: "pkg.carton_label.fields", label: "Fields", kind: "multi", options: CARTON_FIELDS, required: true },
+      { id: "pkg.carton_label.values", label: "Field values", kind: "chips", options: ["TO BE ADVISED", "PER PO"] },
+      { id: "pkg.carton_label.artwork", label: "Artwork", kind: "file" },
+    ],
+  },
+  {
+    id: "pkg.warranty_card",
+    title: "Warranty card",
+    optional: true,
+    questions: [
+      { id: "pkg.warranty_card.size", label: "Size (W × H)", kind: "dims2", unit: "dim", required: true },
+      { id: "pkg.warranty_card.paper", label: "Paper stock", kind: "text" },
+      { id: "pkg.warranty_card.copy", label: "Copy", kind: "comment", required: true },
+      { id: "pkg.warranty_card.artwork", label: "Artwork", kind: "file", required: true },
+    ],
+  },
+  {
+    id: "pkg.polybag",
+    title: "Poly bag",
+    optional: true,
+    questions: [
+      { id: "pkg.polybag.size", label: "Size (W × H)", kind: "dims2", unit: "dim", required: true },
+      { id: "pkg.polybag.material", label: "Material / gauge", kind: "text", required: true, placeholder: "LDPE 0.05MM" },
+      { id: "pkg.polybag.closure", label: "Closure", kind: "chips", options: ["SELF-SEAL FLAP", "ZIP-LOCK", "OPEN"] },
+      { id: "pkg.polybag.vent_holes", label: "Vent holes", kind: "toggle" },
+      { id: "pkg.polybag.warning", label: "Suffocation warning copy", kind: "comment", required: true },
+      { id: "pkg.polybag.print", label: "Other print", kind: "comment" },
+      { id: "pkg.polybag.artwork", label: "Artwork", kind: "file" },
+    ],
+  },
+];
+
+/** The packaging / label pages (V2.1 §8), in print order: section id → page title. */
+export const PACKAGING_PAGES: { id: string; title: string }[] = [
+  { id: "pkg.hangtag", title: "HANGTAG" },
+  { id: "pkg.coo_label", title: "COUNTRY OF ORIGIN LABEL" },
+  { id: "pkg.warranty_card", title: "WARRANTY CARD" },
+  { id: "pkg.polybag", title: "POLY BAG" },
+  { id: "pkg.carton_label", title: "MASTER CARTON LABEL" },
 ];

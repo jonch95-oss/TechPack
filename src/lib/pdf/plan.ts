@@ -30,6 +30,8 @@ export type PlanInput = {
   specPages?: number;
   /** A Hardware-category pack is one component sheet: the TRIMS & HARDWARE page only. */
   componentOnly?: boolean;
+  /** Packaging / label pages switched on for the pack (V2.1 §8), by title, in print order. */
+  packaging?: string[];
   /** Swatch-card page for each colourway × material (a shared card is listed under every colourway it serves). */
   swatchUse?: { colorway: string; materialCallout: number; card: number }[];
 };
@@ -49,7 +51,8 @@ export type PlannedPage =
   | { section: "CONSTRUCTION DETAILS" }
   | { section: "BILL OF MATERIALS" }
   | { section: "CHANGE LOG" }
-  | { section: "SAMPLE COMMENTS" };
+  | { section: "SAMPLE COMMENTS" }
+  | { section: "PACKAGING & LABELS"; item: string };
 
 export type Plan = {
   pages: (PlannedPage & { n: number })[];
@@ -84,6 +87,7 @@ export function planPages(i: PlanInput): Plan {
       else for (const s of i.swatches) pages.push({ section: "SWATCH CARDS", swatches: [s] });
     }
   }
+  if (!i.componentOnly) for (const item of i.packaging ?? []) pages.push({ section: "PACKAGING & LABELS", item });
   if (i.hasSampleComments) pages.push({ section: "SAMPLE COMMENTS" });
   if (i.revisionCount > 0) pages.push({ section: "CHANGE LOG" });
 

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { missingFrom, mmText, specItems, tight, valueOf } from "@/lib/pdf/specs";
 import { logoRows, planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
 import { calloutPoint, caseHalves, logoPointFor, reliefCallout, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
-import { completeness, findQuestion, matrixColumns } from "@/lib/questions";
+import { completeness, findQuestion, matrixColumns, visibleQuestions } from "@/lib/questions";
 import { validatePack } from "@/lib/validation";
 
 const base: PlanInput = {
@@ -284,5 +284,21 @@ describe("V2.1 step 5 — hardside interior by half", () => {
   it("the layout question is asked for hardside cases only", () => {
     expect(findQuestion("Hardside luggage", "interior.layout")).toBeTruthy();
     expect(findQuestion("Handbags", "interior.layout")?.showIf).toEqual({ category: ["Hardside luggage"] });
+  });
+});
+
+describe("V2.1 step 6 — packaging, labels and compliance pages", () => {
+  it("print only when switched on, one page each, after the swatch cards and before the change log", () => {
+    expect(planPages(base).pages.some((p) => p.section === "PACKAGING & LABELS")).toBe(false);
+    const pages = planPages({ ...base, revisionCount: 1, packaging: ["HANGTAG", "MASTER CARTON LABEL"] }).pages;
+    expect(pages.map((p) => ("item" in p ? p.item : p.section))).toEqual(["OVERVIEW", "HANGTAG", "MASTER CARTON LABEL", "CHANGE LOG"]);
+    expect(planPages({ ...base, componentOnly: true, packaging: ["HANGTAG"] }).pages.some((p) => p.section === "PACKAGING & LABELS")).toBe(false);
+  });
+  it("each page is an optional section, off by default", () => {
+    for (const id of ["pkg.hangtag.artwork", "pkg.coo_label.made_in", "pkg.carton_label.fields", "pkg.warranty_card.copy", "pkg.polybag.warning"]) {
+      expect(findQuestion("Handbags", id), id).toBeTruthy();
+      expect(visibleQuestions({ category: "Handbags", answers: {} }).some((q) => q.id === id)).toBe(false);
+    }
+    expect(visibleQuestions({ category: "Handbags", answers: { "optional.pkg.hangtag": true } }).some((q) => q.id === "pkg.hangtag.artwork")).toBe(true);
   });
 });

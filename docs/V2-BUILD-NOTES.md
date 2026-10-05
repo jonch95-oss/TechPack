@@ -258,3 +258,15 @@ The nine golden packs were printed through the standard layout and compared with
 - INTERIOR & LINING prints the layout half by half, numbered; features with no half stated print under INTERIOR (the half is never guessed).
 - **Decision — lining sheet:** a lining-and-interior sheet is not a part. Its print record is a print-library item (motif, repeat, tile with its own unit, colours, application, base fabric) that the style pack's `interior.lining_print` points at, so it prints on INTERIOR & LINING / LINING ARTWORK; its called-out features become the style pack's `interior.layout`. It no longer prints as a component sheet.
 - **Golden:** the study's lining sheet is entered that way. The style pack gains a LINING / PRINT ARTWORK page; the component sheets keep their original numbers (one number is now skipped).
+
+## V2.1 step 6 — packaging, vocabulary, library
+### Packaging, labels and compliance pages (§8)
+- Five optional sections, **off by default for every brand**, switched on per pack like the other optional sections (`optional.<id>`): `pkg.hangtag`, `pkg.coo_label`, `pkg.warranty_card`, `pkg.polybag`, `pkg.carton_label`.
+  - Hangtag: size, construction (flat / fold-over), paper, coating notes, PMS colours, front / inside / back copy, UPC placeholder (FPO), RN #, COO line, bilingual Prop 65, licensor TM line, artwork.
+  - COO label: size, content line, RN #, made-in line (EN / FR), other copy, placement, artwork.
+  - Master carton label: labels per carton, label size, minimum SKU text size (pt, ≥ 80), placement, field list, field values, artwork.
+  - Warranty card: size, paper, copy, artwork. Poly bag: size, material / gauge, closure, vent holes, suffocation warning, other print, artwork.
+- Each switched-on item prints its own PACKAGING & LABELS page after the swatch cards: the piece at its stated size with dimension lines (ACTUAL SIZE when it fits, else reduced and said so; "SIZE NOT GIVEN" otherwise), its artwork or "ARTWORK TO BE PROVIDED", and a table of its answers.
+- "To be provided" is the reference answer (`TO_BE_PROVIDED`): accepted at PROTO, blocks PRODUCTION like any other.
+- **Decision:** switching is per pack only for now. A brand or retailer default (switch on for every new pack of that brand / retailer) is a small follow-up — listed for Jon.
+- **Golden:** the studies' proposed `_new.packaging.*`, `_new.labels.interior_coo` and `_new.brand.rn_number` switch the pages on and fill them; `_new.packaging.artwork_status: TO BE PROVIDED` becomes the artwork's reference answer.

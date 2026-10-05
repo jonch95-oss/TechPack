@@ -23,6 +23,11 @@ export type GoldenPack = { library?: LibPart[]; prints?: GoldenPrint[]; colorway
 
 /* ------------------------------ loading ------------------------------ */
 
+/** Set each defined, non-empty value. */
+function put(a: Record<string, unknown>, values: Record<string, unknown>) {
+  for (const [k, v] of Object.entries(values)) if (v !== undefined && v !== null && v !== "") a[k] = v;
+}
+
 /**
  * Ids the studies proposed that now exist in the bank, with how their study shape maps onto the
  * question (so they count as entered facts, no longer as proposed ones).
@@ -47,6 +52,82 @@ const ADOPTED: Record<string, { id: string; map: (v: unknown) => unknown; also?:
         });
       }
       answers["materials.matrix"] = m;
+    },
+  },
+  // Packaging / label pages (V2.1 §8): the proposal switches the page on and fills its questions.
+  "packaging.master_carton_label": {
+    id: "optional.pkg.carton_label",
+    map: () => true,
+    also: (v, a) => {
+      const o = (v ?? {}) as Record<string, unknown>;
+      put(a, {
+        "pkg.carton_label.per_carton": o.labels_per_carton,
+        "pkg.carton_label.label_size": o.size,
+        "pkg.carton_label.sku_pt": o.sku_font_min_pt,
+        "pkg.carton_label.placement": Array.isArray(o.placement) ? o.placement.join("; ") : o.placement,
+        "pkg.carton_label.fields": o.fields,
+        "pkg.carton_label.values": o.values,
+      });
+    },
+  },
+  "packaging.hangtag": {
+    id: "optional.pkg.hangtag",
+    map: () => true,
+    also: (v, a) => {
+      const o = (v ?? {}) as Record<string, unknown>;
+      const sz = (o.size_in ?? {}) as { w?: number; h?: number };
+      const k = a["dims.unit"] === "INCHES" ? 1 : 2.54;
+      const list = (x: unknown) => (Array.isArray(x) ? x.join("\n") : x);
+      put(a, {
+        "pkg.hangtag.size": sz.w != null || sz.h != null ? { w: sz.w != null ? sz.w * k : undefined, h: sz.h != null ? sz.h * k : undefined } : undefined,
+        "pkg.hangtag.fold": /FOLD/i.test(String(o.construction ?? "")) ? "FOLD-OVER (FRONT / INSIDE / BACK)" : o.construction ? "FLAT" : undefined,
+        "pkg.hangtag.paper": o.paper,
+        "pkg.hangtag.coating": o.finish_note,
+        "pkg.hangtag.colours": Array.isArray(o.colours) ? o.colours.join(", ") : o.colours,
+        "pkg.hangtag.front": list(o.front),
+        "pkg.hangtag.inside": [list(o.inside_copy), Array.isArray(o.icons) ? `ICONS: ${o.icons.join(", ")}` : undefined].filter(Boolean).join("\n") || undefined,
+        "pkg.hangtag.back": list(o.back),
+      });
+    },
+  },
+  "labels.interior_coo": {
+    id: "optional.pkg.coo_label",
+    map: () => true,
+    also: (v, a) => {
+      const o = (v ?? {}) as Record<string, unknown>;
+      const sz = (o.size_in ?? {}) as { w?: number; h?: number };
+      const k = a["dims.unit"] === "INCHES" ? 1 : 2.54;
+      const copy = (Array.isArray(o.copy) ? o.copy : []).map(String);
+      const madeIn = copy.filter((c) => /MADE IN|FABRIQU/i.test(c));
+      const rn = copy.find((c) => /^RN\s*#?/i.test(c));
+      const content = [...new Set(copy.filter((c) => /%/.test(c)))];
+      put(a, {
+        "pkg.coo_label.size": sz.w != null || sz.h != null ? { w: sz.w != null ? sz.w * k : undefined, h: sz.h != null ? sz.h * k : undefined } : undefined,
+        "pkg.coo_label.content": content.join(" / ") || undefined,
+        "pkg.coo_label.rn": rn,
+        "pkg.coo_label.made_in": madeIn.join(" / ") || undefined,
+        "pkg.coo_label.copy": copy.filter((c) => !madeIn.includes(c) && c !== rn && !content.includes(c)).join("\n") || undefined,
+        "pkg.coo_label.placement": o.placement,
+      });
+    },
+  },
+  "packaging.warranty_card": { id: "optional.pkg.warranty_card", map: (v) => v === true },
+  // "TO BE PROVIDED" artwork on every switched-on page is a reference answer.
+  "packaging.artwork_status": {
+    id: "_artwork_status",
+    map: (v) => v,
+    also: (v, a) => {
+      if (!/TO BE PROVIDED/i.test(String(v))) return;
+      for (const id of ["pkg.hangtag", "pkg.coo_label", "pkg.carton_label", "pkg.warranty_card", "pkg.polybag"]) if (a[`optional.${id}`] === true && a[`${id}.artwork`] == null) a[`${id}.artwork`] = { ref: "TO_BE_PROVIDED" };
+      delete a._artwork_status;
+    },
+  },
+  "brand.rn_number": {
+    id: "_rn",
+    map: (v) => v,
+    also: (v, a) => {
+      for (const id of ["pkg.hangtag", "pkg.coo_label"]) if (a[`optional.${id}`] === true && a[`${id}.rn`] == null) a[`${id}.rn`] = v;
+      delete a._rn;
     },
   },
   "branding.items": {

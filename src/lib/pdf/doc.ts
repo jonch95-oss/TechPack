@@ -12,9 +12,10 @@ import { readStoredFile } from "@/lib/storage";
 import { intoCrop, readCroppedFile } from "@/lib/crop";
 import { spellcheckParts } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
-import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
+import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, optionalToggleId, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
+import { PACKAGING_PAGES } from "@/lib/questions/common";
 import { caseHalves, logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
 
@@ -421,6 +422,22 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     a["pages.product_features"] === false
       ? []
       : ((a["pages.features"] as { text?: string; only?: string }[] | undefined) ?? []).filter((f) => f.text).map((f) => `${f.text}${f.only?.trim() ? ` — ${onlyOn(f.only)} ONLY` : ""}`);
+  /* ---------- packaging / label pages (V2.1 §8): only the ones switched on ---------- */
+  const pkgSpecs = specItems(p.pack.category, p.answers, {});
+  const packaging = await Promise.all(
+    PACKAGING_PAGES.filter((pg) => a[optionalToggleId(pg.id)] === true).map(async (pg) => {
+      const art = a[`${pg.id}.artwork`] as { url?: string; name?: string } | undefined;
+      const artRef = refAnswers[`${pg.id}.artwork`];
+      return {
+        id: pg.id,
+        title: pg.title,
+        size: a[`${pg.id}.size`] as Dims2Value | undefined,
+        items: pkgSpecs.filter((x) => x.qid.startsWith(`${pg.id}.`) && !x.qid.endsWith(".size")),
+        artwork: art?.url ? await img(art.url) : null,
+        artworkNote: artRef ? refText(artRef) : art?.url ? "" : "ARTWORK TO BE PROVIDED",
+      };
+    }),
+  );
   const planInput: PlanInput = {
     hasInterior,
     hasColourways: p.pack.colorways.length > 0 && (cols.length > 0 || matList.length > 0),
@@ -440,6 +457,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     forced,
     trimsPages: trims.length,
     componentOnly,
+    packaging: packaging.map((x) => x.title),
   };
   const plan: Plan = planPages(planInput);
 
@@ -687,6 +705,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       indicative: indicative.map((x) => ({ colorway: x.colorway, svg: inlineFlat(flatOf("FRONT")!.svg, { className: "flat flat-indicative", fill: x.fill }) })),
     },
     componentOnly,
+    packaging,
     /** Every answered question with what it prints as (the SPECIFICATIONS block and the golden check). */
     specs: specItems(p.pack.category, p.answers, printedAs),
     /** [0] prints on page 1 (or the component sheet), the rest on SPECIFICATIONS pages — set by paginateSpecs. */

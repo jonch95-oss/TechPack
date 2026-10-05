@@ -139,7 +139,7 @@ async function printAndCheck(label: string, packId: string): Promise<Result> {
   const commentsMissing = comments.filter((c) => !text.includes(tight(c.text))).map((c) => c.letter);
   const photos = p.files.filter((f) => (f.kind === "reference" || f.kind === "construction") && f.note.trim());
   const photosMissing = photos.filter((f) => !text.includes(tight(f.note))).map((f) => f.tag || f.id.slice(0, 8));
-  return { pack: label, pages: doc.plan.pages.map((x) => `${x.n}:${x.section}${"part" in x && x.part.of > 1 ? ` (${x.part.i}/${x.part.of})` : ""}`), answered: answered.length, notPrinted, comments: comments.length, commentsMissing, photos: photos.length, photosMissing, overflow };
+  return { pack: label, pages: doc.plan.pages.map((x) => `${x.n}:${x.section}${"item" in x ? ` — ${x.item}` : ""}${"part" in x && x.part.of > 1 ? ` (${x.part.i}/${x.part.of})` : ""}`), answered: answered.length, notPrinted, comments: comments.length, commentsMissing, photos: photos.length, photosMissing, overflow };
 }
 
 async function main() {

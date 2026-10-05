@@ -1200,6 +1200,40 @@ function toolingNote(doc: PackDoc) {
   return lines.length ? `<div style="font-size:9.5pt;color:#1a8bd0;margin-top:4px;line-height:1.4">${lines.map((l) => up(l)).join("<br/>")}</div>` : "";
 }
 
+/* ------------------------------ PACKAGING & LABELS (V2.1 §8) ------------------------------ */
+function packagingPage(doc: PackDoc, n: number, item: string) {
+  const pg = doc.packaging.find((x) => x.title === item);
+  if (!pg) return "";
+  const inches = doc.unit === "in";
+  const toMm = (v?: number | null) => (typeof v === "number" ? v * (inches ? 25.4 : 10) : null);
+  const wmm = toMm(pg.size?.w),
+    hmm = toMm(pg.size?.h);
+  // The piece at its stated size (true size when it fits the left column), with its dimension lines.
+  const maxW = 7.4 * 25.4,
+    maxH = 8.2 * 25.4;
+  const aspect = pg.artwork ? pg.artwork.h / pg.artwork.w : 1.4;
+  const w = wmm ?? (hmm != null ? hmm / aspect : 60),
+    h = hmm ?? w * aspect;
+  const k = Math.min(1, maxW / w, maxH / h);
+  const sized = wmm != null || hmm != null;
+  const scale = !sized ? "SIZE NOT GIVEN — NOT TO SCALE" : k >= 0.999 ? "ACTUAL SIZE (1:1)" : `REDUCED TO FIT — ${Math.round(k * 100)}% OF ACTUAL SIZE`;
+  const body = pg.artwork
+    ? `<img src="${pg.artwork.src}" style="width:${r2(w * k)}mm;height:${r2(h * k)}mm;object-fit:contain;display:block;border:1px solid #111"/>`
+    : `<div style="width:${r2(w * k)}mm;height:${r2(h * k)}mm;border:2px dashed #111;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12pt;padding:6px;box-sizing:border-box">${up(pg.artworkNote || "ARTWORK TO BE PROVIDED")}</div>`;
+  const wLine = wmm != null ? `<div class="dim" style="position:absolute;top:0;left:0.55in;width:${r2(w * k)}mm;text-align:center;font-size:13pt;white-space:nowrap;border-bottom:1.5px solid ${RED}">${mmText(wmm, inches)}</div>` : "";
+  const hLine = hmm != null ? `<div class="dim" style="position:absolute;left:0;top:0.4in;height:${r2(h * k)}mm;display:flex;align-items:center;font-size:13pt;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;border-left:1.5px solid ${RED}">${mmText(hmm, inches)}</div>` : "";
+  const rows = pg.items.map((it) => `<tr><td style="width:2.3in;text-align:left">${up(it.label)}</td><td style="text-align:left">${it.lines.map((l) => esc(l)).join("<br/>")}</td></tr>`).join("");
+  return `${openPage(doc, n, item, { comments: "PACKAGING & LABELS" })}
+    <div class="abs" style="left:0.4in;top:1.45in;width:8in">
+      <div style="position:relative;padding:0.4in 0 0 0.55in">${wLine}${hLine}${body}<div class="muted" style="font-size:9pt;margin-top:4px">${scale}</div></div>
+      ${pg.artwork && pg.artworkNote ? `<div class="red" style="font-size:12pt;margin-top:8px">${up(pg.artworkNote)}</div>` : ""}
+    </div>
+    <div class="abs" style="left:8.8in;top:1.45in;width:7.8in">
+      <table class="spec" style="font-size:12pt">${rows}</table>
+    </div>
+  ${CLOSE_PAGE}`;
+}
+
 /* ------------------------------ CONSTRUCTION DETAILS ------------------------------ */
 function crossSection(edge: string) {
   const L = (y: number) => `<rect x="10" y="${y}" width="120" height="8" fill="#ddd" stroke="#111"/>`;
@@ -1412,6 +1446,8 @@ export function renderPages(doc: PackDoc) {
           return constructionPage(doc, p.n);
         case "BILL OF MATERIALS":
           return bomPage(doc, p.n);
+        case "PACKAGING & LABELS":
+          return packagingPage(doc, p.n, p.item);
         case "SAMPLE COMMENTS":
           return samplePage(doc, p.n);
         case "CHANGE LOG":
