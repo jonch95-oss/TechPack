@@ -9,7 +9,9 @@
  */
 export function calloutPoint(m: { pos?: { x: number; y: number } | null; locations?: string[] }, k: number): { x: number; y: number; suggested: boolean } {
   if (m.pos) return { ...m.pos, suggested: false };
-  const loc = (m.locations ?? []).join(" ").toUpperCase();
+  // The first location is where the material mainly is (a fabric listed for the lid, panels and a
+  // handle wrap belongs on the lid, not the handle).
+  const loc = (m.locations?.[0] ?? "").toUpperCase();
   const at = (x: number, y: number) => ({ x, y: y + (k % 2) * 0.04, suggested: true });
   if (/FLAP/.test(loc)) return at(0.5, 0.32);
   if (/HANDLE/.test(loc)) return at(0.5, 0.08);
@@ -48,4 +50,30 @@ export function wallName(w: string | undefined): string | undefined {
 export function usDate(iso: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   return m ? `${m[2]}.${m[3]}.${m[1]}` : iso;
+}
+
+/**
+ * Callout circles (diameter d) that never sit on one another (golden run 2 #1): each one that would
+ * overlap an earlier one moves right by a diameter, wrapping to the next row inside the box.
+ */
+export function spreadPoints(points: { x: number; y: number }[], d: number, box: { x: number; y: number; w: number; h: number }) {
+  const out: { x: number; y: number }[] = [];
+  const clampX = (x: number) => Math.min(Math.max(x, box.x), box.x + box.w - d);
+  const clampY = (y: number) => Math.min(Math.max(y, box.y), box.y + box.h - d);
+  for (const p0 of points) {
+    let p = { x: clampX(p0.x), y: clampY(p0.y) };
+    for (let guard = 0; guard < 200 && out.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < d * 1.05); guard++) {
+      const nx = p.x + d * 1.1;
+      p = nx > box.x + box.w - d ? { x: box.x, y: p.y + d * 1.1 > box.y + box.h - d ? box.y : p.y + d * 1.1 } : { x: nx, y: p.y };
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/** The pack's style numbers in colourway order (the pack's own first when a colourway has none). */
+export function styleCodesOf(pack: { styleNo: string; colorways: string[]; colorwayStyles?: Record<string, string> | null }) {
+  const own = pack.colorwayStyles ?? {};
+  const list = pack.colorways.map((c) => own[c] ?? pack.styleNo);
+  return [...new Set([...(list.includes(pack.styleNo) || !Object.keys(own).length ? [pack.styleNo] : []), ...list])];
 }

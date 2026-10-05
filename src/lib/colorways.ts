@@ -6,6 +6,8 @@
  */
 export const suffix = (i: number) => `-${String.fromCharCode(65 + i)}`;
 const SUFFIX = /^-[A-Z0-9]{1,3}$/;
+/** A colourway key: a suffix, or a named variant without one ("VINTAGE", V2.1 §4). */
+const COLORWAY_KEY = /^(-[A-Z0-9]{1,3}|[A-Z][A-Z0-9 ]{1,19})$/;
 
 /** Old suffix → new suffix (null = removed). */
 export type ColorwayMap = Record<string, string | null>;
@@ -13,15 +15,18 @@ export type ColorwayMap = Record<string, string | null>;
 export function removeColorway(list: string[], gone: string): { next: string[]; map: ColorwayMap } {
   const keep = list.filter((c) => c !== gone);
   const map: ColorwayMap = { [gone]: null };
-  keep.forEach((c, i) => (map[c] = suffix(i)));
-  return { next: keep.map((_, i) => suffix(i)), map };
+  // Suffixes re-letter in order; named variants keep their names.
+  let k = 0;
+  const next = keep.map((c) => (SUFFIX.test(c) ? suffix(k++) : c));
+  keep.forEach((c, i) => (map[c] = next[i]));
+  return { next, map };
 }
 
 /** An answer keyed by colourway suffix (matrix rows, names): its keys follow the map. */
 function isPerColorway(v: unknown): v is Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const keys = Object.keys(v);
-  return keys.length > 0 && keys.every((k) => SUFFIX.test(k));
+  return keys.length > 0 && keys.every((k) => COLORWAY_KEY.test(k));
 }
 
 /** The answers that change, with their new values. */

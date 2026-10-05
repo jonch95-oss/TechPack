@@ -475,12 +475,16 @@ const packingCubes: Section = {
       kind: "rows",
       required: true,
       addLabel: "Add size",
+      // A set is pieces of different types, each with its own size and material (V2.1 §5). A flat
+      // piece (a pouch) gives W × L only.
       columns: [
+        { key: "piece", label: "Piece", kind: "chips", options: ["CUBE", "POUCH", "WET POUCH", "SHOE BAG", "LAUNDRY BAG"], required: true },
         { key: "size", label: "Size", kind: "chips", options: ["XS", "S", "M", "L", "XL"], required: true },
         { key: "qty", label: "Qty", kind: "stepper", unit: "qty", required: true },
         { key: "l", label: "L", kind: "stepper", unit: "dim", required: true },
         { key: "w", label: "W", kind: "stepper", unit: "dim", required: true },
-        { key: "h", label: "H", kind: "stepper", unit: "dim", required: true },
+        { key: "h", label: "H (blank for a flat piece)", kind: "stepper", unit: "dim" },
+        { key: "material", label: "Material", kind: "text" },
       ],
     },
     { id: "cube.body_fabric", label: "Body fabric", kind: "lib", lib: "material", required: true },

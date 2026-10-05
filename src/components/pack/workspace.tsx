@@ -60,6 +60,7 @@ export type WorkspaceProps = {
     styleName: string;
     category: Category;
     colorways: string[];
+    colorwayStyles?: Record<string, string>;
     aiAnalysis: { visible_features: string[]; not_visible: string[]; agent_notes: string; ran_at: string; model: string } | null;
     status: PackStatus;
     stage: "PROTO" | "PRODUCTION";
@@ -434,7 +435,7 @@ export function PackWorkspace(props: WorkspaceProps) {
               </a>
               {canEdit && (
                 <SetupEditor
-                  pack={{ id: pack.id, styleNo: pack.styleNo, styleName: pack.styleName, category: pack.category, brandId: brand.id, colorways }}
+                  pack={{ id: pack.id, styleNo: pack.styleNo, styleName: pack.styleName, category: pack.category, brandId: brand.id, colorways, colorwayStyles: pack.colorwayStyles }}
                   brands={props.brands}
                   names={(answers["colorways.names"] as Record<string, string> | undefined) ?? {}}
                 />

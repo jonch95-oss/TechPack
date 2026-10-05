@@ -14,8 +14,8 @@ import { spellcheckParts } from "@/lib/spellcheck";
 import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
-import { specItems, type SpecItem } from "./specs";
-import { logoPointFor, wallName } from "./hints";
+import { mmText, specItems, type SpecItem } from "./specs";
+import { logoPointFor, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
 
 export type Img = { src: string; w: number; h: number } | null;
@@ -165,9 +165,11 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   const setSizes = ((a["lug.set_sizes"] ?? a["softlug.set_sizes"]) as string[] | undefined) ?? [];
   if (lugSize) sizeLines.push([lugSize === "SET" && setSizes.length ? `SET: ${setSizes.join(" / ")}` : lugSize, overall].filter(Boolean).join(" — "));
   else if (overall) sizeLines.push(overall);
-  for (const r of (a["cube.set"] as { size?: string; qty?: number; l?: number; w?: number; h?: number }[] | undefined) ?? []) {
+  // A set: one line per piece, said with its type (CUBE L, POUCH M …) — a flat piece has no H.
+  for (const r of (a["cube.set"] as { piece?: string; size?: string; qty?: number; l?: number; w?: number; h?: number }[] | undefined) ?? []) {
     const parts = (["l", "w", "h"] as const).filter((k) => typeof r[k] === "number").map((k) => `${trim(r[k]!)}${U} ${k.toUpperCase()}`);
-    if (r.size || parts.length) sizeLines.push(`${r.size ? `${r.size}: ` : ""}${parts.join(" X ")}${(r.qty ?? 1) > 1 ? ` × ${r.qty}` : ""}`.trim());
+    const name = [r.piece, r.size].filter(Boolean).join(" ");
+    if (name || parts.length) sizeLines.push(`${name ? `${name}: ` : ""}${parts.join(" X ")}${(r.qty ?? 1) > 1 ? ` × ${r.qty}` : ""}`.trim());
   }
 
   /* ---------- materials & swatch cards (one page per card, golden run 1 #13) ---------- */
@@ -266,7 +268,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     const h = r.item ? hwById.get(r.item.id) : undefined;
     return { code: h?.code ?? r.item?.label ?? "", type: h?.type ?? "", qty: r.qty, from: r.from ?? "", distance: r.distance, spacing: r.spacing, note: r.note ?? "" };
   });
-  const zippers = ((a["zippers.list"] as Record<string, unknown>[] | undefined) ?? [])
+  const zipRows = (a["zippers.list"] as Record<string, unknown>[] | undefined) ?? [];
+  const zippers = zipRows
     .map((z) => ({
       position: String(z.position ?? ""),
       size: String(z.size ?? ""),
@@ -287,7 +290,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     stitch: String(c.stitch ?? ""),
     spi: typeof c.spi === "number" ? String(c.spi) : "",
     thread: String(c.thread ?? ""),
-    allowance: typeof c.allowance === "number" ? `${c.allowance} MM` : "",
+    allowance: typeof c.allowance === "number" ? mmText(c.allowance, unit === "in") : "",
   }));
   const bom = ((a["bom.list"] as BomRow[] | undefined) ?? []).filter((r) => r.component || r.description);
   const labels = contentLabel(a, p.pack.colorways, (id) => matById.get(id)?.composition || undefined);
@@ -353,9 +356,18 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
 
   /* ---------- trims & hardware pages: panels that don't fit continue on the next page ---------- */
   const trimsPhotoCount = photoPages.filter((x) => x === "TRIMS & HARDWARE").length;
-  const trims = trimsLayout(detail.length, !!logoPanel || trimsPhotoCount > 0);
+  const trims = trimsLayout(detail.length, !!logoPanel, trimsPhotoCount > 0);
 
-  const features = a["pages.product_features"] === false ? [] : ((a["pages.features"] as { text?: string }[] | undefined) ?? []).map((f) => f.text ?? "").filter(Boolean);
+  // A feature one colourway has and the others don't prints "<STYLE #> ONLY" (V2.1 §4).
+  const styleOf = (cw: string) => p.pack.colorwayStyles?.[cw] ?? (p.pack.colorways.length > 1 && cw.startsWith("-") ? `${p.pack.styleNo}${cw}` : cw);
+  const onlyOn = (only: string) => {
+    const t = only.trim().toUpperCase();
+    return p.pack.colorways.includes(t) ? styleOf(t) : t;
+  };
+  const features =
+    a["pages.product_features"] === false
+      ? []
+      : ((a["pages.features"] as { text?: string; only?: string }[] | undefined) ?? []).filter((f) => f.text).map((f) => `${f.text}${f.only?.trim() ? ` — ${onlyOn(f.only)} ONLY` : ""}`);
   const planInput: PlanInput = {
     hasInterior,
     hasColourways: p.pack.colorways.length > 0 && (cols.length > 0 || matList.length > 0),
@@ -370,7 +382,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     swatchesOnOnePage: a["pages.swatches"] === "ALL ON ONE PAGE",
     revisionCount: changeLog.length,
     hasConstruction: construction.length > 0,
-    hasBom: bom.length > 0 || zippers.length > 0,
+    hasBom: bom.length > 0 || zipRows.length > 0,
     hasSampleComments: roundComments.length > 0,
     forced,
     trimsPages: trims.length,
@@ -398,7 +410,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     materials: [...matById.values()].map((m) => ({ id: m.id, label: materialLabel(m), approval: m.approval?.status ?? "PENDING", composition: m.composition })),
     flats: flatRows.map((f) => ({ view: f.view, status: f.status, materialCallouts: [...calloutsOn(f.svg).materials] })),
     logoMarked: !!render?.marks?.dot || !render || !a["branding.logo_type"] || !!logoPointFor(String(a["branding.placement"] ?? "")),
-    photos: refs.map((r) => ({ letter: r.tag, note: r.note })),
+    photos: refs.map((r) => ({ letter: r.tag, note: r.note, actualWidthMm: r.marks?.actualWidthMm ?? null })),
     spelling,
   });
 
@@ -441,8 +453,9 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
 
   return {
     refNotes,
-    /** Every style # in the pack (one today; multi-style packs come with V2.1 §4). */
-    styleCodes: [p.pack.styleNo],
+    /** Every style # in the pack: one per colourway in a multi-style pack (V2.1 §4). */
+    styleCodes: styleCodesOf(p.pack),
+    colorwayStyles: p.pack.colorwayStyles ?? {},
     pack: p.pack,
     brand: { name: p.brand.name, logo: await img(p.brand.logoUrl) },
     unit,
@@ -457,6 +470,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       category: String(a["hb.silhouette"] ?? a["slg.type"] ?? a["men.type"] ?? a["cos.shape"] ?? a["cool.type"] ?? p.pack.category).toUpperCase(),
       physicalSample: a["header.physical_sample"] === true,
       instruction: (a["header.instruction"] as string) ?? "",
+      sizeFamily: (a["header.size_family"] as string) ?? "",
+      sampleSize: (a["header.sample_size"] as string) ?? "",
       // Empty parts print nothing — no stray separators (golden run 1, P0.5).
       licensor: a["header.licensor"] ? [a["header.licensor"], a["header.licensor_submission"], a["header.licensor_status"]].filter((x) => typeof x === "string" && x.trim()).join(" · ") : "",
     },
@@ -469,7 +484,10 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     references: await Promise.all(
       refs.map(async (r, k) => {
         const page = photoPages[k];
-        return { letter: r.tag, note: r.note, img: await img(r.url), page, zoom: r.marks?.zoom ?? null, dot: r.marks?.dot ?? null, role: r.marks?.role ?? null, onMeasurements: page === "MEASUREMENTS" && r.marks?.role !== "SIDE_VIEW" };
+        const im = await img(r.url);
+        // Real width given: the photo prints at actual size (inches on paper).
+        const actualIn = im && r.marks?.actualWidthMm ? { w: r.marks.actualWidthMm / 25.4, h: (r.marks.actualWidthMm / 25.4) * (im.h / im.w) } : null;
+        return { letter: r.tag, note: r.note, img: im, page, zoom: r.marks?.zoom ?? null, dot: r.marks?.dot ?? null, role: r.marks?.role ?? null, onMeasurements: page === "MEASUREMENTS" && r.marks?.role !== "SIDE_VIEW", actualIn };
       }),
     ),
     /** Where the LOGO label's leader line points on the render (marked, or from the placement); null = unsure. */
@@ -483,6 +501,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     matrixColumns: cols,
     rows,
     hardwareFinish: (a["hardware.finish"] as string) ?? "",
+    printFiles: (a["colorways.print_file"] as Record<string, string> | undefined) ?? {},
+    pantones: (a["colorways.pantone"] as Record<string, string> | undefined) ?? {},
     charm: lib(a["hb.charm.code"]) ? { code: lib(a["hb.charm.code"])!.label, photo: await img(hwById.get(lib(a["hb.charm.code"])!.id)?.photoUrl) } : null,
     logo: {
       type: (a["branding.logo_type"] as string) ?? "",
@@ -508,7 +528,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       seamBinding: a["interior.seam_binding"] === true,
       lined: a["interior.lined"] === true,
       liningName: liningPrint?.name ?? lib(a["interior.lining_material"])?.label ?? "",
-      padding: a["cos.padding"] === true ? [a["cos.padding_mm"] != null && `${a["cos.padding_mm"]}MM`, "PADDING", a["cos.padding_where"]].filter(Boolean).join(" ") : "",
+      padding: a["cos.padding"] === true ? [typeof a["cos.padding_mm"] === "number" && mmText(a["cos.padding_mm"] as number, unit === "in"), "PADDING", a["cos.padding_where"]].filter(Boolean).join(" ") : "",
     },
     /** The wall the interior page is about (the first pocket's, else the back wall). */
     interiorWall: (((a["interior.pockets"] as { wall?: string }[] | undefined) ?? []).map((x) => wallName(x.wall)).find((w) => w === "BACK WALL") ?? wallName(((a["interior.pockets"] as { wall?: string }[] | undefined) ?? [])[0]?.wall) ?? "BACK WALL") as string,
@@ -572,6 +592,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     pom,
     placements,
     zippers,
+    /** Zips stated by position only: listed under the zipper table instead of as empty rows. */
+    zipPositions: zipRows.filter((z) => z.position && !zippers.some((x) => x.position === String(z.position))).map((z) => String(z.position)),
     construction,
     threadColour: (a["construction.thread_colour"] as string) ?? "",
     edgeTreatment: (a["edge.treatment"] as string) ?? "",
@@ -580,10 +602,10 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     contentLabels: labels,
     tooling: {
       artwork: (a["branding.artwork"] as { name?: string } | undefined)?.name ?? "",
-      depth: typeof a["branding.tool_depth"] === "number" ? `${a["branding.tool_depth"]} MM` : "",
+      depth: typeof a["branding.tool_depth"] === "number" ? mmText(a["branding.tool_depth"] as number, unit === "in") : "",
       newTooling: a["branding.new_tooling"] === true,
     },
-    baseBoard: a["interior.base_board"] === true ? [a["interior.base_board_material"], a["interior.base_board_mm"] && `${a["interior.base_board_mm"]}MM`].filter(Boolean).join(" ") || "BASE BOARD" : "",
+    baseBoard: a["interior.base_board"] === true ? [a["interior.base_board_material"], typeof a["interior.base_board_mm"] === "number" && mmText(a["interior.base_board_mm"] as number, unit === "in")].filter(Boolean).join(" ") || "BASE BOARD" : "",
     sampleRound: round
       ? {
           stage: round.stage,

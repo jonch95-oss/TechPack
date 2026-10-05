@@ -2,7 +2,7 @@
 
 import { cleanCrop, detectProductBox, type CropBox } from "@/lib/crop";
 import { normalizePage, PAGE_SECTIONS } from "@/lib/page-names";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -27,6 +27,23 @@ async function isArchived(packId: string) {
   return !!row?.archivedAt;
 }
 
+/**
+ * A style number is taken when another pack uses it as its style # or as one of its colourways'
+ * style numbers (multi-style packs, V2.1 §4), or when it is a component code.
+ */
+async function styleTaken(styleNo: string, exceptPackId?: string): Promise<string | null> {
+  const others = sql`${exceptPackId ? sql`${packs.id} <> ${exceptPackId} and ` : sql``}(${packs.styleNo} = ${styleNo} or exists (select 1 from jsonb_each_text(${packs.colorwayStyles}) e where e.value = ${styleNo}))`;
+  const dup = await db.select({ id: packs.id }).from(packs).where(others);
+  if (dup.length) return `${styleNo} already exists.`;
+  const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, styleNo));
+  if (clash.length) return `${styleNo} is already a component code — styles and components can't share a number.`;
+  return null;
+}
+
+const STYLE_RE = /^[A-Z0-9_-]{3,30}$/;
+/** -A, -B … suffixes, or a named variant without one ("VINTAGE"), V2.1 §4. */
+const COLORWAY_RE = /^(-[A-Z0-9]{1,3}|[A-Z][A-Z0-9 ]{1,19})$/;
+
 export async function createPack(_prev: CreatePackState, form: FormData): Promise<CreatePackState> {
   const user = await requireRole("designer");
   const brandId = String(form.get("brandId") ?? "");
@@ -41,10 +58,8 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
   if (!Number.isInteger(count) || count < 1 || count > 26) return { error: "Colorways: 1–26." };
   const [brand] = await db.select().from(brands).where(eq(brands.id, brandId));
   if (!brand) return { error: "Unknown brand." };
-  const dup = await db.select({ id: packs.id }).from(packs).where(eq(packs.styleNo, styleNo));
-  if (dup.length) return { error: `${styleNo} already exists.` };
-  const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, styleNo));
-  if (clash.length) return { error: `${styleNo} is already a component code — styles and components can't share a number.` };
+  const taken = await styleTaken(styleNo);
+  if (taken) return { error: taken };
   const [p] = await db
     .insert(packs)
     .values({
@@ -58,6 +73,8 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
       updatedBy: user.id,
     })
     .returning({ id: packs.id });
+  // The pack starts in the brand's unit (V2.1 §5).
+  await db.insert(packAnswers).values({ packId: p.id, questionId: "dims.unit", value: brand.defaultUnit === "INCHES" ? "INCHES" : "CM", status: "confirmed", origin: "HOUSE", updatedBy: user.id });
   await audit({ userId: user.id, entity: "pack", entityId: p.id, action: "create", after: { brand: brand.name, category, styleNo, styleName, count } });
   redirect(`/packs/${p.id}`);
 }
@@ -68,7 +85,7 @@ export async function createPack(_prev: CreatePackState, form: FormData): Promis
  */
 export async function updatePackSetup(
   packId: string,
-  patch: { styleNo?: string; styleName?: string; colorways?: string[]; removeColorway?: string; brandId?: string; category?: string; chineseOn?: boolean; stage?: "PROTO" | "PRODUCTION" },
+  patch: { styleNo?: string; styleName?: string; colorways?: string[]; removeColorway?: string; brandId?: string; category?: string; chineseOn?: boolean; stage?: "PROTO" | "PRODUCTION"; colorwayStyles?: Record<string, string> },
 ): Promise<ActionResult & { colorways?: string[] }> {
   const user = await requireRole("designer");
   if (await isArchived(packId)) return { ok: false, error: ARCHIVED };
@@ -77,12 +94,10 @@ export async function updatePackSetup(
   const set: Partial<typeof packs.$inferInsert> = { updatedBy: user.id, updatedAt: new Date() };
   if (patch.styleNo !== undefined) {
     const styleNo = patch.styleNo.trim().toUpperCase();
-    if (!/^[A-Z0-9_-]{3,30}$/.test(styleNo)) return { ok: false, error: "Style # — letters, digits, _ or -, e.g. PINK013 or TB25_ACC0023." };
+    if (!STYLE_RE.test(styleNo)) return { ok: false, error: "Style # — letters, digits, _ or -, e.g. PINK013 or TB25_ACC0023." };
     if (styleNo !== before.styleNo) {
-      const dup = await db.select({ id: packs.id }).from(packs).where(and(eq(packs.styleNo, styleNo), ne(packs.id, packId)));
-      if (dup.length) return { ok: false, error: `${styleNo} already exists.` };
-      const clash = await db.select({ id: hardware.id }).from(hardware).where(eq(hardware.code, styleNo));
-      if (clash.length) return { ok: false, error: `${styleNo} is already a component code — styles and components can't share a number.` };
+      const taken = await styleTaken(styleNo, packId);
+      if (taken) return { ok: false, error: taken };
       set.styleNo = styleNo;
     }
   }
@@ -98,14 +113,19 @@ export async function updatePackSetup(
   if (patch.colorways) {
     const cws = [...new Set(patch.colorways.map((c) => c.trim().toUpperCase()).filter(Boolean))];
     if (!cws.length) return { ok: false, error: "At least one colorway." };
-    if (cws.some((c) => !/^-[A-Z0-9]{1,3}$/.test(c))) return { ok: false, error: "Suffixes look like -A, -B …" };
+    if (cws.some((c) => !COLORWAY_RE.test(c))) return { ok: false, error: "Colourways are suffixes like -A, -B … or a variant name like VINTAGE." };
     set.colorways = cws;
+    // A renamed colourway keeps its style number (by position).
+    const styles = before.colorwayStyles ?? {};
+    if (Object.keys(styles).length) set.colorwayStyles = Object.fromEntries(cws.map((c, i) => [c, styles[before.colorways[i]]]).filter(([, v]) => v));
   }
   if (patch.removeColorway) {
     if (before.colorways.length <= 1) return { ok: false, error: "At least one colorway." };
     if (!before.colorways.includes(patch.removeColorway)) return { ok: false, error: "No such colorway." };
     const { next, map } = removeColorway(before.colorways, patch.removeColorway);
     set.colorways = next;
+    const styles = before.colorwayStyles ?? {};
+    set.colorwayStyles = Object.fromEntries(Object.entries(styles).flatMap(([c, v]): [string, string][] => (map[c] ? [[map[c]!, v]] : [])));
     const rows = await db.select({ q: packAnswers.questionId, v: packAnswers.value }).from(packAnswers).where(eq(packAnswers.packId, packId));
     const moved = remapAnswers(Object.fromEntries(rows.map((r) => [r.q, r.v])), map);
     for (const [q, v] of Object.entries(moved)) await db.update(packAnswers).set({ value: v }).where(and(eq(packAnswers.packId, packId), eq(packAnswers.questionId, q)));
@@ -121,6 +141,23 @@ export async function updatePackSetup(
     const [b] = await db.select({ id: brands.id }).from(brands).where(eq(brands.id, patch.brandId));
     if (!b) return { ok: false, error: "Unknown brand." };
     set.brandId = patch.brandId;
+  }
+  if (patch.colorwayStyles) {
+    // Multi-style packs (V2.1 §4): one style number per colourway, each unique across the studio.
+    const cws = set.colorways ?? before.colorways;
+    const out: Record<string, string> = {};
+    for (const [c, raw] of Object.entries(patch.colorwayStyles)) {
+      const v = raw.trim().toUpperCase();
+      if (!v || !cws.includes(c)) continue;
+      if (!STYLE_RE.test(v)) return { ok: false, error: `Style # for ${c} — letters, digits, _ or -.` };
+      if (v !== (set.styleNo ?? before.styleNo)) {
+        const taken = await styleTaken(v, packId);
+        if (taken) return { ok: false, error: taken };
+      }
+      out[c] = v;
+    }
+    if (new Set(Object.values(out)).size !== Object.values(out).length) return { ok: false, error: "Each colourway needs its own style #." };
+    set.colorwayStyles = out;
   }
   if (typeof patch.chineseOn === "boolean") set.chineseOn = patch.chineseOn;
   if (patch.stage === "PROTO" || patch.stage === "PRODUCTION") set.stage = patch.stage;
@@ -301,6 +338,7 @@ export async function updatePackFile(
       zoom: m.zoom ? { x: f(m.zoom.x), y: f(m.zoom.y), r: Math.min(0.5, Math.max(0.03, Number(m.zoom.r) || 0.2)) } : null,
       dot: m.dot ? { x: f(m.dot.x), y: f(m.dot.y) } : null,
       role: m.role === "SIDE_VIEW" || m.role === "APPLICATION" || m.role === "BACK" || m.role === "SIDE" ? m.role : null,
+      actualWidthMm: typeof m.actualWidthMm === "number" && m.actualWidthMm > 0 && m.actualWidthMm < 2000 ? Math.round(m.actualWidthMm * 10) / 10 : m.actualWidthMm === null ? null : (cur?.marks?.actualWidthMm ?? null),
       callouts: m.callouts && typeof m.callouts === "object" ? Object.fromEntries(Object.entries(m.callouts).filter(([k, v]) => /^\d+$/.test(k) && v).map(([k, v]) => [k, { x: f(v.x), y: f(v.y) }])) : (cur?.marks?.callouts ?? null),
     };
   }

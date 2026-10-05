@@ -68,8 +68,9 @@ export async function prefillPack(packId: string, user: { id: string }, progress
     if (done === "write") filled++;
     else if (done === "skip" || done === "conflict") skippedConfirmed++;
   };
-  for (const a of answers) await write(a.questionId, a.value, a.status, a.note, (a as { confidence?: string }).confidence ?? "");
-  if (materials.length) await write("materials.list", materials, "ai", "MATERIALS SEEN ON RENDER");
+  for (const a of answers) await write(a.questionId, a.value, a.status, a.note, a.confidence);
+  // Where each material is can be seen; what it is (the fabric) a render can't settle.
+  if (materials.length) await write("materials.list", materials, "inferred", "LOCATIONS SEEN ON RENDER — MATERIAL TYPES INFERRED, CONFIRM", "low");
   // Structured rows from what the render shows (AI-suggested — each row is confirmed by the designer).
   const has = (id: string) => allQuestions(loaded.pack.category).some((q) => q.id === id && q.kind === "rows");
   const pocketQ = allQuestions(loaded.pack.category).find((q) => q.id.endsWith(".ext_pockets") && q.kind === "rows")?.id;

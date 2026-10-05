@@ -12,11 +12,12 @@ export const ANALYSE_RENDER_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["question_id", "value_json", "basis", "note"],
+        required: ["question_id", "value_json", "basis", "confidence", "note"],
         properties: {
           question_id: { type: "string" },
           value_json: { type: "string", description: "The answer value encoded as JSON (string, number, boolean, array or {w,h})." },
           basis: { type: "string", enum: ["seen", "estimated", "inferred"] },
+          confidence: { type: "string", enum: ["high", "med", "low"], description: "high only when the render shows this unambiguously." },
           note: { type: "string", description: 'What you saw, in CAPITALS, e.g. "2 SNAPS VISIBLE UNDER FLAP".' },
         },
       },
@@ -87,7 +88,7 @@ export const ANALYSE_RENDER_SCHEMA = {
 } as const;
 
 export type AnalyseRenderOutput = {
-  answers: { question_id: string; value_json: string; basis: "seen" | "estimated" | "inferred"; note: string }[];
+  answers: { question_id: string; value_json: string; basis: "seen" | "estimated" | "inferred"; confidence?: "high" | "med" | "low"; note: string }[];
   materials: { name: string; locations: string[] }[];
   exterior_pockets?: { type: string; position: string; qty: number; detail: string }[];
   hardware?: { type: string; description: string; qty: number; placement: string; library_code: string }[];
@@ -132,6 +133,7 @@ export function buildAnalyseInstructions(opts: {
     "- Use option strings exactly as given. Only use a value outside the options when none fits (it becomes \"Other…\").",
     "- basis: \"seen\" when directly visible; \"estimated\" for any measurement you read off the render (never present an estimate as fact); \"inferred\" for back, interior, underside or anything hidden.",
     "- Skip a question rather than guess when the render gives no evidence.",
+    "- A render rarely settles these, so answer them as basis \"inferred\", confidence \"low\" unless the render shows them unambiguously: edge treatment, thread colour, logo method (print / deboss / emboss / patch …), metal finish names (gunmetal, light gold …), shell or fabric material, wheel type.",
     "- materials: FABRICS AND LEATHERS ONLY (e.g. MAIN BODY MTL, TRIM MTL), each with its locations (FRONT, BACK, FLAP, GUSSET, STRAP, HANDLE…). They become numbered yellow callouts. Never list hardware, zippers, webbing hardware or trims made of metal here.",
     "- Turn what you SEE into structured rows, not notes: exterior_pockets (every outside pocket), hardware (every part with a quantity — plates, buckles, rings, eyelets, rivets, zip pulls, snaps), zippers (one entry per zipper position with qty), colorways (the colourway names shown, e.g. BLACK). Count carefully; give qty as the number of identical parts.",
     "- Ignore any text printed on the board around the product (labels like \"(REFER TO SPEC)\", dimensions, arrows) — read the product only.",
@@ -150,7 +152,22 @@ export type NormalisedAnswer = {
   value: unknown;
   status: Exclude<AnswerStatus, "confirmed">;
   note: string;
+  confidence: "high" | "med" | "low";
 };
+
+/**
+ * Fields a render can't settle (golden run 2, P2): the live check found confident-wrong values on
+ * them. They are INFERRED / low confidence unless the read says it saw them unambiguously.
+ */
+export const RENDER_UNSETTLED: RegExp[] = [
+  /^edge\.treatment$/,
+  /thread_colou?r$/,
+  /^branding\.(logo_type|fill)$/,
+  /(^|\.)finish$/,
+  /\.(shell|shell_finish|body_fabric|material|lining)$/,
+  /\.wheels?(_inline|_qty|_diameter)?$/,
+];
+export const renderUnsettled = (qid: string) => RENDER_UNSETTLED.some((re) => re.test(qid));
 
 /**
  * Validates the agent's answers against the question bank. Anything that does
@@ -183,10 +200,16 @@ export function normaliseAiAnswers(
       continue;
     }
     let status: NormalisedAnswer["status"] = "ai";
+    let confidence: NormalisedAnswer["confidence"] = a.confidence ?? (a.basis === "seen" ? "med" : "low");
     const isMeasurement = q.kind === "stepper" && q.unit !== "qty" ? true : q.kind === "dims2";
     if (isMeasurement || a.basis === "estimated") status = "est";
     if (a.basis === "inferred" || q.visibility === "inferred") status = "inferred";
-    answers.push({ questionId: q.id, value, status, note: (a.note ?? "").toUpperCase() });
+    // Only an unambiguous sighting keeps one of these as a plain AI suggestion.
+    if (renderUnsettled(q.id) && !(a.basis === "seen" && a.confidence === "high")) {
+      status = "inferred";
+      confidence = "low";
+    }
+    answers.push({ questionId: q.id, value, status, note: (a.note ?? "").toUpperCase(), confidence });
   }
   const materials: MaterialEntry[] = (out.materials ?? [])
     .filter((m) => m.name?.trim() && !NOT_A_MATERIAL.test(m.name.toUpperCase()))

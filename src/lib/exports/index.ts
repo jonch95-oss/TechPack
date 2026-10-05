@@ -70,7 +70,7 @@ export async function packZip(p: LoadedPack): Promise<{ zip: Buffer; name: strin
   const renders: { name: string; data: Buffer }[] = [];
   for (const cw of p.pack.colorways) {
     const file = p.files.find((x) => x.kind === "colorway_render" && x.tag === cw) ?? (cw === p.pack.colorways[0] ? p.files.find((x) => x.kind === "render") : undefined);
-    if (file) renders.push({ name: `${p.pack.styleNo}${cw}`, data: (await readCroppedFile(file)).data });
+    if (file) renders.push({ name: p.pack.colorwayStyles?.[cw] ?? `${p.pack.styleNo}${cw}`, data: (await readCroppedFile(file)).data });
   }
   const a = p.answers;
   const matrix = (a["materials.matrix"] as MatrixValue | undefined) ?? {};

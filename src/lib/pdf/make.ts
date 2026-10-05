@@ -22,5 +22,8 @@ export async function makePackPdf(p: LoadedPack, doc: PackDoc, opts: { draft: bo
 }
 
 export function pdfName(p: LoadedPack, suffix = "") {
+  // A multi-style pack is one PDF named for all its style numbers (V2.1 §4).
+  const own = Object.values(p.pack.colorwayStyles ?? {});
+  if (own.length) return `${[...new Set([p.pack.styleNo, ...own])].join("_")}_${p.pack.styleName.replace(/\W+/g, "_")}${suffix}.pdf`;
   return `${p.pack.styleNo}${p.pack.colorways.length ? p.pack.colorways.join("_").replace(/-/g, "") : ""}_${p.pack.styleName.replace(/\W+/g, "_")}${suffix}.pdf`;
 }

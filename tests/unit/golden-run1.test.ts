@@ -3,9 +3,9 @@
  * Neutral placeholder data only — no product from the golden set.
  */
 import { describe, expect, it } from "vitest";
-import { missingFrom, specItems, tight, valueOf } from "@/lib/pdf/specs";
+import { missingFrom, mmText, specItems, tight, valueOf } from "@/lib/pdf/specs";
 import { planPages, trimsLayout, type PlanInput } from "@/lib/pdf/plan";
-import { calloutPoint, logoPointFor, usDate, wallName } from "@/lib/pdf/hints";
+import { calloutPoint, logoPointFor, spreadPoints, usDate, wallName } from "@/lib/pdf/hints";
 import { completeness, findQuestion } from "@/lib/questions";
 import { validatePack } from "@/lib/validation";
 
@@ -37,7 +37,7 @@ describe("P0.1 — every answer prints: the SPECIFICATIONS items", () => {
   it("set rows print one line per piece with units; duffel sizes are answers like any other", () => {
     const items = specItems("Packing cubes", { "dims.unit": "INCHES", "cube.set": [{ size: "S", qty: 2, l: 10, w: 7, h: 3 }], "cube.mesh": true });
     const set = items.find((i) => i.qid === "cube.set")!;
-    expect(set.lines[0]).toBe('SIZE S · QTY 2 · L 10" · W 7" · H 3"');
+    expect(set.table).toEqual({ head: ["SIZE", "QTY", "L", "W", "H"], rows: [["S", "2", '10"', '7"', '3"']] });
     expect(items.some((i) => i.qid === "cube.mesh")).toBe(true);
     const duf = specItems("Rolling duffels", { "dims.unit": "CM", "rduf.size_l": 70, "rduf.wheels_inline": true });
     expect(duf.map((i) => i.qid)).toEqual(expect.arrayContaining(["rduf.size_l", "rduf.wheels_inline"]));
@@ -123,5 +123,119 @@ describe("#7 — photo letters are comment letters", () => {
   it("warns when a photo shares a comment's letter but not its text", () => {
     const rules = validatePack({ category: "Handbags", brand: { name: "X", licensorRequired: false }, answers: { "comments.list": [{ text: "FIRST", pages: ["OVERVIEW"] }, { text: "SECOND", pages: ["OVERVIEW"] }] }, statuses: {}, colorways: ["-A"], chineseOn: false, hardware: [], spelling: [], photos: [{ letter: "A", note: "FIRST" }, { letter: "B", note: "SOMETHING ELSE" }] });
     expect(rules.filter((r) => r.rule.startsWith("Photo ")).map((r) => [r.rule, r.status])).toEqual([["Photo B caption ≠ comment B", "warn"]]);
+  });
+});
+
+describe("golden run 2", () => {
+  it("#1 every material gets a callout and none overlap, even when two share a spot", () => {
+    const pts = spreadPoints([{ x: 1, y: 1 }, { x: 1, y: 1 }, { x: 1.1, y: 1 }], 0.34, { x: 0, y: 0, w: 4, h: 3 });
+    for (let i = 0; i < pts.length; i++) for (let j = 0; j < i; j++) expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThanOrEqual(0.34);
+    expect(pts.every((p) => p.x >= 0 && p.x <= 4 - 0.34 && p.y >= 0 && p.y <= 3 - 0.34)).toBe(true);
+    // The first location decides: a fabric for the lid and a handle wrap goes on the lid.
+    expect(calloutPoint({ locations: ["TOP LID", "HANDLE WRAP"] }, 0)).toMatchObject({ x: 0.5, y: 0.18 });
+  });
+
+  it("#4 the studio's notes never print, and rows print as a table", () => {
+    const items = specItems("Handbags", { "hardware.items": [{ item: { id: "", label: "XX001 RING" }, qty: 2, placement: "SIDES", seen: "SEEN ON RENDER" }] });
+    const hw = items.find((i) => i.qid === "hardware.items")!;
+    expect(JSON.stringify(hw)).not.toMatch(/SEEN ON RENDER/);
+    expect(hw.table?.head).toEqual(expect.arrayContaining(["QTY"]));
+  });
+
+  it("#5 mm values in an inch pack print in inches with the mm in brackets", () => {
+    expect(mmText(171.5, true)).toBe('6.75" (171.5 MM)');
+    expect(mmText(15, false)).toBe("15 MM");
+    const logo = specItems("Handbags", { "dims.unit": "INCHES", "branding.logo_size": { w: 171.5, h: 25.4 } }).find((i) => i.qid === "branding.logo_size")!;
+    expect(logo.lines[0]).toBe('6.75" X 1" (171.5 X 25.4 MM)');
+  });
+
+  it("#6 the nesting order prints", () => {
+    const items = specItems("Packing cubes", { "cube.set": [{ size: "S", qty: 1, l: 1, w: 1, h: 1 }, { size: "L", qty: 1, l: 3, w: 3, h: 3 }] });
+    expect(items.find((i) => i.qid === "cube.nesting")?.lines).toEqual(["L > S"]);
+  });
+
+  it("#3 trims photos get 3 in of room or a page of their own", () => {
+    expect(trimsLayout(1, true, true).map((p) => [p.to - p.from, p.row, p.photos])).toEqual([[1, true, "row"]]);
+    expect(trimsLayout(1, false, true).map((p) => [p.to - p.from, p.photos])).toEqual([[1, "grid"]]);
+    expect(trimsLayout(2, false, true).map((p) => [p.to - p.from, p.photos])).toEqual([[2, false], [0, "grid"]]);
+    expect(trimsLayout(0, false, true).map((p) => p.photos)).toEqual(["grid"]);
+  });
+
+  it("#3 a caption saying actual size without a real width is flagged, never guessed", () => {
+    const rules = validatePack({ category: "Handbags", brand: { name: "X", licensorRequired: false }, answers: {}, statuses: {}, colorways: ["-A"], chineseOn: false, hardware: [], spelling: [], photos: [{ letter: "A", note: "PULLER — ACTUAL SIZE" }, { letter: "B", note: "ACTUAL SIZE", actualWidthMm: 40 }] });
+    expect(rules.filter((r) => r.rule.endsWith("actual size")).map((r) => r.rule)).toEqual(["Photo A — actual size"]);
+  });
+});
+
+describe("golden run 2 P2 — the AI read on fields a render can't settle", () => {
+  it("they are INFERRED / low unless seen unambiguously", async () => {
+    const { normaliseAiAnswers } = await import("@/lib/ai/analyse-render");
+    const out = {
+      answers: [
+        { question_id: "edge.treatment", value_json: '"PAINTED"', basis: "seen" as const, confidence: "med" as const, note: "" },
+        { question_id: "hardware.finish", value_json: '"GUNMETAL"', basis: "seen" as const, confidence: "high" as const, note: "" },
+        { question_id: "hb.silhouette", value_json: '"TOTE"', basis: "seen" as const, confidence: "med" as const, note: "" },
+      ],
+      materials: [],
+      exterior_pockets: [],
+      hardware: [],
+      zippers: [],
+      colorways: [],
+      visible_features: [],
+      not_visible: [],
+      agent_notes: "",
+    };
+    const { answers } = normaliseAiAnswers("Handbags", out as never, new Map());
+    const by = Object.fromEntries(answers.map((a) => [a.questionId, [a.status, a.confidence]]));
+    expect(by["edge.treatment"]).toEqual(["inferred", "low"]);
+    expect(by["hardware.finish"]).toEqual(["ai", "high"]);
+    expect(by["hb.silhouette"]).toEqual(["ai", "med"]);
+  });
+
+  it("the eval counts confident-wrong and invented measurements", async () => {
+    const { scoreRead } = await import("@/lib/ai/eval");
+    const s = scoreRead(
+      [
+        { questionId: "edge.treatment", value: "PAINTED", status: "ai", note: "", confidence: "high" },
+        { questionId: "construction.thread_colour", value: "BLACK", status: "inferred", note: "", confidence: "low" },
+        { questionId: "hb.silhouette", value: "TOTE", status: "ai", note: "", confidence: "med" },
+        { questionId: "dims.h", value: 30, status: "est", note: "", confidence: "low" },
+      ],
+      { "edge.treatment": "FOLDED", "construction.thread_colour": "DTM", "hb.silhouette": "tote" },
+    );
+    expect(s).toMatchObject({ correct: 1, wrong: ["edge.treatment", "construction.thread_colour"], confidentWrong: ["edge.treatment"], invented: ["dims.h"] });
+  });
+});
+
+describe("V2.1 step 4 — multi-style packs, sets, size families", () => {
+  it("a multi-style pack lists every style #; a single style keeps its own", async () => {
+    const { styleCodesOf } = await import("@/lib/pdf/hints");
+    expect(styleCodesOf({ styleNo: "AB-001", colorways: ["-A", "-B"], colorwayStyles: { "-A": "AB-001", "-B": "AB-002" } })).toEqual(["AB-001", "AB-002"]);
+    expect(styleCodesOf({ styleNo: "AB-001", colorways: ["-A", "-B"], colorwayStyles: {} })).toEqual(["AB-001"]);
+    expect(styleCodesOf({ styleNo: "AB-001", colorways: ["-A", "-B"], colorwayStyles: { "-B": "AB-002" } })).toEqual(["AB-001", "AB-002"]);
+  });
+
+  it("named variants keep their names when a colourway is removed", async () => {
+    const { removeColorway } = await import("@/lib/colorways");
+    expect(removeColorway(["-A", "VINTAGE", "-B", "-C"], "-B").next).toEqual(["-A", "VINTAGE", "-B"]);
+  });
+
+  it("a set nests within each piece type, and a flat piece needs no H", () => {
+    const items = specItems("Packing cubes", {
+      "cube.set": [
+        { piece: "CUBE", size: "S", qty: 1, l: 10, w: 8, h: 4 },
+        { piece: "CUBE", size: "L", qty: 1, l: 20, w: 15, h: 8 },
+        { piece: "POUCH", size: "M", qty: 1, l: 12, w: 9 },
+        { piece: "POUCH", size: "S", qty: 1, l: 8, w: 6 },
+      ],
+    });
+    expect(items.find((i) => i.qid === "cube.nesting")?.lines).toEqual(["CUBES: L > S · POUCHES: M > S"]);
+    const ids = completeness({ category: "Packing cubes", answers: { "dims.unit": "CM", "cube.set": [{ piece: "POUCH", size: "M", qty: 1, l: 12, w: 9 }] } }, {}, ["-A"], "PROTO").map((i) => i.questionId);
+    expect(ids).not.toContain("dims.h");
+  });
+
+  it("size family and sample size are answers that print", () => {
+    const items = specItems("Hardside luggage", { "header.size_family": '20", 24", 28"', "header.sample_size": '28"' });
+    expect(items.map((i) => i.qid)).toEqual(["header.size_family", "header.sample_size"]);
   });
 });

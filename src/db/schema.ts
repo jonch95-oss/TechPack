@@ -60,6 +60,8 @@ export const brands = pgTable("brands", {
   logoUrl: text("logo_url"),
   /** Champion and Ted Baker packs need licensor approval fields. */
   licensorRequired: boolean("licensor_required").notNull().default(false),
+  /** The unit the brand works in (V2.1 §5): a new pack starts in it. CM | INCHES. */
+  defaultUnit: text("default_unit").notNull().default("CM"),
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -178,6 +180,8 @@ export const packs = pgTable(
     styleNo: text("style_no").notNull(),
     styleName: text("style_name").notNull(),
     colorways: jsonb("colorways").$type<string[]>().notNull().default(["-A"]),
+    /** Multi-style packs (V2.1 §4): a style number per colourway. Unique across the studio, like style_no. */
+    colorwayStyles: jsonb("colorway_styles").$type<Record<string, string>>().notNull().default({}),
     chineseOn: boolean("chinese_on").notNull().default(false),
     status: packStatusEnum("status").notNull().default("DRAFT"),
     stage: packStageEnum("stage").notNull().default("PROTO"),
@@ -219,6 +223,8 @@ export type FileMarks = {
   board?: { text: string[]; refersToSpec: boolean; reference: string } | null;
   /** SIDE_VIEW: the side-view slot on the measurements sheet. APPLICATION: how the print is applied. BACK / SIDE: a view printed beside the front on OVERVIEW. */
   role?: "SIDE_VIEW" | "APPLICATION" | "BACK" | "SIDE" | null;
+  /** The photo's real width: it then prints at actual size (1:1) with a scale note. */
+  actualWidthMm?: number | null;
   /** On the render: where each material's numbered callout goes, keyed by callout number. */
   callouts?: Record<string, { x: number; y: number }> | null;
 };

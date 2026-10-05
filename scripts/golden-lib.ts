@@ -17,7 +17,7 @@ export const OUT = path.join(ROOT, ".data", "golden");
 export type Hw = { id: string; code: string; type: string; dimsMm: string; finish: string; approval?: string };
 /** A library part the study describes (pack G): seeded into the hardware library by golden:pdf. */
 export type LibPart = { code: string; type: string; name: string; dimsMm: string; detailDims: { label: string; mm?: number | null }[]; material: string; finish: string; logoTreatment: string };
-export type GoldenPack = { library?: LibPart[] } & { label: string; brand: string; category: Category; colorways: string[]; answers: Record<string, unknown>; extra: string[]; hardware?: Hw[] };
+export type GoldenPack = { library?: LibPart[]; colorwayStyles?: Record<string, string> } & { label: string; brand: string; category: Category; colorways: string[]; answers: Record<string, unknown>; extra: string[]; hardware?: Hw[] };
 
 /* ------------------------------ loading ------------------------------ */
 
@@ -48,6 +48,13 @@ function category(raw: unknown): Category {
   return hit;
 }
 
+/** Multi-style packs: [{suffix, styleNo}] → { "-A": style, … } (V2.1 §4). */
+function stylesOf(raw: unknown): Record<string, string> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = Object.fromEntries(raw.filter((c) => c && typeof c === "object" && (c as { styleNo?: unknown }).styleNo).map((c) => [String((c as { suffix?: unknown }).suffix ?? "").trim(), String((c as { styleNo: unknown }).styleNo).trim().toUpperCase()]));
+  return Object.keys(out).length ? out : undefined;
+}
+
 function colorwaysOf(raw: unknown, names: unknown, matrix?: unknown): string[] {
   // The breakdown's own colourway keys are what its cells are checked against.
   if (matrix && typeof matrix === "object" && Object.keys(matrix).length) return Object.keys(matrix as object);
@@ -76,7 +83,7 @@ export function fromStudy(file: string): GoldenPack[] {
   if ("answers" in e && "brand" in e) {
     const answers = Object.fromEntries(Object.entries(e.answers as object).filter(([, v]) => v !== null && unwrap(v) !== null).map(([k, v]) => [k, unwrap(v)]));
     const pack = (e.pack ?? {}) as Record<string, unknown>;
-    return [{ label, brand: String(e.brand), category: category(e.category), colorways: colorwaysOf(pack.colorways, answers["colorways.names"], answers["materials.matrix"]), answers, extra: Object.keys((e.proposed_new ?? {}) as object) }];
+    return [{ label, brand: String(e.brand), category: category(e.category), colorways: colorwaysOf(pack.colorways, answers["colorways.names"], answers["materials.matrix"]), answers, extra: Object.keys((e.proposed_new ?? {}) as object), colorwayStyles: stylesOf(pack.colorways) }];
   }
   // Format 3: a style pack + its component sheets (pack F + pack G).
   if ("hardware_library" in d) {
@@ -177,7 +184,8 @@ export function enterAs(q: Question, v: unknown): unknown {
       const rows = v.map((r) => {
         if (typeof r === "string" && textCol) return { [textCol]: r.toUpperCase() };
         if (!r || typeof r !== "object") return null;
-        const out: Record<string, unknown> = { ...(r as object) };
+        // A key the study proposed ("_new.piece") is the column it proposed, once the column exists.
+        const out: Record<string, unknown> = Object.fromEntries(Object.entries(r as object).map(([k, x]) => [k.startsWith("_new.") && q.columns.some((c) => c.key === k.slice(5)) ? k.slice(5) : k, x]));
         for (const c of q.columns) if (c.kind === "lib" && out[c.key] != null) out[c.key] = asLib(out[c.key]) ?? null;
         return out;
       });

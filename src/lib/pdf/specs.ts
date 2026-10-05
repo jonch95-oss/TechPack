@@ -5,7 +5,7 @@
  *  - the "answered → printed" check: every answered question's value text appears in the PDF.
  * Booleans print as the feature ("MESH PANEL"), never as "YES"; reference answers print via refText().
  */
-import { visibleQuestions, type AnswerMap, type Category, type Column, type Question, sectionsFor } from "@/lib/questions";
+import { derivedValue, visibleQuestions, type AnswerMap, type Category, type Column, type Question, sectionsFor } from "@/lib/questions";
 import { isReference, refText } from "@/lib/reference-answer";
 
 export type SpecItem = {
@@ -18,15 +18,35 @@ export type SpecItem = {
   needles: string[];
   /** The value's own words, when a template prints it differently (either counts as printed). */
   alt?: string[];
+  /** Row questions print as a small table (golden run 2 #4). */
+  table?: { head: string[]; rows: string[][] };
 };
+
+/** Row keys that are the studio's own notes, never printed ("SEEN ON RENDER", where an answer came from). */
+const INTERNAL_KEYS = new Set(["id", "seen", "source", "status", "confidence", "note_ai"]);
+/** Derived answers that are facts of the product (gusset width = D is already printed as D). */
+const DERIVED_FACTS = new Set(["$capacity", "$nesting"]);
 
 /** Not facts about the product: page switches, the comments (checked on their own), automatic values. */
 const SKIP_IDS = new Set(["comments.list"]);
 const SKIP_PREFIX = ["pages.", "optional."];
-const SKIP_KINDS = new Set<Question["kind"]>(["derived", "file"]);
+const SKIP_KINDS = new Set<Question["kind"]>(["file"]);
 
 const up = (s: unknown) => String(s ?? "").trim().toUpperCase();
 const num = (n: number) => String(Math.round(n * 100) / 100);
+
+/**
+ * A millimetre value as a pack page prints it: in an inch pack the inches first with the mm in
+ * brackets — 6.75" (171.5 MM) — and plain mm otherwise (golden run 2 #5).
+ */
+export function mmText(mm: number, inches: boolean) {
+  return inches ? `${num(mm / 25.4)}" (${num(mm)} MM)` : `${num(mm)} MM`;
+}
+
+function stepText(n: number, unit: string, answers: AnswerMap) {
+  if (unit === "mm") return mmText(n, answers["dims.unit"] === "INCHES");
+  return `${num(n)}${unitText(unit, answers)}`;
+}
 
 function unitText(unit: string, answers: AnswerMap) {
   if (unit === "dim") return answers["dims.unit"] === "INCHES" ? '"' : " CM";
@@ -48,7 +68,7 @@ function cellText(c: Column | undefined, v: unknown, answers: AnswerMap): { text
   if (v == null || v === "") return { text: "", needles: [] };
   if (isReference(v)) return { text: refText(v), needles: [refText(v)] };
   if (typeof v === "boolean") return v ? { text: featureText(c?.label ?? ""), needles: [] } : { text: "", needles: [] };
-  if (typeof v === "number") return { text: `${num(v)}${c && c.kind === "stepper" ? unitText(c.unit, answers) : ""}`, needles: [num(v)] };
+  if (typeof v === "number") return { text: c && c.kind === "stepper" ? stepText(v, c.unit, answers) : num(v), needles: [num(v)] };
   if (typeof v === "string") return { text: up(v), needles: [up(v)] };
   if (Array.isArray(v)) {
     const parts = v.map((x) => cellText(undefined, x, answers));
@@ -62,34 +82,35 @@ function cellText(c: Column | undefined, v: unknown, answers: AnswerMap): { text
 }
 
 /** Printed lines + needles for one answered question ("" lines = nothing to print). */
-export function valueOf(q: Question, v: unknown, answers: AnswerMap): { lines: string[]; needles: string[] } {
+export function valueOf(q: Question, v: unknown, answers: AnswerMap): { lines: string[]; needles: string[]; table?: SpecItem["table"] } {
   if (isReference(v)) return { lines: [refText(v)], needles: [refText(v)] };
   switch (q.kind) {
     case "toggle":
       return v === true ? { lines: [featureText(q.label)], needles: [featureText(q.label)] } : { lines: [], needles: [] };
     case "stepper":
-      return typeof v === "number" ? { lines: [`${num(v)}${unitText(q.unit, answers)}`], needles: [num(v)] } : { lines: [], needles: [] };
+      return typeof v === "number" ? { lines: [stepText(v, q.unit, answers)], needles: [num(v)] } : { lines: [], needles: [] };
     case "dims2": {
       const d = (v ?? {}) as { w?: number | null; h?: number | null };
       const parts = [d.w, d.h].filter((x): x is number => typeof x === "number");
-      return parts.length ? { lines: [parts.map((x) => `${num(x)}${unitText(q.unit, answers)}`).join(" X ")], needles: parts.map(num) } : { lines: [], needles: [] };
+      if (!parts.length) return { lines: [], needles: [] };
+      // W × H in mm: an inch pack prints both in inches, the mm in brackets.
+      const text = q.unit === "mm" && answers["dims.unit"] === "INCHES" ? `${parts.map((x) => `${num(x / 25.4)}"`).join(" X ")} (${parts.map(num).join(" X ")} MM)` : parts.map((x) => stepText(x, q.unit, answers)).join(" X ");
+      return { lines: [text], needles: parts.map(num) };
     }
     case "rows": {
-      const rows = Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
-      const lines: string[] = [];
-      const needles: string[] = [];
-      for (const r of rows) {
-        if (!r || typeof r !== "object") continue;
-        const cells = q.columns.map((c) => ({ c, ...cellText(c, r[c.key], answers) })).filter((x) => x.text);
-        // Extra keys a row carries beyond the columns (e.g. a note) print too.
-        const extra = Object.entries(r)
-          .filter(([k, x]) => !q.columns.some((c) => c.key === k) && !["id", "seen", "source", "status"].includes(k) && (typeof x === "string" || typeof x === "number") && String(x).trim())
-          .map(([k, x]) => ({ k, ...cellText(undefined, x, answers) }));
-        if (!cells.length && !extra.length) continue;
-        lines.push([...cells.map((x) => (q.columns.length > 1 ? `${up(x.c.label)} ${x.text}` : x.text)), ...extra.map((x) => x.text)].join(" · "));
-        needles.push(...cells.flatMap((x) => x.needles), ...extra.flatMap((x) => x.needles));
-      }
-      return { lines, needles };
+      const rows = (Array.isArray(v) ? (v as Record<string, unknown>[]) : []).filter((r) => r && typeof r === "object");
+      const cols = q.columns.filter((c) => !INTERNAL_KEYS.has(c.key));
+      // Extra keys a row carries beyond the columns (e.g. a note) print too — the studio's notes don't.
+      const extraKeys = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((k) => !q.columns.some((c) => c.key === k) && !INTERNAL_KEYS.has(k) && rows.some((r) => (typeof r[k] === "string" || typeof r[k] === "number") && String(r[k]).trim()));
+      const cells = rows.map((r) => [...cols.map((c) => cellText(c, r[c.key], answers)), ...extraKeys.map((k) => cellText(undefined, typeof r[k] === "string" || typeof r[k] === "number" ? r[k] : null, answers))]);
+      const used = [...cols.map((c) => featureText(c.label)), ...extraKeys.map((k) => up(k))].map((h, i) => ({ h, i })).filter(({ i }) => cells.some((row) => row[i].text));
+      const kept = cells.filter((row) => used.some(({ i }) => row[i].text));
+      if (!kept.length) return { lines: [], needles: [] };
+      return {
+        lines: kept.map((row) => used.map(({ i }) => row[i].text).filter(Boolean).join(" · ")),
+        needles: kept.flatMap((row) => used.flatMap(({ i }) => row[i].needles)),
+        table: { head: used.map(({ h }) => h), rows: kept.map((row) => used.map(({ i }) => row[i].text)) },
+      };
     }
     case "materials": {
       const list = Array.isArray(v) ? (v as { callout?: number; name?: string; locations?: string[] }[]) : [];
@@ -131,13 +152,19 @@ export function specItems(category: Category, answers: AnswerMap, printedAs: Rec
   const out: SpecItem[] = [];
   for (const q of visibleQuestions(ctx)) {
     if (SKIP_IDS.has(q.id) || SKIP_PREFIX.some((p) => q.id.startsWith(p)) || SKIP_KINDS.has(q.kind)) continue;
+    if (q.kind === "derived") {
+      // Automatic answers that are facts (capacity, nesting order) print like any answer (golden run 2 #6).
+      const d = DERIVED_FACTS.has(q.from) ? derivedValue(q, ctx) : "";
+      if (d && d !== "—") out.push({ qid: q.id, section: sectionOf.get(q.id) ?? "", label: featureText(q.label), lines: [up(d)], needles: [up(d)] });
+      continue;
+    }
     const v = answers[q.id];
     if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
-    const { lines, needles } = valueOf(q, v, answers);
+    const { lines, needles, table } = valueOf(q, v, answers);
     if (!lines.length) continue;
     // A template that prints the answer in its own words ("SHOULDER STRAP IS NOT REMOVABLE") says so.
     const own = isReference(v) ? undefined : printedAs[q.id];
-    out.push({ qid: q.id, section: sectionOf.get(q.id) ?? "", label: featureText(q.label), lines, needles: [...new Set((own ?? needles).filter(Boolean))], ...(own ? { alt: [...new Set(needles.filter(Boolean))] } : {}) });
+    out.push({ qid: q.id, section: sectionOf.get(q.id) ?? "", label: featureText(q.label), lines, needles: [...new Set((own ?? needles).filter(Boolean))], ...(own ? { alt: [...new Set(needles.filter(Boolean))] } : {}), ...(table && table.head.length > 1 ? { table } : {}) });
   }
   return out;
 }

@@ -70,6 +70,8 @@ export async function saveBrand(input: {
   codeFormat?: string;
   logoUrl?: string | null;
   licensorRequired?: boolean;
+  /** The unit the brand works in: new packs start in it (V2.1 §5). */
+  defaultUnit?: "CM" | "INCHES";
 }): Promise<ActionResult> {
   const admin = await requireRole("admin");
   const name = input.name.trim();
@@ -88,6 +90,7 @@ export async function saveBrand(input: {
     codeFormat: format,
     logoUrl: input.logoUrl ?? null,
     licensorRequired: Boolean(input.licensorRequired),
+    defaultUnit: input.defaultUnit === "INCHES" ? "INCHES" : "CM",
     updatedBy: admin.id,
     updatedAt: new Date(),
   };

@@ -3,9 +3,9 @@ import { numbersOf, trueSize } from "./true-size";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PackDoc } from "./doc";
-import { missingFrom, tight, type SpecItem } from "./specs";
+import { missingFrom, mmText, tight, type SpecItem } from "./specs";
 import { planPages, TRIMS } from "./plan";
-import { calloutPoint, usDate } from "./hints";
+import { calloutPoint, spreadPoints, usDate } from "./hints";
 import { inlineFlat } from "@/lib/lineart/geometry";
 
 /**
@@ -61,6 +61,7 @@ body { font-family: "IconCond", "Helvetica Neue Condensed", "Arial Narrow", Aria
 .callout { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #f7e400; color: #111; border: 2px solid #111; font-size: 16pt; flex: none; }
 .comments { display: flex; flex-direction: column; gap: 10px; font-size: 14pt; }
 .comments .c { display: flex; gap: 10px; align-items: flex-start; line-height: 1.25; }
+.cstrip .c { display: flex; gap: 10px; align-items: flex-start; line-height: 1.25; margin-bottom: 6px; break-inside: avoid; }
 table { border-collapse: collapse; }
 .mast { border: 1.5px solid #111; font-size: 11pt; width: 9.1in; table-layout: fixed; }
 .mast tr { height: 0.27in; }
@@ -124,6 +125,9 @@ ul.feat li::before { content: "-  "; }
 .specs .spechead { font-size: 9pt; color: #555; border-bottom: 1px solid #999; margin: 6px 0 3px; }
 .specs .specline { margin-bottom: 2px; }
 .specs .k { color: #555; font-size: 0.9em; }
+.specs table.spectable { width: 100%; border-collapse: collapse; margin: 2px 0 4px; font-size: 0.9em; table-layout: auto; }
+.specs table.spectable th, .specs table.spectable td { border: 0.75px solid #999; padding: 1px 4px; text-align: left; vertical-align: top; }
+.specs table.spectable th { font-size: 0.85em; color: #555; font-weight: 700; }
 `;
 
 /**
@@ -146,7 +150,9 @@ function head(doc: PackDoc, n: number, section: string) {
 
 /** A colourway's SKU: the style number alone when the pack has one colourway (golden run 1, P0.4). */
 function sku(doc: PackDoc, cw: string) {
-  return doc.pack.colorways.length > 1 ? `${doc.pack.styleNo}${cw}` : doc.pack.styleNo;
+  // A multi-style pack prints each colourway's own style # (V2.1 §4); a named variant has no suffix.
+  if (doc.colorwayStyles[cw]) return doc.colorwayStyles[cw];
+  return doc.pack.colorways.length > 1 && cw.startsWith("-") ? `${doc.pack.styleNo}${cw}` : doc.pack.styleNo;
 }
 
 /** " (X)" when X has a value, "" otherwise: an empty value never prints its brackets (golden run 1, P0.5). */
@@ -159,6 +165,47 @@ function commentsFor(doc: PackDoc, section: string, n?: number) {
   if (!cs.length) return "";
   return `<div class="comments">${cs.map((c) => `<div class="c"><span class="bubble">${c.letter}</span><span>${up(crossRef(doc, c, n))}</span></div>`).join("")}</div>`;
 }
+
+/**
+ * A page's comments in a strip under the header (golden run 2 #2): never in the header band, never
+ * behind the brand box. Long lists run in two columns and in smaller type.
+ */
+function commentStrip(doc: PackDoc, section: string, n: number, extra: { label: string; text: string }[] = []) {
+  const cs = doc.comments.filter((c) => c.pages.includes(section));
+  if (!cs.length && !extra.length) return null;
+  const items = [...cs.map((c) => ({ bubble: c.letter, text: crossRef(doc, c, n) })), ...extra.map((x) => ({ bubble: "", text: `${x.label}: ${x.text}` }))];
+  const total = items.reduce((t, x) => t + x.text.length + 4, 0);
+  const cols = total > 150 && items.length > 1 ? 2 : 1;
+  const colW = cols === 2 ? 7.9 : 16.2;
+  const est = (pt: number) => items.reduce((t, x) => t + textLines(x.text, colW - 0.5, pt) * lineH(pt, 1.25) + 0.08, 0) / cols + (cols > 1 ? lineH(pt, 1.25) : 0);
+  let pt = 13;
+  while (pt > 9 && est(pt) > 2.6) pt -= 1;
+  const b = Math.round(pt * 2.1);
+  const html = `<div class="abs cstrip" style="left:0.4in;top:1.4in;width:16.2in;column-count:${cols};column-gap:0.4in;font-size:${pt}pt">${items
+    .map((x) => `<div class="c">${x.bubble ? `<span class="bubble" style="width:${b}px;height:${b}px;font-size:${pt}pt">${x.bubble}</span>` : ""}<span${x.bubble ? "" : ' class="red"'}>${up(x.text)}</span></div>`)
+    .join("")}</div>`;
+  return { html, h: est(pt) };
+}
+
+/**
+ * Opens a standard page: header, header-band items, the comment strip, then the page body. With a
+ * comment strip the body is scaled (about the page centre) into the space left under it, so the
+ * page's own layout never meets the comments. `y0` is where the body's content starts.
+ */
+function openPage(doc: PackDoc, n: number, title: string, o: { comments?: string; band?: string; y0?: number; extra?: { label: string; text: string }[] } = {}) {
+  const strip = o.comments ? commentStrip(doc, o.comments, n, o.extra) : null;
+  const y0 = o.y0 ?? 1.3;
+  let tf = "";
+  if (strip) {
+    const top = 1.4 + strip.h + 0.15;
+    const k = (10.85 - top) / (10.85 - y0);
+    tf = `transform:translate(0, ${r2(top - y0)}in) scale(${k.toFixed(4)});transform-origin:8.5in ${y0}in;`;
+  }
+  return `<section class="page">
+    ${head(doc, n, title)}${o.band ?? ""}${strip?.html ?? ""}
+    <div class="pagebody" style="position:absolute;left:0;top:0;width:17in;height:11in;padding:0.32in 0.4in;${tf}"><div style="height:1.15in"></div>`;
+}
+const CLOSE_PAGE = `</div></section>`;
 
 /**
  * "SEE REFERENCE PHOTOS …" gets the page numbers it means: every page where that comment letter's
@@ -236,14 +283,17 @@ function fitPt(text: string, w: number, lines = 1, max = 14, min = 7) {
 /* ------------------------------ P1. OVERVIEW ------------------------------ */
 /** The yellow numbered material callouts placed on a drawing at r (inches). */
 function materialCallouts(doc: PackDoc, r: R, d = 0.34) {
-  return doc.materials
-    .map((m, k) => {
+  // Every numbered material gets its callout, and no two overlap (golden run 2 #1).
+  const pts = spreadPoints(
+    doc.materials.map((m, k) => {
       const p = calloutPoint(m, k);
-      // Kept inside the drawing so a callout near an edge never runs off its box.
-      const x = Math.min(Math.max(r.x + p.x * r.w - d / 2, r.x), r.x + r.w - d),
-        y = Math.min(Math.max(r.y + p.y * r.h - d / 2, r.y), r.y + r.h - d);
-      return `<div class="abs" style="left:${r2(x)}in;top:${r2(y)}in;z-index:7"><span class="callout" style="width:${d}in;height:${d}in;font-size:${Math.round(d * 38)}pt">${m.callout}</span></div>`;
-    })
+      return { x: r.x + p.x * r.w - d / 2, y: r.y + p.y * r.h - d / 2 };
+    }),
+    d,
+    r,
+  );
+  return doc.materials
+    .map((m, k) => `<div class="abs" style="left:${r2(pts[k].x)}in;top:${r2(pts[k].y)}in;z-index:7" data-callout="${m.callout}"><span class="callout" style="width:${d}in;height:${d}in;font-size:${Math.round(d * 38)}pt">${m.callout}</span></div>`)
     .join("");
 }
 
@@ -260,7 +310,11 @@ function specBlock(items: SpecItem[], pt = 10) {
     .map(
       (g) =>
         `<div class="specgroup" style="break-inside:avoid-column"><div class="spechead">${esc(g.section)}</div>${g.items
-          .map((it) => `<div class="specline" style="font-size:${pt}pt"><span class="k">${esc(it.label)}:</span> ${it.lines.length === 1 ? esc(it.lines[0]) : it.lines.map((l) => `<div style="padding-left:10px">${esc(l)}</div>`).join("")}</div>`)
+          .map((it) =>
+            it.table
+              ? `<div class="specline" style="font-size:${pt}pt;break-inside:avoid"><span class="k">${esc(it.label)}:</span><table class="spectable"><tr>${it.table.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>${it.table.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</table></div>`
+              : `<div class="specline" style="font-size:${pt}pt"><span class="k">${esc(it.label)}:</span> ${it.lines.length === 1 ? esc(it.lines[0]) : it.lines.map((l) => `<div style="padding-left:10px">${esc(l)}</div>`).join("")}</div>`,
+          )
           .join("")}</div>`,
     )
     .join("");
@@ -309,8 +363,9 @@ function overviewPage(doc: PackDoc, n: number, specs: SpecItem[] = doc.specChunk
       const target: R = doc.logo.onBack && backR ? backR : r;
       const px = target.x + doc.logoPoint.x * target.w,
         py = target.y + doc.logoPoint.y * target.h;
+      // With views beside the front their titles hold the top band: the label sits at the bottom right.
       const lx = box.x + box.w - 0.1,
-        ly = box.y + 0.9;
+        ly = extra.length ? box.y + box.h - 0.35 : box.y + 0.9;
       drawing += `<div class="red abs" style="left:${r2(lx - 2.6)}in;top:${r2(ly - 0.36)}in;width:2.6in;text-align:right;font-size:14pt;line-height:1.1;z-index:6">LOGO${paren(doc.logo.placement)}${upd(doc, "branding.")}</div>`;
       lines += lead(lx - 0.15, ly, px, py, { dot: true });
     }
@@ -339,6 +394,8 @@ function overviewFacts(doc: PackDoc) {
     ["RETAILER", h.retailer, "header.retailer"],
     ["SEASON", h.season, "header.season"],
     ["DUE DATE", h.dueDate, "header.due_date"],
+    ["SIZES", h.sizeFamily, "header.size_family"],
+    ["SAMPLE SIZE", h.sampleSize, "header.sample_size"],
     ["REFERENCE SAMPLE", h.referenceSample, "header.reference_sample"],
     ["SENT BY", h.sentBy, ""],
     ["LICENSOR", h.licensor, "header.licensor"],
@@ -394,7 +451,11 @@ function specHeight(items: SpecItem[], widthIn: number, pt: number) {
       hgt += lineH(9, 1.6);
       section = it.section;
     }
-    hgt += it.lines.length === 1 ? textLines(`${it.label}: ${it.lines[0]}`, widthIn, pt) * lineH(pt) : lineH(pt) + it.lines.reduce((s2, l) => s2 + textLines(l, widthIn - 0.15, pt) * lineH(pt), 0);
+    if (it.table) {
+      // A table cell wraps within its column: each row is as tall as its longest cell.
+      const colW = widthIn / it.table.head.length;
+      hgt += lineH(pt) + [it.table.head, ...it.table.rows].reduce((s2, r) => s2 + Math.max(...r.map((c) => textLines(c || " ", colW, pt * 0.9))) * lineH(pt * 0.9, 1.25) + 0.03, 0);
+    } else hgt += it.lines.length === 1 ? textLines(`${it.label}: ${it.lines[0]}`, widthIn, pt) * lineH(pt) : lineH(pt) + it.lines.reduce((s2, l) => s2 + textLines(l, widthIn - 0.15, pt) * lineH(pt), 0);
   }
   return hgt;
 }
@@ -497,12 +558,14 @@ function measurementsPage(doc: PackDoc, n: number) {
   // Closure photo top right, with the comment's red curved arrow from the drawing.
   let lines = "";
   let closure = "";
+  let closureTitle = "";
   if (closureRef || doc.closure) {
     // Left of the brand mark and above the side view, as on the Icon sheet.
     const pbox: R = { x: 9.0, y: 0.75, w: 3.7, h: 3.45 };
     const pr = fit(closureRef?.img, pbox);
     const title = closureRef ? closureRef.note : doc.closure.split(" — ")[0];
-    closure = `<div class="abs" style="left:8.75in;top:0.3in;width:4.2in;text-align:center;font-size:${fitPt(up(title), 4.2, 2, 17, 10)}pt;line-height:1.1">${closureRef?.letter ? `<span class="bubble" style="margin-right:6px">${esc(closureRef.letter)}</span>` : ""}${up(title)}</div>${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
+    closureTitle = `<div class="abs" style="left:8.75in;top:0.3in;width:4.2in;text-align:center;font-size:${fitPt(up(title), 4.2, 2, 17, 10)}pt;line-height:1.1">${closureRef?.letter ? `<span class="bubble" style="margin-right:6px">${esc(closureRef.letter)}</span>` : ""}${up(title)}</div>`;
+    closure = `${closureRef?.img ? imgIn(closureRef.img, pbox) : ""}${
       doc.closure.includes(" — ") && !closureRef ? `<div class="abs small" style="left:8.85in;top:1in;width:4in;text-align:center">${up(doc.closure.split(" — ")[1])}</div>` : ""
     }`;
     if (closureRef?.img) {
@@ -538,18 +601,16 @@ function measurementsPage(doc: PackDoc, n: number) {
         .join("")}</table>`
     : "";
   const placementTable = doc.placements.length
-    ? `<div class="small" style="margin:8px 0 3px">HARDWARE PLACEMENT (MM)</div><table class="spec"><tr><th>CODE</th><th style="text-align:left">COMPONENT</th><th>QTY</th><th style="text-align:left">MEASURED</th><th>DISTANCE</th><th>SPACING C/C</th><th style="text-align:left">NOTE</th></tr>${doc.placements
-        .map((r) => `<tr><td class="code">${up(r.code)}</td><td style="text-align:left">${up(r.type)}</td><td>${r.qty ?? ""}</td><td style="text-align:left">${up(r.from)}</td><td class="red">${r.distance != null ? `${r.distance} MM` : ""}</td><td class="red">${r.spacing != null ? `${r.spacing} MM` : ""}</td><td style="text-align:left">${up(r.note)}</td></tr>`)
+    ? `<div class="small" style="margin:8px 0 3px">HARDWARE PLACEMENT</div><table class="spec"><tr><th>CODE</th><th style="text-align:left">COMPONENT</th><th>QTY</th><th style="text-align:left">MEASURED</th><th>DISTANCE</th><th>SPACING C/C</th><th style="text-align:left">NOTE</th></tr>${doc.placements
+        .map((r) => `<tr><td class="code">${up(r.code)}</td><td style="text-align:left">${up(r.type)}</td><td>${r.qty ?? ""}</td><td style="text-align:left">${up(r.from)}</td><td class="red">${r.distance != null ? mmText(r.distance, doc.unit === "in") : ""}</td><td class="red">${r.spacing != null ? mmText(r.spacing, doc.unit === "in") : ""}</td><td style="text-align:left">${up(r.note)}</td></tr>`)
         .join("")}</table>`
     : "";
 
-  return `<section class="page">
-    ${head(doc, n, "MEASUREMENTS")}
-    <div class="abs" style="left:0.4in;top:1.3in;width:9.6in">${commentsFor(doc, "MEASUREMENTS", n)}</div>
+  return `${openPage(doc, n, "MEASUREMENTS", { comments: "MEASUREMENTS", band: closureTitle, y0: closure ? 0.75 : 1.3 })}
     ${drawing}${list}${closure}${side}
     ${tables ? `<div class="abs" style="left:0.4in;top:7.2in;width:${hasSide ? 11.1 : 16.2}in">${pomTable}${placementTable}</div>` : ""}
     ${overlay(lines)}
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ P4. COLOURWAYS ------------------------------ */
@@ -579,7 +640,9 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const rows = doc.rows
     .map((r) => {
       const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${refOf(r.code, r.cells[i])}</td>`).join("");
-      return `<tr><td class="cw">${up(sku(doc, r.code))}${r.name ? `<div style="font-size:11pt;margin-top:3px">${up(r.name)}</div>` : ""}</td>${cells}</tr>`;
+      // A named variant (no suffix) shows its name under the style #.
+      const label = r.name || (r.code.startsWith("-") ? "" : r.code);
+      return `<tr><td class="cw">${up(sku(doc, r.code))}${label ? `<div style="font-size:11pt;margin-top:3px">${up(label)}</div>` : ""}</td>${cells}</tr>`;
     })
     .join("");
   const table = `<table class="variant"><tr><th>COLOURWAY</th>${used.map(headCell).join("")}</tr>${rows}</table>`;
@@ -601,9 +664,12 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const ih = Math.max(1.6, 10.6 - top - 1.5);
   const block = (cw: string) => {
     const name = doc.rows.find((x) => x.code === cw)?.name;
+    const file = doc.printFiles[cw] ?? "";
     const facts = [
       ["SKU#", sku(doc, cw)],
+      ["FILE NAME", file],
       ["COLOR", name ?? ""],
+      ["PANTONE", doc.pantones[cw] || (file ? "SEE PRINT FILE" : "")],
       ["FABRIC", cell(cw, doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "")],
       ["LINING", cell(cw, "lining")],
       ["ZIPPER", cell(cw, "zipper")],
@@ -617,13 +683,10 @@ function colourwaysPage(doc: PackDoc, n: number) {
         ${photos.map((r) => `<div style="width:${r2(w)}in"><div style="position:relative;height:${r2(ih)}in">${imgIn(r.img, { x: 0, y: 0, w, h: ih }, FRAME)}</div>${refCaption(r)}</div>`).join("")}
       </div>`
     : "";
-  return `<section class="page">
-    ${head(doc, n, "COLOURWAYS")}
-    <div class="small abs" style="left:5in;top:0.4in">MATERIAL / COLOUR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish", "colorways.")}</div>
-    <div class="abs" style="left:5in;top:0.75in;width:9.1in">${commentsFor(doc, "COLOURWAYS", n)}</div>
+  return `${openPage(doc, n, "COLOURWAYS", { comments: "COLOURWAYS", band: `<div class="small abs" style="left:5in;top:0.4in">MATERIAL / COLOUR BREAKDOWN${upd(doc, "materials.", "edge.", "hardware.finish", "colorways.")}</div>` })}
     <div class="abs" style="left:0.4in;right:0.4in;top:1.55in">${table}</div>
     ${gallery}
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ 5. REFERENCE PHOTOS ------------------------------ */
@@ -643,6 +706,19 @@ function zoomSvg(r: RefPhoto, d: number) {
 function refCaption(r: RefPhoto) {
   if (!r.letter && !r.note) return "";
   return `<div class="zoomcap red">${r.letter ? `<span class="bubble" style="width:36px;height:36px;font-size:17pt">${esc(r.letter)}</span>` : ""}<span>${up(r.note)}</span></div>`;
+}
+
+/**
+ * A photo in its box: at actual size (1:1) when its real width is known and it fits, with a scale
+ * note; otherwise contained in the box (golden run 2 #3).
+ */
+function actualPhoto(it: RefPhoto, body: R) {
+  const a = it.actualIn;
+  if (!a || !it.img) return imgIn(it.img, body, FRAME);
+  const fits = a.w <= body.w && a.h <= body.h - 0.3;
+  const r = fits ? { x: body.x + (body.w - a.w) / 2, y: body.y, w: a.w, h: a.h } : fit(it.img, { ...body, h: body.h - 0.3 });
+  const note = fits ? "ACTUAL SIZE (1:1)" : `REDUCED TO FIT — ${Math.round((r.w / a.w) * 100)}% OF ACTUAL SIZE`;
+  return `<img src="${it.img.src}" style="${at(r)}${FRAME}"/><div class="abs red" style="left:${r2(r.x)}in;top:${r2(r.y + r.h + 0.05)}in;width:${r2(Math.max(r.w, 2.5))}in;font-size:10pt">${note}</div>`;
 }
 
 /** Lays photos out to fill a box: picks the column count that gives the largest photos. */
@@ -673,7 +749,7 @@ function photoGrid(items: RefPhoto[], box: R) {
       const body: R = { x: cell.x, y: cell.y + top, w: cell.w, h: cell.h - top };
       const d = Math.min(body.w, body.h);
       return `<div class="abs" style="${at({ ...cell, h: top || 0.01 })}">${hasCap ? refCaption(it) : ""}</div>${
-        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : imgIn(it.img, body, FRAME)
+        it.zoom ? `<div class="abs" style="left:${r2(body.x + (body.w - d) / 2)}in;top:${r2(body.y + (body.h - d) / 2)}in">${zoomSvg(it, d)}</div>` : actualPhoto(it, body)
       }`;
     })
     .join("");
@@ -683,11 +759,9 @@ function referencePage(doc: PackDoc, n: number) {
   const refs = doc.references.filter((r) => r.page === "REFERENCE IMAGES");
   // Main photos first, zoom details after them (as on PINK013 p4: the bag, then the circled strap clip).
   const ordered = [...refs.filter((r) => !r.zoom), ...refs.filter((r) => r.zoom)];
-  return `<section class="page">
-    ${head(doc, n, "REFERENCE IMAGES")}
-    <div class="abs" style="left:5in;top:0.4in;width:9.5in">${commentsFor(doc, "REFERENCE IMAGES", n)}</div>
-    ${photoGrid(ordered, { x: 0.4, y: 1.5, w: 16.2, h: 9.3 })}
-  </section>`;
+  return `${openPage(doc, n, "REFERENCE IMAGES", { comments: "REFERENCE IMAGES" })}
+    ${photoGrid(ordered, { x: 0.4, y: 1.5, w: 16.2, h: 8.95 })}
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ 6. INTERIOR & LINING ------------------------------ */
@@ -836,16 +910,15 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
   const geometry = doc.dims.w != null && doc.dims.h != null && (i.pockets.some((p) => p.w != null || p.h != null || p.top_offset != null) || (!!i.label && i.labelSize?.w != null));
   if (!geometry && !withArtwork) {
     const g = photoStack(photos, { x: 0.4, y: 2.0, w: 11.4, h: 8.6 }, true);
-    return `<section class="page">
-      ${head(doc, n, "INTERIOR & LINING")}
+    return `${openPage(doc, n, "INTERIOR & LINING", { comments: "INTERIOR & LINING" })}
       ${lab ? `<div class="abs" style="left:0.4in;top:1.3in;font-size:20pt;line-height:1.2;width:11in">${lab}</div>` : ""}
       ${g.html}
-      <div class="abs" style="left:12.2in;top:1.3in;width:4.4in">${commentsFor(doc, "INTERIOR & LINING", n)}
-        <div style="margin-top:14px;font-size:13pt;line-height:1.45">${notes}</div>
+      <div class="abs" style="left:12.2in;top:1.3in;width:4.4in">
+        <div style="font-size:13pt;line-height:1.45">${notes}</div>
         ${doc.dims.w != null && doc.dims.h != null && doc.dims.d != null ? `<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:0.15in;align-items:flex-end">${allWalls(doc, 0.55, 0.85)}</div>` : ""}
       </div>
       ${overlay(g.lines)}
-    </section>`;
+    ${CLOSE_PAGE}`;
   }
   const W = doc.dims.w ?? 20,
     D = doc.dims.d ?? 8,
@@ -884,17 +957,16 @@ function interiorPage(doc: PackDoc, n: number, withArtwork: boolean) {
     pbox = { x: 12.6, y: 1.45, w: 4.0, h: 7.6 };
   }
   const g = photoStack(wide ? photos.slice(0, 1) : photos, pbox, withArtwork && !wide);
-  return `<section class="page">
-    ${head(doc, n, "INTERIOR & LINING")}
-    ${lab ? `<div class="abs" style="left:${withArtwork ? 3.9 : 0.4}in;top:${withArtwork ? 0.45 : 1.3}in;font-size:24pt;line-height:1.2;width:9in">${lab}</div>` : ""}
-    <div class="abs" style="left:${withArtwork ? 5.9 : 9.4}in;top:${withArtwork ? 0.45 : 1.3}in;width:${withArtwork ? 5.4 : 3.1}in">${commentsFor(doc, "INTERIOR & LINING", n)}</div>
+  const labBand = lab && withArtwork ? `<div class="abs" style="left:5in;top:0.4in;font-size:${fitPt(lab.replace(/<[^>]+>/g, ""), 9.2, 2, 22, 12)}pt;line-height:1.2;width:9.2in">${lab}</div>` : "";
+  return `${openPage(doc, n, "INTERIOR & LINING", { comments: "INTERIOR & LINING", band: labBand })}
+    ${lab && !withArtwork ? `<div class="abs" style="left:0.4in;top:1.3in;font-size:24pt;line-height:1.2;width:9in">${lab}</div>` : ""}
     ${panels}
     ${withArtwork ? `<div class="abs" style="left:${wide ? 12.1 : 11.0}in;top:1.3in;width:${wide ? 4.5 : 5.6}in">${artworkBlock(doc, wide ? 4.5 : 5.6)}</div>` : ""}
     ${!withArtwork ? `<div class="abs" style="left:0.4in;top:9.35in;display:flex;gap:0.3in;align-items:flex-end">${allWalls(doc)}</div>` : ""}
     ${g.html}
     <div class="abs" style="left:${wide ? 12.1 : withArtwork ? 11.0 : 7.4}in;bottom:0.35in;width:${wide ? 4.5 : withArtwork ? 5.6 : 5}in;font-size:12pt;line-height:1.45">${notes}</div>
     ${overlay(g.lines)}
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /** Every inside wall — front, back, both sides and the base — with its pockets (or NO POCKET). */
@@ -975,16 +1047,13 @@ function artworkPage(doc: PackDoc, n: number) {
     left = `<div class="abs" style="left:0.4in;top:1.45in;width:4.4in;text-align:center;font-size:17pt;line-height:1.2">${cap}</div>${imgIn(app.img, pbox, "", true)}`;
     lines += lead(2.6, 2.3, pr.x + dot.x * pr.w, pr.y + dot.y * pr.h, { dot: true, w: 0.03 });
   }
-  return `<section class="page">
-    ${head(doc, n, "LINING / PRINT ARTWORK")}
+  return `${openPage(doc, n, "LINING / PRINT ARTWORK", { comments: "LINING / PRINT ARTWORK", band: `<div class="abs" style="left:5.2in;top:0.3in;width:9in;text-align:center;font-size:24pt">LINING ARTWORK</div>`, y0: 0.85 })}
     ${left}
-    <div class="abs" style="left:14.8in;top:6.2in;width:1.8in">${commentsFor(doc, "LINING / PRINT ARTWORK", n)}</div>
-    <div class="abs" style="left:5.2in;top:0.3in;width:9.3in;text-align:center;font-size:24pt">LINING ARTWORK</div>
     <div class="abs" style="left:5.2in;top:0.85in">${repeatPanel(doc, 9.3, 8.4)}</div>
     <div class="abs" style="left:5.2in;top:9.4in;width:9.3in;display:flex;gap:0.3in;justify-content:center">${l.colours.map((c, i) => `<div style="text-align:center;font-size:16pt"><div style="width:2.2in;height:0.75in;background:${l.colourHex[i]};border:1px solid #999"></div>${up(c)}</div>`).join("")}</div>
-    <div class="abs" style="left:14.8in;top:1.9in;width:1.8in;font-size:13pt;line-height:1.45">PRINT:<br/>${up(l.name)}<br/>${l.motif ? `MOTIF:<br/>${up(l.motif)}<br/>` : ""}${l.repeat ? `REPEAT:<br/>${up(l.repeat)}<br/>` : ""}${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}` : ""}</div>
+    <div class="abs" style="left:14.8in;top:1.9in;width:1.8in;font-size:13pt;line-height:1.45" data-artwork-facts>PRINT:<br/>${up(l.name)}<br/>${l.motif ? `MOTIF:<br/>${up(l.motif)}<br/>` : ""}${l.repeat ? `REPEAT:<br/>${up(l.repeat)}<br/>` : ""}${l.baseFabric ? `FABRIC:<br/>${up(l.baseFabric)}` : ""}</div>
     ${overlay(lines)}
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ 8. HARDWARE / BRANDING DETAIL ------------------------------ */
@@ -1005,8 +1074,8 @@ function trimsUsed(doc: PackDoc, page: number) {
 }
 
 function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = { i: 1, of: 1 }) {
-  const pg = doc.trims[part.i - 1] ?? { from: 0, to: doc.detail.length, row: true };
-  const photos = pg.row ? doc.references.filter((r) => r.page === "TRIMS & HARDWARE") : [];
+  const pg = doc.trims[part.i - 1] ?? { from: 0, to: doc.detail.length, row: true, photos: true };
+  const photos = pg.photos ? doc.references.filter((r) => r.page === "TRIMS & HARDWARE") : [];
   const panelH = doc.detail.length > 1 ? TRIMS.panel : TRIMS.single;
   const panels = doc.detail
     .slice(pg.from, pg.to)
@@ -1057,27 +1126,34 @@ function detailPage(doc: PackDoc, n: number, part: { i: number; of: number } = {
   const logo = lp
     ? `<div style="display:flex;gap:0.6in;align-items:center">
         <div style="position:relative;padding:0.4in 0 0 0.55in">
-          <div class="dim" style="position:absolute;top:0;left:0.55in;width:${lp.w}mm;text-align:center;font-size:15pt">${lp.w}MM</div>
-          <div class="dim" style="position:absolute;left:0;top:0.4in;height:${lp.h}mm;display:flex;align-items:center;font-size:15pt;writing-mode:vertical-rl;transform:rotate(180deg)">${lp.h}MM</div>
+          <div class="dim" style="position:absolute;top:0;left:0.55in;width:${lp.w}mm;text-align:center;font-size:${doc.unit === "in" ? 12 : 15}pt;white-space:nowrap">${mmText(lp.w, doc.unit === "in")}</div>
+          <div class="dim" style="position:absolute;left:0;top:0.4in;height:${lp.h}mm;display:flex;align-items:center;font-size:15pt;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap">${mmText(lp.h, doc.unit === "in")}</div>
           <div style="width:${lp.w}mm;height:${lp.h}mm;border:2px solid #111;display:flex;align-items:center;justify-content:center;font-size:12pt;outline:1px dashed #111;outline-offset:-5px;letter-spacing:0.3em">${up(doc.brand.name)}</div>
         </div>
         <div style="text-align:center"><div style="font-size:16pt">LOGO ${up(doc.logo.type.replace(" PATCH", ""))}${doc.logo.fill ? ` WITH ${up(doc.logo.fill)}` : ""}</div>${toolingNote(doc)}${lp.photo ? `<div style="position:relative;width:3.2in;height:1.4in;margin-top:8px">${imgIn(lp.photo, { x: 0, y: 0, w: 3.2, h: 1.4 })}</div>` : ""}</div>
       </div>`
     : "";
-  const photoBoxes = photos
-    .map((ph) => `<div style="border:1.5px solid #111;width:2.9in;text-align:center"><div style="position:relative;height:1.75in">${imgIn(ph.img, { x: 0, y: 0, w: 2.9, h: 1.75 })}</div><div style="font-size:${fitPt(up(ph.note), 2.6, 2, 14, 9)}pt;padding:6px 8px;line-height:1.2">${ph.letter ? `<span class="bubble" style="margin-right:6px">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div></div>`)
-    .join("");
+  // Photos take the space the panels leave (golden run 2 #3): one photo gets half the page, several share it.
+  const panelsH = (pg.to - pg.from) * (panelH + TRIMS.gap) + (lp ? TRIMS.row : 0);
+  const free: R = { x: 0.4, y: 1.35 + panelsH + 0.05, w: 16.2, h: 10.5 - (1.35 + panelsH + 0.05) };
+  const photoArea = photos.length === 1 ? { ...free, w: Math.min(free.w, 8.1) } : free;
   // A Hardware-category pack is this one page: its leftover answers print under the panel.
   const specs = doc.componentOnly && part.i === 1 ? (doc.specChunks[0] ?? []) : [];
   const title = doc.componentOnly ? "COMPONENT SHEET" : "TRIMS & HARDWARE";
-  return `<section class="page">
-    ${head(doc, n, `${title}${part.of > 1 ? ` (${part.i}/${part.of})` : ""}`)}
+  return `${openPage(doc, n, `${title}${part.of > 1 ? ` (${part.i}/${part.of})` : ""}`, { comments: "TRIMS & HARDWARE", extra: doc.componentOnly ? doc.refNotes : [] })}
     <div class="abs" style="left:0.4in;right:0.4in;top:1.35in">${panels}
-      ${logo || photoBoxes ? `<div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.1in;height:${TRIMS.row - 0.2}in">${logo}<div style="display:flex;gap:0.4in">${photoBoxes}</div></div>` : ""}
-      ${specs.length ? `<div class="specs" style="column-count:3;column-gap:0.35in;margin-top:0.1in">${specBlock(specs)}</div>` : ""}
+      ${logo ? `<div style="display:flex;gap:0.6in;align-items:center;justify-content:space-between;margin-top:0.1in;height:${TRIMS.row - 0.2}in">${logo}${pg.photos === "row" ? `<div style="display:flex;gap:0.3in">${photos.map((ph) => rowPhoto(ph)).join("")}</div>` : ""}</div>` : ""}
+      ${specs.length ? `<div class="specs" style="column-count:${photos.length ? 2 : 3};column-gap:0.35in;margin-top:0.1in;${photos.length ? "margin-left:8.4in" : ""}">${specBlock(specs)}</div>` : ""}
     </div>
-    <div class="abs" style="right:0.4in;top:0.35in;width:7in">${commentsFor(doc, "TRIMS & HARDWARE", n)}${doc.componentOnly && doc.refNotes.length ? `<div class="comments" style="margin-top:6px">${doc.refNotes.map((r) => `<div class="c"><span class="red">${esc(r.label)}:</span>&nbsp;<span>${esc(r.text)}</span></div>`).join("")}</div>` : ""}</div>
-  </section>`;
+    ${photos.length && pg.photos === "grid" ? photoGrid(photos, specs.length ? { ...free, w: 8.1 } : photoArea) : ""}
+  ${CLOSE_PAGE}`;
+}
+
+/** A photo in the logo row: as large as the row allows, captioned. */
+function rowPhoto(ph: RefPhoto) {
+  const w = 3.2,
+    h = 1.75;
+  return `<div style="width:${w}in;text-align:center"><div style="position:relative;height:${h}in">${imgIn(ph.img, { x: 0, y: 0, w, h }, FRAME)}</div><div style="font-size:${fitPt(up(ph.note), w, 2, 13, 8)}pt;padding-top:4px;line-height:1.15">${ph.letter ? `<span class="bubble" style="margin-right:6px;width:24px;height:24px;font-size:12pt">${esc(ph.letter)}</span>` : ""}${up(ph.note)}</div></div>`;
 }
 
 function toolingNote(doc: PackDoc) {
@@ -1111,9 +1187,7 @@ function crossSection(edge: string) {
 
 function constructionPage(doc: PackDoc, n: number) {
   const rows = doc.construction;
-  return `<section class="page">
-    ${head(doc, n, "CONSTRUCTION DETAILS")}
-    <div style="position:absolute;left:5in;top:0.5in;width:7.8in">${commentsFor(doc, "CONSTRUCTION DETAILS", n)}</div>
+  return `${openPage(doc, n, "CONSTRUCTION DETAILS", { comments: "CONSTRUCTION DETAILS" })}
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:0.25in;margin-top:0.55in">
       ${rows
         .map(
@@ -1130,7 +1204,7 @@ function constructionPage(doc: PackDoc, n: number) {
           : ""
       }
     </div>
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ BILL OF MATERIALS ------------------------------ */
@@ -1138,16 +1212,15 @@ function bomPage(doc: PackDoc, n: number) {
   const zip = doc.zippers.length
     ? `<div class="small" style="margin:14px 0 3px">ZIPPERS</div><table class="spec"><tr><th>POSITION</th><th>SIZE</th><th>TYPE</th><th>OPENING</th><th>ENDS</th><th>SLIDER</th><th>PULLER</th><th>ATTACHMENT</th><th>TAPE</th><th>TEETH</th></tr>${doc.zippers
         .map((z) => `<tr><td>${up(z.position)}</td><td>${up(z.size)}</td><td>${up(z.type)}</td><td class="red">${esc(z.length)}</td><td>${up(z.ends)}</td><td>${up(z.slider)}</td><td>${up(z.puller)}</td><td>${up(z.attachment)}</td><td>${up(z.tape)}</td><td>${up(z.teeth)}</td></tr>`)
-        .join("")}</table>`
-    : "";
+        .join("")}</table>${doc.zipPositions.length ? `<div class="small" style="margin-top:4px">ALSO ZIPPERED: ${up(doc.zipPositions.join(" · "))}</div>` : ""}`
+    : doc.zipPositions.length
+      ? `<div class="small" style="margin:14px 0 3px">ZIPPERS: ${up(doc.zipPositions.join(" · "))}</div>`
+      : "";
   const labels = Object.entries(doc.contentLabels).filter(([, v]) => v.text);
   const content = labels.length
     ? `<div class="small" style="margin:14px 0 3px">CONTENT LABEL (FROM THE MATERIAL LIBRARY)</div><table class="spec">${labels.map(([cw, v]) => `<tr><td class="code" style="width:1.6in">${up(sku(doc, cw))}</td><td style="text-align:left">${up(v.text)}${v.missing.length ? ` <span class="red">— COMPOSITION MISSING: ${up(v.missing.join(", "))}</span>` : ""}</td></tr>`).join("")}</table>`
     : "";
-  return `<section class="page">
-    ${head(doc, n, "BILL OF MATERIALS")}
-    <div class="abs" style="left:11in;top:1.3in;width:5.6in">${commentsFor(doc, "BILL OF MATERIALS", n)}</div>
-    <div class="small muted" style="position:absolute;left:5in;top:0.55in">QUANTITIES PER FINISHED BAG. NO PRICES — COSTING BY FACTORY. “FTY TO CONFIRM” = FACTORY TO CONFIRM CONSUMPTION.</div>
+  return `${openPage(doc, n, "BILL OF MATERIALS", { comments: "BILL OF MATERIALS", band: `<div class="small muted" style="position:absolute;left:5in;top:0.55in;width:9.2in">QUANTITIES PER FINISHED BAG. NO PRICES — COSTING BY FACTORY. “FTY TO CONFIRM” = FACTORY TO CONFIRM CONSUMPTION.</div>` })}
     <div style="margin-top:0.45in">
       ${
         doc.bom.length
@@ -1158,7 +1231,7 @@ function bomPage(doc: PackDoc, n: number) {
       }
       ${zip}${content}
     </div>
-  </section>`;
+  ${CLOSE_PAGE}`;
 }
 
 /* ------------------------------ SAMPLE COMMENTS ------------------------------ */

@@ -1,11 +1,11 @@
 /**
  * The overflow check (golden run 1, P0.3): in the laid-out print HTML, no element's box may extend
  * outside its page, nor outside a clipping box it sits in (overflow: hidden), and no clipping box may
- * hide content. Run in the page with page.evaluate(OVERFLOW_JS). Kept as a string so bundlers don't
+ * hide content, and no text may run into the header boxes (style box, brand box, page tag). Run in the page with page.evaluate(OVERFLOW_JS). Kept as a string so bundlers don't
  * rewrite it. Returns one entry per offending element (outermost only) with its page number and a
  * selector — never its text, so the report stays free of pack content.
  */
-export type OverflowHit = { page: number; selector: string; kind: "page" | "clipped" | "hidden-content"; by: number };
+export type OverflowHit = { page: number; selector: string; kind: "page" | "clipped" | "hidden-content" | "header-overlap"; by: number };
 
 export const OVERFLOW_JS = `(() => {
   const TOL = 2;
@@ -26,6 +26,7 @@ export const OVERFLOW_JS = `(() => {
   pages.forEach((pg, k) => {
     const P = pg.getBoundingClientRect();
     const flagged = new Set();
+    const headers = Array.prototype.slice.call(pg.querySelectorAll(".stylebox, .brandbox, .ptag")).map((h) => h.getBoundingClientRect());
     const all = Array.prototype.slice.call(pg.querySelectorAll("*"));
     for (const el of all) {
       if (el.closest(".draft")) continue;
@@ -52,6 +53,17 @@ export const OVERFLOW_JS = `(() => {
       if (!hit && (cs.overflowX !== "visible" || cs.overflowY !== "visible") && !el.classList.contains("page")) {
         const d = Math.max(el.scrollWidth - el.clientWidth, el.scrollHeight - el.clientHeight);
         if (d > TOL) hit = { kind: "hidden-content", by: d };
+      }
+      // Text running into the header boxes (golden run 2 #2): the style box, the brand box, the page tag.
+      if (!hit && !el.closest(".stylebox, .brandbox, .ptag")) {
+        const ownText = Array.prototype.some.call(el.childNodes, (c) => c.nodeType === 3 && c.textContent.trim());
+        if (ownText) {
+          for (const H of headers) {
+            const ox = Math.min(r.right, H.right) - Math.max(r.left, H.left);
+            const oy = Math.min(r.bottom, H.bottom) - Math.max(r.top, H.top);
+            if (ox > TOL && oy > TOL) { hit = { kind: "header-overlap", by: Math.min(ox, oy) }; break; }
+          }
+        }
       }
       if (hit) {
         flagged.add(el);

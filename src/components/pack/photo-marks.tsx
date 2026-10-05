@@ -7,7 +7,7 @@ import type { FileMarks } from "@/db/schema";
 import { normalizePage } from "@/lib/page-names";
 import { Drawer } from "@/components/drawer";
 import { Button, cx } from "@/components/ui";
-import { calloutPoint } from "@/lib/pdf/hints";
+import { calloutPoint, spreadPoints } from "@/lib/pdf/hints";
 
 /** Where a reference photo prints: its own template page, or a slot on one. Value = "PAGE|ROLE". */
 export const PLACEMENTS: { value: string; label: string }[] = [
@@ -52,6 +52,13 @@ export function PhotoMarks({
   // Suggested callout spots are fractions of the cropped product; the drawer shows the whole image.
   const crop = marks.crop ?? null;
   const whole = (p: { x: number; y: number }) => (crop ? { x: crop.x + p.x * crop.w, y: crop.y + p.y * crop.h } : p);
+  // Suggestions spread apart like the PDF's (a callout is ~5% of the product wide).
+  const D = 0.05;
+  const suggested = spreadPoints(
+    materials.map((m, k) => ({ x: calloutPoint(m, k).x - D / 2, y: calloutPoint(m, k).y - D / 2 })),
+    D,
+    { x: 0, y: 0, w: 1, h: 1 },
+  ).map((p) => whole({ x: p.x + D / 2, y: p.y + D / 2 }));
   const [pending, start] = useTransition();
   const [aspect, setAspect] = useState(1); // width / height of the photo
   const save = () =>
@@ -110,7 +117,7 @@ export function PhotoMarks({
             {mode === "logo" &&
               materials.map((m, k) => {
                 const placed = marks.callouts?.[String(m.callout)];
-                const p = placed ?? whole(calloutPoint(m, k));
+                const p = placed ?? suggested[k];
                 return (
                   <span
                     key={m.callout}
@@ -124,6 +131,20 @@ export function PhotoMarks({
                 );
               })}
           </div>
+          {mode === "photo" && (
+            <label className="flex items-center gap-3 text-[12px]">
+              Real width (mm) — prints at actual size
+              <input
+                type="number"
+                min={1}
+                step={0.5}
+                value={marks.actualWidthMm ?? ""}
+                onChange={(e) => setMarks((m) => ({ ...m, actualWidthMm: e.target.value ? Number(e.target.value) : null }))}
+                className="w-24 border border-hairline-strong px-2 h-8"
+                aria-label="Real width in mm"
+              />
+            </label>
+          )}
           {tool === "zoom" && marks.zoom && (
             <label className="flex items-center gap-4 text-[12px]">
               Circle size

@@ -18,7 +18,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
-import { brands, hardware, packAnswers, packs } from "../src/db/schema";
+import sharp from "sharp";
+import { brands, hardware, packAnswers, packFiles, packs } from "../src/db/schema";
+import { storeFile } from "../src/lib/storage";
 import { loadPack } from "../src/lib/data";
 import { buildPackDoc } from "../src/lib/pdf/doc";
 import { renderPackHtml } from "../src/lib/pdf/html";
@@ -63,10 +65,36 @@ async function seed(g: GoldenPack): Promise<string> {
   const linked = linkParts(answers, byCode) as AnswerMap;
   const styleNo = g.label;
   await db.delete(packs).where(eq(packs.styleNo, styleNo));
-  const [pack] = await db.insert(packs).values({ brandId: brand.id, category: g.category, styleNo, styleName: g.label, colorways: g.colorways }).returning();
+  // A multi-style pack's colourway style numbers must be free (an earlier run's copy is replaced).
+  const styles = g.colorwayStyles ?? {};
+  for (const v of Object.values(styles)) await db.delete(packs).where(eq(packs.styleNo, v));
+  const [pack] = await db.insert(packs).values({ brandId: brand.id, category: g.category, styleNo, styleName: g.label, colorways: g.colorways, colorwayStyles: styles }).returning();
   const rows = Object.entries(linked).map(([questionId, value]) => ({ packId: pack.id, questionId, value, status: "confirmed" as const, origin: "DESIGNER" as const }));
   if (rows.length) await db.insert(packAnswers).values(rows);
+  if (g.category !== "Hardware") await placeholders(pack.id, linked);
   return pack.id;
+}
+
+/**
+ * Neutral stand-ins for the originals' images (none are in the repo): a grey product shape as the
+ * render, and one photo for each comment that points at images, placed by that comment's pages — so
+ * callouts, photo pages and comment strips are laid out as they would be with the real files.
+ */
+async function placeholders(packId: string, a: AnswerMap) {
+  const shape = async (w: number, h: number, label: string) =>
+    sharp({ create: { width: w, height: h, channels: 3, background: "#ffffff" } })
+      .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="${w * 0.1}" y="${h * 0.12}" width="${w * 0.8}" height="${h * 0.76}" rx="${w * 0.06}" fill="#9a9a9a" stroke="#333" stroke-width="6"/><text x="50%" y="52%" font-size="${h * 0.08}" text-anchor="middle" fill="#fff" font-family="Arial">${label}</text></svg>`) }])
+      .png()
+      .toBuffer();
+  const url = await storeFile(`golden/${packId}`, "render.png", await shape(1600, 1100, "RENDER"), "image/png");
+  await db.insert(packFiles).values({ packId, kind: "render", url, name: "render.png" });
+  const comments = (a["comments.list"] as { text?: string }[] | undefined) ?? [];
+  for (const [i, c] of comments.entries()) {
+    if (!/IMAGE|PHOTO|REFERENCE|BELOW|SAMPLE|SHOWN|THIS BAG|LIKE/i.test(c.text ?? "")) continue;
+    const letter = String.fromCharCode(65 + i);
+    const photo = await storeFile(`golden/${packId}`, `photo-${letter}.png`, await shape(1200, 900, `PHOTO ${letter}`), "image/png");
+    await db.insert(packFiles).values({ packId, kind: "reference", url: photo, name: `photo-${letter}.png`, tag: letter, note: String(c.text).toUpperCase() });
+  }
 }
 
 type Result = {

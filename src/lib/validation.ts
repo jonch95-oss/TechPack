@@ -45,7 +45,7 @@ export type ValidationInput = {
   /** False when the logo has a type but neither a marked point on the render nor a placement that locates it. */
   logoMarked?: boolean;
   /** Reference / construction photos: their comment letter and caption. */
-  photos?: { letter: string; note: string }[];
+  photos?: { letter: string; note: string; actualWidthMm?: number | null }[];
   spelling: SpellFlag[];
 };
 
@@ -106,6 +106,10 @@ export function validatePack(input: ValidationInput): RuleResult[] {
     if (c && ph.note.trim() && norm(ph.note) !== norm(c.text ?? ""))
       push({ group: "Completeness", rule: `Photo ${ph.letter} caption ≠ comment ${ph.letter}`, status: "warn", fix: `Photo ${ph.letter} is captioned "${norm(ph.note)}" but comment ${ph.letter} says something else — pick the photo's letter from the comment list.`, questionId: "comments.list" });
   }
+  // "ACTUAL SIZE" prints 1:1 only from the photo's real width — never guessed from the image file.
+  for (const ph of input.photos ?? [])
+    if (/ACTUAL SIZE|\b1:1\b/i.test(ph.note) && !ph.actualWidthMm)
+      push({ group: "Completeness", rule: `Photo ${ph.letter || "?"} — actual size`, status: "warn", fix: "The caption says actual size: enter the photo's real width (mark-up) so it prints 1:1." });
   if (input.logoMarked === false) push({ group: "Completeness", rule: "Logo position on the render", status: "warn", fix: "Click the logo on the render — its placement doesn't say where the leader line should point." });
 
   /* ------------------------------ Geometry ------------------------------ */

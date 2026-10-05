@@ -15,7 +15,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "vercel-build": "tsx scripts/migrate.ts && tsx scripts/seed.ts && next build",
     "golden": "tsx scripts/golden.ts",
-    "golden:pdf": "DATABASE_URL=${GOLDEN_DB:-postgres://postgres@localhost:5433/techpack_test} tsx --conditions=react-server scripts/golden-pdf.ts"
+    "golden:pdf": "DATABASE_URL=${GOLDEN_DB:-postgres://postgres@localhost:5433/techpack_test} tsx --conditions=react-server scripts/golden-pdf.ts",
+    "ai:eval": "DATABASE_URL=${GOLDEN_DB:-postgres://postgres@localhost:5433/techpack_test} tsx --conditions=react-server scripts/ai-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

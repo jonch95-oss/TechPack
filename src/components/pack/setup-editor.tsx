@@ -17,7 +17,7 @@ export function SetupEditor({
   brands,
   names,
 }: {
-  pack: { id: string; styleNo: string; styleName: string; category: string; brandId: string; colorways: string[] };
+  pack: { id: string; styleNo: string; styleName: string; category: string; brandId: string; colorways: string[]; colorwayStyles?: Record<string, string> };
   brands: { id: string; name: string }[];
   names: Record<string, string>;
 }) {
@@ -26,6 +26,9 @@ export function SetupEditor({
   const [v, setV] = useState({ styleNo: pack.styleNo, styleName: pack.styleName, category: pack.category, brandId: pack.brandId });
   const [cws, setCws] = useState(pack.colorways);
   const [cwNames, setCwNames] = useState(names);
+  // Multi-style packs (V2.1 §4): a style # per colourway, optional.
+  const [cwStyles, setCwStyles] = useState<Record<string, string>>(pack.colorwayStyles ?? {});
+  const [variant, setVariant] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<{ ok: boolean; error?: string; colorways?: string[] }>, ok: string) =>
@@ -40,6 +43,8 @@ export function SetupEditor({
     setV({ styleNo: pack.styleNo, styleName: pack.styleName, category: pack.category, brandId: pack.brandId });
     setCws(pack.colorways);
     setCwNames(names);
+    setCwStyles(pack.colorwayStyles ?? {});
+    setVariant("");
     setMsg(null);
     setOpen(true);
   };
@@ -115,6 +120,18 @@ export function SetupEditor({
                       run(() => saveAnswer(pack.id, "colorways.names", cwNames), "Renamed.");
                     }}
                   />
+                  <TextInput
+                    aria-label={`Style # of ${c}`}
+                    data-testid={`setup-cw-style-${c}`}
+                    className="max-w-[11rem]"
+                    value={cwStyles[c] ?? ""}
+                    placeholder="OWN STYLE # (OPTIONAL)"
+                    onChange={(e) => setCwStyles({ ...cwStyles, [c]: e.target.value.toUpperCase() })}
+                    onBlur={() => {
+                      if ((cwStyles[c] ?? "") === (pack.colorwayStyles?.[c] ?? "")) return;
+                      run(() => updatePackSetup(pack.id, { colorwayStyles: cwStyles }), "Style # saved.");
+                    }}
+                  />
                   <button
                     type="button"
                     aria-label={`Remove ${c}`}
@@ -143,6 +160,21 @@ export function SetupEditor({
             >
               + Add colourway
             </button>
+            <div className="mt-3 flex items-center gap-2">
+              <TextInput aria-label="Variant name" data-testid="add-variant-name" className="max-w-[14rem]" value={variant} placeholder="OR A NAMED VARIANT, E.G. VINTAGE" onChange={(e) => setVariant(e.target.value.toUpperCase())} />
+              <button
+                type="button"
+                data-testid="add-variant"
+                disabled={pending || !variant.trim()}
+                className="text-[10px] tracking-[0.2em] uppercase text-gold hover:text-ink disabled:opacity-30"
+                onClick={() => {
+                  run(() => updatePackSetup(pack.id, { colorways: [...cws, variant.trim()] }), "Variant added.");
+                  setVariant("");
+                }}
+              >
+                + Add variant
+              </button>
+            </div>
           </div>
           {msg && (
             <p className={msg.ok ? "text-ok text-[12px]" : "text-signal text-[12px]"} role={msg.ok ? "status" : "alert"}>

@@ -103,7 +103,19 @@ test("Review screen, editable setup and background PDF", async ({ page }) => {
   await page.getByTestId("remove-cw--A").click();
   await expect(page.getByTestId("setup-cw--B")).toHaveCount(0);
   await expect(page.getByLabel("Name of -A")).toHaveValue("PINK");
+
+  /* ---- Multi-style packs (V2.1 §4): a colourway's own style #, unique across the studio ---- */
+  await page.getByTestId("setup-cw-style--A").fill("PINK013");
+  await page.getByLabel("Name of -A").click(); // blur saves
+  await expect(page.getByRole("alert")).toContainText("PINK013 already exists.");
+  await page.getByTestId("setup-cw-style--A").fill("PINK996C");
+  await page.getByLabel("Name of -A").click();
+  await expect(page.getByRole("status").filter({ hasText: "Style # saved." })).toBeVisible();
   await page.keyboard.press("Escape");
+  // Every style # is searchable on the dashboard.
+  await page.goto("/?q=PINK996C");
+  await expect(page.getByTestId("pack-styles")).toContainText("PINK996C");
+  await page.goBack();
 
   /* ---- Draft PDF builds as a background job ---- */
   await page.getByTestId("draft-pdf").click();

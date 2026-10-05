@@ -16,6 +16,7 @@ export default async function PacksPage(props: PageProps<"/">) {
       styleName: packs.styleName,
       category: packs.category,
       colorways: packs.colorways,
+      colorwayStyles: packs.colorwayStyles,
       updatedAt: packs.updatedAt,
       brand: brands.name,
       logo: brands.logoUrl,
@@ -35,9 +36,13 @@ export default async function PacksPage(props: PageProps<"/">) {
   const showArchived = sp.archived === "1" && can(user, "admin");
   const archivedCount = rows.filter((r) => r.archivedAt).length;
   const sort = sp.sort === "due" ? "due" : "recent";
+  // Every style # is searchable, including each colourway's own in a multi-style pack (V2.1 §4).
+  const q = typeof sp.q === "string" ? sp.q.trim().toUpperCase() : "";
+  const matches = (r: (typeof rows)[number]) => !q || [r.styleNo, r.styleName, r.brand, ...Object.values(r.colorwayStyles ?? {})].some((t) => t.toUpperCase().includes(q));
   const shown = rows
     .filter((r) => (showArchived ? !!r.archivedAt : !r.archivedAt))
     .filter((r) => !statusFilter || r.status === statusFilter)
+    .filter(matches)
     .sort((x, y) => {
       if (sort !== "due") return 0;
       const key = (d: string | null) => (d === "ASAP" ? "0" : d || "9");
@@ -70,7 +75,11 @@ export default async function PacksPage(props: PageProps<"/">) {
               </Link>
             ))}
           </div>
-          <span className="flex gap-6">
+          <span className="flex gap-6 items-start">
+            <form action="/" className="pb-2">
+              {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
+              <input name="q" defaultValue={q} placeholder="SEARCH STYLE #" aria-label="Search style #" data-testid="pack-search" className="h-7 w-44 border-b border-hairline-strong bg-transparent text-[11px] tracking-[0.14em] uppercase focus:outline-none" />
+            </form>
             {can(user, "admin") && archivedCount > 0 && (
               <Link href={showArchived ? "/" : "/?archived=1"} className={`pb-3 eyebrow hover:text-ink ${showArchived ? "text-ink" : ""}`} data-testid="archived-filter">
                 {showArchived ? "← Active packs" : `Archived · ${archivedCount}`}
@@ -107,6 +116,11 @@ export default async function PacksPage(props: PageProps<"/">) {
                     <div className="display text-[24px] leading-tight mt-1 group-hover:text-gold transition-colors">
                       {r.styleNo} <span className="italic text-ink-soft">{r.styleName}</span>
                     </div>
+                    {Object.values(r.colorwayStyles ?? {}).filter((x) => x !== r.styleNo).length > 0 && (
+                      <div className="text-[11px] text-ink-soft mt-1 tracking-wide" data-testid="pack-styles">
+                        + {Object.values(r.colorwayStyles).filter((x) => x !== r.styleNo).join(" · ")}
+                      </div>
+                    )}
                     <div className="text-[11px] text-taupe mt-1 tracking-wide">
                       {r.category} · {r.colorways.join(" ")}
                     </div>

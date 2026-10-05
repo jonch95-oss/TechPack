@@ -118,15 +118,25 @@ export function planPages(i: PlanInput): Plan {
  * its own when the last one is full.
  */
 export const TRIMS = { area: 9.2, panel: 3.9, single: 5.4, gap: 0.2, row: 2.6 } as const;
-export function trimsLayout(panels: number, hasRow: boolean): { from: number; to: number; row: boolean }[] {
+export type TrimsPage = { from: number; to: number; row: boolean; photos: false | "grid" | "row" };
+export function trimsLayout(panels: number, hasRow: boolean, hasPhotos = false): TrimsPage[] {
   const h = (panels > 1 ? TRIMS.panel : TRIMS.single) + TRIMS.gap;
   const perPage = Math.max(1, Math.floor((TRIMS.area + TRIMS.gap) / h));
-  const pages: { from: number; to: number; row: boolean }[] = [];
-  for (let k = 0; k < panels; k += perPage) pages.push({ from: k, to: Math.min(panels, k + perPage), row: false });
+  const pages: TrimsPage[] = [];
+  for (let k = 0; k < panels; k += perPage) pages.push({ from: k, to: Math.min(panels, k + perPage), row: false, photos: false });
+  const used = (p: (typeof pages)[number]) => (p.to - p.from) * h + (p.row ? TRIMS.row : 0);
   if (hasRow) {
     const last = pages[pages.length - 1];
-    if (last && (last.to - last.from) * h + TRIMS.row <= TRIMS.area) last.row = true;
-    else pages.push({ from: panels, to: panels, row: true });
+    if (last && used(last) + TRIMS.row <= TRIMS.area) last.row = true;
+    else pages.push({ from: panels, to: panels, row: true, photos: false });
   }
-  return pages.length ? pages : [{ from: 0, to: 0, row: false }];
+  // Photos need room to be read (golden run 2 #3): a grid in at least 3 in under the panels, else beside
+  // the logo in its row, else a page of their own.
+  if (hasPhotos) {
+    const last = pages[pages.length - 1];
+    if (last && TRIMS.area - used(last) >= 3) last.photos = "grid";
+    else if (last?.row) last.photos = "row";
+    else pages.push({ from: panels, to: panels, row: false, photos: "grid" });
+  }
+  return pages.length ? pages : [{ from: 0, to: 0, row: false, photos: false }];
 }

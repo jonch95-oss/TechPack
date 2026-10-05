@@ -8,7 +8,7 @@ import { Button, Label, TextInput, cx } from "@/components/ui";
 import { Toggle } from "@/components/chips";
 import { FileButton } from "@/components/library/hardware-form";
 
-type B = { id?: string; name: string; codePrefix: string; codeFormat: string; logoUrl: string | null; licensorRequired: boolean; next?: string };
+type B = { id?: string; name: string; codePrefix: string; codeFormat: string; logoUrl: string | null; licensorRequired: boolean; defaultUnit?: "CM" | "INCHES"; next?: string };
 
 export function BrandsAdmin({ brands }: { brands: B[] }) {
   const [adding, setAdding] = useState(false);
@@ -75,6 +75,13 @@ function BrandRow({ b, onDone }: { b: B; onDone?: () => void }) {
       <div>
         <Label>Licensor fields</Label>
         <Toggle value={v.licensorRequired} onChange={(x) => setV({ ...v, licensorRequired: x })} />
+      </div>
+      <div>
+        <Label>Unit</Label>
+        <select aria-label="Brand unit" data-testid="brand-unit" className="h-9 border border-hairline-strong bg-paper px-2 text-[12px]" value={v.defaultUnit ?? "CM"} onChange={(e) => setV({ ...v, defaultUnit: e.target.value as "CM" | "INCHES" })}>
+          <option value="CM">CM</option>
+          <option value="INCHES">INCHES</option>
+        </select>
       </div>
       <div className="flex flex-col items-end gap-2">
         <Button

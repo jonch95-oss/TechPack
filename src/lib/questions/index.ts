@@ -269,12 +269,15 @@ export function derivedValue(q: Question, ctx: EvalContext): string {
     return `${(cm3 / 1000).toFixed(1)} L`;
   }
   if (q.from === "$nesting") {
-    const rows = (a["cube.set"] as { size?: string; l?: number; w?: number; h?: number }[]) ?? [];
-    return rows
-      .slice()
-      .sort((x, y) => (y.l ?? 0) * (y.w ?? 0) * (y.h ?? 0) - (x.l ?? 0) * (x.w ?? 0) * (x.h ?? 0))
-      .map((r) => r.size)
-      .join(" > ");
+    // Largest first, within each piece type (cubes nest in cubes, pouches in pouches). A flat piece
+    // has no H: it sorts by its footprint.
+    const rows = (a["cube.set"] as { piece?: string; size?: string; l?: number; w?: number; h?: number }[]) ?? [];
+    const vol = (r: (typeof rows)[number]) => (r.l ?? 0) * (r.w ?? 0) * (r.h ?? 1);
+    const types = [...new Set(rows.map((r) => r.piece ?? ""))];
+    const order = (list: typeof rows) => list.slice().sort((x, y) => vol(y) - vol(x)).map((r) => r.size).join(" > ");
+    if (types.length <= 1) return order(rows);
+    const plural = (t: string) => (/(CH|SH|S|X)$/.test(t) ? `${t}ES` : `${t}S`);
+    return types.map((t) => `${t ? plural(t) : "OTHER"}: ${order(rows.filter((r) => (r.piece ?? "") === t))}`).join(" · ");
   }
   const v = a[q.from];
   return isEmpty(v) ? "—" : `${v} ${unitLabel(q.unit, a)}`;

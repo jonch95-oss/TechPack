@@ -127,6 +127,13 @@
       "when": 1791124708032,
       "tag": "0017_hardware_view_crops",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791163810321,
+      "tag": "0018_multi_style_and_brand_unit",
+      "breakpoints": true
     }
   ]
 }

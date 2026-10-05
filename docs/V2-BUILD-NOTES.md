@@ -177,3 +177,44 @@ The nine golden packs were printed through the standard layout and compared with
   - every comment and photo caption printed;
   - no element outside its page or clipping box (`src/lib/pdf/overflow.ts`).
 - Prints counts, question ids and page lists only. PDFs and the report go to `.data/golden/`.
+
+## Golden run 2
+- **Callouts:**
+  - every numbered material gets its yellow callout;
+  - a suggestion comes from the material's *first* location;
+  - callouts that would land on each other are spread apart (`spreadPoints`), in the PDF and in the studio's mark-up drawer.
+- **Comments sit in a strip under the header** on every page except page 1 (`openPage` in `html.ts`), never in the header band.
+  - The page body is scaled into the space left under the strip, so nothing meets the comments.
+  - Header-band titles stay where they are.
+  - The overflow check now also fails any text that runs into the style box, the brand box or the page tag.
+- **Photos:**
+  - TRIMS & HARDWARE photos get the free space under the panels: one photo takes half the page, several share it. When there's no room for that but a logo row exists, they sit beside the logo; otherwise they get a page of their own.
+  - A photo prints at actual size (1:1, with a scale note) only from its real width, entered in the mark-up drawer. A caption saying ACTUAL SIZE without a width is a validator warning, never a guess from the image file.
+- **SPECIFICATIONS block:**
+  - the studio's own row notes ("seen on render", sources) never print;
+  - row questions print as small tables;
+  - capacity and the nesting order (derived answers that are facts) print;
+  - zips stated by position only are listed under the BOM zipper table, so nothing duplicates.
+- **Units:** an mm value in an inch pack prints in inches with the mm in brackets, e.g. 6.75" (171.5 MM). This covers the SPECIFICATIONS block, the logo panel, placements, padding, board and tooling depth. Hardware panels stay in mm.
+- **Overlaps:**
+  - with views beside the front, the LOGO label sits at the bottom right;
+  - the reference grid stops clear of the page tag.
+- **AI read:** edge treatment, thread colour, logo method, metal finish names, shell / fabric material and wheel type are INFERRED / low confidence unless the read says it saw them unambiguously (`RENDER_UNSETTLED`). Material types from a render are inferred too.
+  - `npm run ai:eval` runs the read on every golden render and scores it (`src/lib/ai/eval.ts`): correct, wrong, **confident-wrong** (target 0) and invented measurements.
+  - It needs `ANTHROPIC_API_KEY`, plus a render per study pack at `reference/real-packs/<pack>/render.png`.
+- **Golden seed:** a neutral placeholder render, plus a photo for each comment that points at images, so layouts are exercised as with the real files.
+
+### Step 4 — multi-style packs, sets, size families, units
+- **Multi-style packs (§4):**
+  - each colourway can carry its own style # (pack setup), unique across the studio like any style # (migration 0018, `packs.colorway_styles`);
+  - the header's STYLE CODE lists them all, each colourway's SKU is its own, the PDF is named for all of them, and the dashboard search finds every one.
+  - **Named variants** without a suffix ("VINTAGE") are allowed. Removing a colourway re-letters suffixes only.
+- **Per-colourway SKU facts:** the print file name and Pantone per colourway (`colorways.print_file`, `colorways.pantone`). With a print file and no Pantone the SKU block reads PANTONE: SEE PRINT FILE.
+- **Per-colourway features:** a feature row's "only on" column prints "<STYLE #> ONLY".
+- **Sets (§5):**
+  - each `cube.set` row has a piece type (CUBE / POUCH …) and its own material;
+  - a flat piece needs no H;
+  - the size lines name the piece ("POUCH M: …");
+  - nesting runs within each piece type.
+- **Size families:** `header.size_family` and `header.sample_size` print on page 1 (SIZES / SAMPLE SIZE).
+- **Unit per brand:** a brand's unit (admin → brands) is the unit a new pack starts in.

@@ -170,6 +170,9 @@ export const COMMON_SECTIONS: Section[] = [
         kind: "toggle",
         help: 'Prints the red banner "YOU WILL RECEIVE A PHYSICAL SAMPLE IN SIMILAR SIZE AND SIMILAR MATERIAL".',
       },
+      // Size families (V2.1 §5): the style exists in several sizes and one is sampled.
+      { id: "header.size_family", label: "Sizes in the family", kind: "text", placeholder: 'e.g. 20", 24", 28"' },
+      { id: "header.sample_size", label: "Sample in size", kind: "text", placeholder: 'e.g. 28"', help: "The size the factory samples (\"PLEASE SAMPLE IN THE … SIZE\")." },
       { id: "header.instruction", label: "Headline instruction", kind: "text", placeholder: "e.g. PLEASE SAMPLE IN THE MEDIUM SIZE", help: "Printed large on page 1 (the overview)." },
       {
         id: "header.licensor",
@@ -210,7 +213,12 @@ export const COMMON_SECTIONS: Section[] = [
   {
     id: "colorways",
     title: "Colorways",
-    questions: [{ id: "colorways.names", label: "Colorway names", kind: "per_colorway_text" }],
+    questions: [
+      { id: "colorways.names", label: "Colorway names", kind: "per_colorway_text" },
+      // Per-colourway SKU facts (V2.1 §4): the print file each colourway uses, its Pantone.
+      { id: "colorways.print_file", label: "Print file name", kind: "per_colorway_text", help: "The artwork file this colourway prints; its SKU block then reads PANTONE: SEE PRINT FILE." },
+      { id: "colorways.pantone", label: "Pantone", kind: "per_colorway_text" },
+    ],
   },
   {
     id: "materials",
@@ -559,7 +567,11 @@ export const COMMON_SECTIONS: Section[] = [
         kind: "rows",
         addLabel: "Add feature",
         showIf: { q: "pages.product_features", in: [true, undefined, null] },
-        columns: [{ key: "text", label: "Feature", kind: "text", required: true }],
+        columns: [
+          { key: "text", label: "Feature", kind: "text", required: true },
+          // A feature one colourway / style has and the others don't (V2.1 §4): printed "<STYLE #> ONLY".
+          { key: "only", label: "Only on (colourway or style #)", kind: "text" },
+        ],
       },
       {
         id: "pages.lining_artwork",
