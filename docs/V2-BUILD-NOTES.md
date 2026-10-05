@@ -353,3 +353,8 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 - **Pipeline view:** a column per status (Draft → In review → Signed off → Sent → Proto received → Closed), each card with its stage and revision (R1, R2 …).
 - **Bulk actions** (tick cards): export a ZIP of the packs' ZIPs (`/api/packs/export?ids=…`, up to 50), stage → Proto / Production, assign to a designer (or nobody), archive / restore (admin). Every bulk action can be **undone** (the bar shows Undo with the previous values).
 
+### Revisions inbox (§9)
+- Each pack has a **Factory comments** box: paste the factory's comments or email; "Draft the changes" asks the AI (`diff_revision`) for one proposed answer change per comment, each quoting its comment. It never invents a number the comment doesn't give ("STRAP LONGER" with no length is listed as "no change"); unknown questions, unparseable values and no-ops are dropped.
+- Proposals are approved or rejected one by one (`change_proposals`, migration 0023). An approved change is written as the designer's answer (source FACTORY COMMENT, note "FACTORY: <comment>"), so the next export issues the revision with *UPDATED* flags and the change-log line — the existing revision mechanism.
+- **Batch revision:** after approving, "Also apply to…" lists the packs sharing this pack's base style (or based on it) and, for a library pick, the packs using the same library item in that question; "Apply to all" writes the change into each (each logs it as its own approved proposal).
+

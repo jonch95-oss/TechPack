@@ -1,0 +1,8 @@
+{
+  "_comment": "TEST FIXTURE for draft_revision (not recorded model output): a factory comment with a number becomes a change; praise is unmapped.",
+  "changes": [
+    { "comment": "PLEASE MAKE THE BAG 1 CM TALLER — 17 CM", "question_id": "dims.h", "value_json": "17", "note": "PER FACTORY COMMENT" }
+  ],
+  "unmapped": ["SAMPLE LOOKS GOOD"],
+  "agent_notes": ""
+}

@@ -162,6 +162,13 @@
       "when": 1791172717617,
       "tag": "0022_pack_assignee",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791172957374,
+      "tag": "0023_change_proposals",
+      "breakpoints": true
     }
   ]
 }

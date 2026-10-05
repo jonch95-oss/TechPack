@@ -52,6 +52,7 @@ import { CropEditor } from "./crop-editor";
 import { SourcesPanel } from "./sources-panel";
 import { neededFromYou, type NeededItem } from "@/lib/needed";
 import { FactoryQA } from "./factory-qa";
+import { FactoryInbox } from "./factory-inbox";
 import { PhotoMarks } from "./photo-marks";
 
 export type WorkspaceProps = {
@@ -746,6 +747,7 @@ export function PackWorkspace(props: WorkspaceProps) {
           <section id="sec-factory" className="scroll-mt-28">
             <SectionTitle n="—" title="Factory questions" />
             <FactoryQA packId={pack.id} questions={props.factoryQuestions} canEdit={canEdit} factory={pack.factory} />
+            <FactoryInbox packId={pack.id} canEdit={canEdit} />
           </section>
 
           <section id="sec-uploads" className="scroll-mt-28">

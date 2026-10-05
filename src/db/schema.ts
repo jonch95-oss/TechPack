@@ -564,6 +564,29 @@ export const archiveImports = pgTable(
   (t) => [uniqueIndex("archive_imports_hash_uq").on(t.hash)],
 );
 
+/**
+ * Revisions inbox (V2 §9): a change the factory's comments ask for, drafted by the AI and linked to the
+ * comment it came from. APPROVED writes the answer (the next export issues the revision).
+ */
+export const changeProposals = pgTable("change_proposals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  packId: uuid("pack_id")
+    .notNull()
+    .references(() => packs.id, { onDelete: "cascade" }),
+  comment: text("comment").notNull().default(""),
+  questionId: text("question_id").notNull(),
+  value: jsonb("value"),
+  note: text("note").notNull().default(""),
+  /** PROPOSED | APPROVED | REJECTED */
+  status: text("status").notNull().default("PROPOSED"),
+  /** Set when the change was applied from another pack's proposal (batch revision). */
+  fromProposal: uuid("from_proposal"),
+  createdBy: uuid("created_by").references(() => users.id),
+  decidedBy: uuid("decided_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+});
+
 export const jobs = pgTable(
   "jobs",
   {
