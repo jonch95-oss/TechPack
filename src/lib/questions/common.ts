@@ -332,6 +332,18 @@ export const COMMON_SECTIONS: Section[] = [
         kind: "colorway_matrix",
         required: true,
       },
+      {
+        // Cards linked for their quality only, with no colour chosen (V2.1 §10).
+        id: "materials.quality_refs",
+        label: "Quality references",
+        kind: "rows",
+        addLabel: "Add quality reference",
+        columns: [
+          { key: "use", label: "For", kind: "text", required: true },
+          { key: "material", label: "Card (library)", kind: "lib", lib: "material", required: true },
+          { key: "note", label: "Note", kind: "text" },
+        ],
+      },
     ],
   },
   {

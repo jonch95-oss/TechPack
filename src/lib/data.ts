@@ -1,4 +1,5 @@
 import "server-only";
+import { materialLabel } from "./material-label";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -177,11 +178,7 @@ export async function libraryOptions() {
 
 export type LibraryOptions = Awaited<ReturnType<typeof libraryOptions>>;
 
-export function materialLabel(m: { supplier: string; articleName: string; colourNo: string; colourName: string }) {
-  const art = m.articleName ? ` ${m.articleName}` : "";
-  const col = [m.colourNo && (m.colourNo.startsWith("#") ? m.colourNo : `#${m.colourNo}`), m.colourName].filter(Boolean).join(" ");
-  return `${m.supplier}${art}${col ? ` / ${col}` : ""}`.trim().toUpperCase();
-}
+export { materialLabel };
 
 export async function hardwareByCode() {
   const rows = await db.select({ id: hardware.id, code: hardware.code }).from(hardware);

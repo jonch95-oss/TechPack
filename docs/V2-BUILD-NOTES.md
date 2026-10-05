@@ -283,3 +283,12 @@ The nine golden packs were printed through the standard layout and compared with
 - Packing cubes: handle type, position, qty per cube, length.
 - PVC-backed fabric is a library field (step 6 §10, backing).
 - **Golden:** the matching study proposals are now entered through these ids; a format-2 study's `proposed_new` ids that the bank now has are entered facts.
+
+### Library (§10)
+- **Cross-brand F-codes:** materials were never brand-scoped; they now carry `iconCode` (F-####, typed "F 12" is stored "F-12"). A material with an F-code prints and is picked as "F-#### SWATCH #n — SUPPLIER ARTICLE". The materials library searches by F-code, supplier, article or colour (`?q=`).
+- **Card fields added** (migration 0020): thread count (e.g. 210T — not denier), peel strength, rub fastness, backing (e.g. PVC-BACKED); width and thickness were there. The card read returns them when printed; the swatch page prints them under the card caption.
+- **Quality reference cards:** a material marked `qualityOnly` needs no colour, prints "(QUALITY REFERENCE)" and never a shade. A pack links them in `materials.quality_refs` (for, card, note); they print as a QUALITY REFERENCES table on the BOM page.
+- **Hand-numbered cards:** a card with no printed chip box is still selected by its shade number (colour no.); the card read is told to locate a hand-written number.
+- **Privacy:**
+  - Every read of a swatch card, library sheet or source file is scrubbed in the AI client before anything sees it (`scrubDeep`): lines labelled as phone / fax / mobile / e-mail / address / bank / account / IBAN / SWIFT (and the Chinese labels) are dropped, e-mails masked, and runs of 7+ digits masked in free text. The read is also told never to return them.
+  - **Decision:** printed swatch cards are cropped from just above the highest chip to the bottom of the card (full width), so supplier headers above the chips never print; a card with no chip box loses its top 20 %. The stored photo is unchanged (it is private, served only through the authenticated route). Jon: confirm headers are always above the chips on your suppliers' cards; if not, the crop should go to the chip area only.

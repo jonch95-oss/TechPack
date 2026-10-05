@@ -9,6 +9,7 @@ import { Badge, Button, Label, TextInput, cx } from "@/components/ui";
 import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
 
 const FIELDS: { key: keyof MaterialInput & string; label: string; placeholder: string; required?: boolean }[] = [
+  { key: "iconCode", label: "Icon fabric code (all brands)", placeholder: "F-0000" },
   { key: "supplier", label: "Supplier", placeholder: "JUNFA LEATHER", required: true },
   { key: "articleName", label: "Card / article name", placeholder: "SMOOTH PU" },
   { key: "articleNo", label: "Article no.", placeholder: "AH316HB-P" },
@@ -18,6 +19,10 @@ const FIELDS: { key: keyof MaterialInput & string; label: string; placeholder: s
   { key: "thickness", label: "Thickness", placeholder: "0.85MM ±0.05" },
   { key: "width", label: "Width", placeholder: "138–140CM" },
   { key: "finish", label: "Finish / texture", placeholder: "MIRROR" },
+  { key: "backing", label: "Backing / coating", placeholder: "PVC-BACKED" },
+  { key: "threadCount", label: "Thread count", placeholder: "210T" },
+  { key: "peelStrength", label: "Peel strength", placeholder: "≥ 20 N/3CM" },
+  { key: "rubFastness", label: "Rub fastness", placeholder: "DRY 4 / WET 3" },
 ];
 
 function toInput(m: Material | null): MaterialInput {
@@ -32,6 +37,12 @@ function toInput(m: Material | null): MaterialInput {
     thickness: m?.thickness ?? "",
     width: m?.width ?? "",
     finish: m?.finish ?? "",
+    iconCode: m?.iconCode ?? "",
+    backing: m?.backing ?? "",
+    threadCount: m?.threadCount ?? "",
+    peelStrength: m?.peelStrength ?? "",
+    rubFastness: m?.rubFastness ?? "",
+    qualityOnly: m?.qualityOnly ?? false,
     cardPhotoUrl: m?.cardPhotoUrl ?? null,
     chipBox: m?.chipBox ?? null,
     approval: m?.approval ?? EMPTY_APPROVAL,
@@ -192,6 +203,10 @@ export function MaterialForm({
             </div>
           ))}
         </div>
+        <label className="mt-7 flex items-center gap-3 text-[13px]" data-testid="quality-only">
+          <input type="checkbox" checked={!!v.qualityOnly} disabled={!canEdit} onChange={(e) => set("qualityOnly", e.target.checked)} />
+          <span>Quality reference only — linked for its quality, never for a colour</span>
+        </label>
         <div className="mt-8">
           <ApprovalBlock value={v.approval ?? EMPTY_APPROVAL} onChange={(a) => set("approval", a)} types={["LAB DIP", "STRIKE-OFF", "SWATCH", "BULK"]} disabled={!canEdit} />
         </div>

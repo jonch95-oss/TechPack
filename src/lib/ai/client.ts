@@ -1,4 +1,5 @@
 import "server-only";
+import { scrubDeep } from "@/lib/privacy";
 import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -44,7 +45,7 @@ export async function callTechnicalDesigner<T>(opts: {
     const names = [...(Array.isArray(opts.fixtureName) ? opts.fixtureName : opts.fixtureName ? [opts.fixtureName] : []), opts.task];
     for (const n of names) {
       const text = await readFile(path.join(fixtureDir, `${n}.json`), "utf8").catch(() => null);
-      if (text) return { output: JSON.parse(text) as T, model: "fixture", fixture: true };
+      if (text) return { output: privateOut(opts.task, JSON.parse(text)) as T, model: "fixture", fixture: true };
     }
     throw new Error(`No AI fixture for ${names.join(" / ")}`);
   }
@@ -91,7 +92,7 @@ export async function callTechnicalDesigner<T>(opts: {
     .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
-  return { output: JSON.parse(text) as T, model: msg.model, fixture: false };
+  return { output: privateOut(opts.task, JSON.parse(text)) as T, model: msg.model, fixture: false };
 }
 
 function normaliseMediaType(ct: string): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
@@ -100,4 +101,9 @@ function normaliseMediaType(ct: string): "image/jpeg" | "image/png" | "image/gif
   if (t.includes("gif")) return "image/gif";
   if (t.includes("webp")) return "image/webp";
   return "image/jpeg";
+}
+
+/** Supplier cards and sheets can print bank, phone and address details: never let them out of a read (V2.1 §10). */
+function privateOut(task: string, out: unknown): unknown {
+  return task === "read_swatch_card" || task === "read_library_sheet" || task === "read_source" ? scrubDeep(out) : out;
 }

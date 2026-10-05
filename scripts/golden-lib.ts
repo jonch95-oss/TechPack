@@ -130,6 +130,16 @@ const ADOPTED: Record<string, { id: string; map: (v: unknown) => unknown; also?:
       delete a._rn;
     },
   },
+  // Quality references (V2.1 §10): the card, linked for quality only.
+  "materials.quality_refs": {
+    id: "materials.quality_refs",
+    map: (v) =>
+      (Array.isArray(v) ? v : []).map((r: Record<string, unknown>) => ({
+        use: r.use,
+        material: { id: "", label: [r.supplier, r.article].filter(Boolean).join(" ") },
+        note: r.width ? `WIDTH ${r.width}` : undefined,
+      })),
+  },
   // Construction and interior vocabulary (V2.1 §9).
   "rduf.padding": { id: "construction.padding", map: (v) => { const o = (v ?? {}) as { where?: string; thickness_mm?: number }; return [{ where: o.where, mm: o.thickness_mm }]; } },
   "rduf.drop_bottom_compartment": { id: "rduf.drop_bottom", map: (v) => v === true },

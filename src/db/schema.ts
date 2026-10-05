@@ -82,6 +82,15 @@ export const materials = pgTable(
     thickness: text("thickness").notNull().default(""),
     width: text("width").notNull().default(""),
     finish: text("finish").notNull().default(""),
+    /** Icon's own fabric code, shared across brands: F-#### (V2.1 §10). */
+    iconCode: text("icon_code").notNull().default(""),
+    /** Thread count (e.g. 210T — not denier), peel strength, rub fastness, backing (e.g. PVC-BACKED). */
+    threadCount: text("thread_count").notNull().default(""),
+    peelStrength: text("peel_strength").notNull().default(""),
+    rubFastness: text("rub_fastness").notNull().default(""),
+    backing: text("backing").notNull().default(""),
+    /** A quality reference card: linked for its quality only, never for a colour. */
+    qualityOnly: boolean("quality_only").notNull().default(false),
     cardPhotoUrl: text("card_photo_url"),
     /** Normalised (0..1) red box around the colour chip on the card photo. */
     chipBox: jsonb("chip_box").$type<ChipBox | null>(),
@@ -95,7 +104,7 @@ export const materials = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("materials_supplier_idx").on(t.supplier)],
+  (t) => [index("materials_supplier_idx").on(t.supplier), index("materials_icon_code_idx").on(t.iconCode)],
 );
 
 export type Approval = { status: "PENDING" | "APPROVED" | "REJECTED"; type: string; date: string; note: string };

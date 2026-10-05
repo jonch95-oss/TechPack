@@ -1301,7 +1301,11 @@ function bomPage(doc: PackDoc, n: number) {
               .join("")}</table>`
           : ""
       }
-      ${zip}${content}
+      ${zip}${content}${
+        doc.qualityRefs.length
+          ? `<div class="small" style="margin:14px 0 3px">QUALITY REFERENCES (QUALITY ONLY — NO COLOUR)</div><table class="spec">${doc.qualityRefs.map((q) => `<tr><td style="width:2.4in;text-align:left">${up(q.use)}</td><td style="text-align:left">${up(q.card)}</td><td style="text-align:left">${up(q.note)}</td></tr>`).join("")}</table>`
+          : ""
+      }
     </div>
   ${CLOSE_PAGE}`;
 }
@@ -1355,7 +1359,7 @@ function forReference(doc: PackDoc, s: Card) {
 
 function swatchPage(doc: PackDoc, n: number, list: { colorway: string; materialCallout: number }[]) {
   const items = list.map((x) => doc.swatches.find((s) => s.chips.some((c) => c.colorways[0] === x.colorway && c.callout === x.materialCallout))!).filter(Boolean);
-  const caption = (s: Card) => [up(s.supplier), "SWATCH CARD", ...s.chips.map((c) => [up(c.article), up(c.colourName)].filter(Boolean).join(" "))].filter(Boolean).join("<br/>");
+  const caption = (s: Card) => [s.iconCode ? up(s.iconCode) : "", up(s.supplier), "SWATCH CARD", ...s.chips.map((c) => [up(c.article), up(c.colourName)].filter(Boolean).join(" ")), s.spec ? `<span style="font-size:0.8em">${up(s.spec)}</span>` : ""].filter(Boolean).join("<br/>");
   if (items.length === 1) {
     const s = items[0];
     const c0 = s.chips[0];

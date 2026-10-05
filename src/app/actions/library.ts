@@ -34,6 +34,12 @@ export type MaterialInput = {
   thickness: string;
   width: string;
   finish: string;
+  iconCode?: string;
+  backing?: string;
+  threadCount?: string;
+  peelStrength?: string;
+  rubFastness?: string;
+  qualityOnly?: boolean;
   cardPhotoUrl: string | null;
   chipBox: ChipBox | null;
   approval?: Approval;
@@ -44,7 +50,9 @@ export type MaterialInput = {
 export async function saveMaterial(input: MaterialInput): Promise<ActionResult & { id?: string }> {
   const user = await requireRole("designer");
   if (!input.supplier.trim()) return { ok: false, error: "Supplier is required." };
-  if (!input.colourNo.trim() && !input.colourName.trim()) return { ok: false, error: "Enter a colour number or name." };
+  // A quality reference card has no colour; every other card names its shade (a hand-numbered card by its number).
+  if (!input.qualityOnly && !input.colourNo.trim() && !input.colourName.trim()) return { ok: false, error: "Enter a colour number or name (or mark the card as a quality reference)." };
+  const iconCode = up(input.iconCode).replace(/^F[\s-]*(\d+)$/, "F-$1");
   const values = {
     supplier: up(input.supplier),
     articleName: up(input.articleName),
@@ -55,6 +63,12 @@ export async function saveMaterial(input: MaterialInput): Promise<ActionResult &
     thickness: up(input.thickness),
     width: up(input.width),
     finish: up(input.finish),
+    iconCode,
+    backing: up(input.backing),
+    threadCount: up(input.threadCount),
+    peelStrength: up(input.peelStrength),
+    rubFastness: up(input.rubFastness),
+    qualityOnly: !!input.qualityOnly,
     cardPhotoUrl: input.cardPhotoUrl,
     chipBox: input.chipBox,
     ...(input.approval ? { approval: cleanApproval(input.approval) } : {}),

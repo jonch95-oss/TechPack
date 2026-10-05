@@ -15,6 +15,7 @@ import { validatePack, type RuleResult } from "@/lib/validation";
 import { bodyMaterials, contentLabel, findQuestion, isEmpty, matrixColumns, optionalToggleId, sectionsFor, evalCondition, type AnswerMap, type BomRow, type Dims2Value, type LibValue, type MaterialEntry, type MatrixValue, type PomRow } from "@/lib/questions";
 import { logoPanelWidth, logoRows, planPages, trimsLayout, type Plan, type PlanInput } from "./plan";
 import { mmText, specItems, type SpecItem } from "./specs";
+import { printableCardRegion } from "@/lib/privacy";
 import { PACKAGING_PAGES } from "@/lib/questions/common";
 import { caseHalves, logoPointFor, reliefCallout, styleCodesOf, wallName } from "./hints";
 import { refText, splitReferences } from "@/lib/reference-answer";
@@ -452,7 +453,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     swatchesOnOnePage: a["pages.swatches"] === "ALL ON ONE PAGE",
     revisionCount: changeLog.length,
     hasConstruction: construction.length > 0,
-    hasBom: bom.length > 0 || zipRows.length > 0,
+    hasBom: bom.length > 0 || zipRows.length > 0 || ((a["materials.quality_refs"] as unknown[] | undefined) ?? []).length > 0,
     hasSampleComments: roundComments.length > 0,
     forced,
     trimsPages: trims.length,
@@ -661,12 +662,20 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     ),
     trims,
     swatches: await Promise.all(
-      cards.map(async (c) => ({
-        supplier: c.material.supplier,
-        articleNo: c.material.articleNo,
-        photo: await img(c.url),
-        chips: c.chips,
-      })),
+      cards.map(async (c) => {
+        // Supplier headers (bank, phone, address) sit above the chips: the card prints from just above
+        // its chips down (V2.1 §10), the chip boxes moved into the cropped image.
+        const region = printableCardRegion(c.chips.map((x) => x.box));
+        const m = c.material;
+        return {
+          supplier: m.supplier,
+          articleNo: m.articleNo,
+          iconCode: m.iconCode,
+          spec: [m.threadCount, m.backing, m.width && `WIDTH ${m.width}`, m.thickness && `THICKNESS ${m.thickness}`, m.peelStrength && `PEEL ${m.peelStrength}`, m.rubFastness && `RUB FASTNESS ${m.rubFastness}`].filter(Boolean).join(" · "),
+          photo: await cropped({ url: c.url, marks: { crop: region } as FileMarks }),
+          chips: c.chips.map((x) => (x.box ? { ...x, box: { x: x.box.x, y: (x.box.y - region.y) / region.h, w: x.box.w, h: x.box.h / region.h } } : x)),
+        };
+      }),
     ),
     pom,
     placements,
@@ -679,6 +688,13 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     materialLayout: matList.filter((m) => m.direction || m.matching).map((m) => ({ callout: m.callout, name: m.name, direction: m.direction ?? "", matching: m.matching ?? "" })),
     bom,
     contentLabels: labels,
+    /** Cards linked for their quality only (V2.1 §10): never a colour. */
+    qualityRefs: ((a["materials.quality_refs"] as { use?: string; material?: LibValue; note?: string }[] | undefined) ?? [])
+      .filter((r) => r?.use || r?.material)
+      .map((r) => {
+        const m = r.material?.id ? matById.get(r.material.id) : undefined;
+        return { use: r.use ?? "", card: m ? materialLabel({ ...m, qualityOnly: true }) : (r.material?.label ?? ""), note: r.note ?? "" };
+      }),
     tooling: {
       artwork: (a["branding.artwork"] as { name?: string } | undefined)?.name ?? "",
       depth: typeof a["branding.tool_depth"] === "number" ? mmText(a["branding.tool_depth"] as number, unit === "in") : "",

@@ -141,6 +141,13 @@
       "when": 1791169190654,
       "tag": "0019_hardware_record",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791171060552,
+      "tag": "0020_material_card_fields",
+      "breakpoints": true
     }
   ]
 }
