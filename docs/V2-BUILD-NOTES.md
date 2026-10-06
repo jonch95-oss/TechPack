@@ -368,3 +368,6 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
   - **(a) base style's flat:** a pack started from a base style takes that pack's flat of the same view, re-dimensioned to this pack's size (callouts and dimension lines redrawn);
   - **(b) silhouette template:** otherwise, for the front view with W × H entered, a clean template outline at that size — rounded body, trapezoid (tote / bucket), half-moon (hobo / saddle) or case (luggage), with a carry handle where the silhouette has one and a stitch line — so the dimension lines read the entered W × H.
   - Both arrive **INFERRED** (source BASE_STYLE / TEMPLATE) with a note saying what was drawn instead; the designer adjusts in the editor. With neither available the old message stands (retry later, or upload a drawing).
+
+## Breakdown: printed colourways
+- Material columns in the colour breakdown now offer Print artwork as well as swatch cards (as the lining column already did). A colourway with a print file name opens the picker on Print artwork. The PDF already printed a print cell as artwork; the texture check now only looks at swatch cards.

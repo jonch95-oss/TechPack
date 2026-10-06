@@ -193,6 +193,7 @@ export function MatrixEditor({
     else delete row[key];
     onChange({ ...m, [cw]: row });
   };
+  const printFiles = (ctx.answers["colorways.print_file"] as Record<string, string> | undefined) ?? {};
   const implied = impliedCells(ctx);
   const fillable = colorways.flatMap((cw) => Object.keys(implied).filter((k) => cols.some((c) => c.key === k) && !m[cw]?.[k]).map((k) => [cw, k]));
 
@@ -245,8 +246,10 @@ export function MatrixEditor({
                         {c.lib && (
                           <LibraryPicker
                             compact
-                            kind={c.lib === "print" ? "print" : "material"}
-                            kinds={c.key === "lining" ? ["print", "material"] : undefined}
+                            // A body material can be a solid swatch card or, on a printed colourway, its print
+                            // artwork; the picker opens on Print artwork when the colourway names a print file.
+                            kind={c.lib === "print" || (c.key.startsWith("mat_") && printFiles[cw]?.trim()) ? "print" : "material"}
+                            kinds={c.key === "lining" || c.key.startsWith("mat_") ? ["material", "print"] : undefined}
                             value={cell?.lib}
                             onChange={(v) => setCell(cw, c.key, v ? { lib: v } : null)}
                             disabled={disabled}
