@@ -504,7 +504,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     ...finishFindings(String(a["hardware.finish"] ?? ""), [...usedHw.values()].map((h) => ({ code: h.code, finish: h.finish }))),
     ...textureFindings(
       matList.map((m) => {
-        const id = p.pack.colorways.map((cw) => matrix[cw]?.[`mat_${m.callout}`]?.lib?.id).find(Boolean);
+        const id = p.pack.colorways.map((cw) => matrix[cw]?.[`mat_${m.callout}`]?.lib?.id).find((x) => x && matById.has(x));
         const card = id ? matById.get(id) : undefined;
         return { callout: m.callout, name: m.name ?? "", card: card ? [card.articleName, card.finish].join(" ") : "" };
       }),
