@@ -371,3 +371,6 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 
 ## Breakdown: printed colourways
 - Material columns in the colour breakdown now offer Print artwork as well as swatch cards (as the lining column already did). A colourway with a print file name opens the picker on Print artwork. The PDF already printed a print cell as artwork; the texture check now only looks at swatch cards.
+
+## Hardware library: PDF uploads
+- The hardware photo and the 100% front / side / rear views accept a PDF as well as an image. The browser renders the PDF's first page to a PNG (pdf.js, long side ≈ 2400 px, white page fill) and uploads that, so crop, thumbnails and the tech-pack PDF work unchanged. pdf.js's legacy build is used: the modern build calls Map.getOrInsertComputed, which current Chrome doesn't have.
