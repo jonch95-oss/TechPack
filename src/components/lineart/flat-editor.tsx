@@ -523,10 +523,10 @@ export function FlatEditor({ flat, canEdit, onChange }: { flat: FlatData; canEdi
     setMsg(what.dimensions ? "Scaled to the entered dimensions; dimension lines re-drawn." : "Callouts re-placed.");
   };
 
-  const addCallout = (kind: CalloutSpec["kind"]) => {
+  const addCallout = (kind: CalloutSpec["kind"], given?: string) => {
     const s = scopeRef.current;
     if (!s) return;
-    const label = kind === "material" ? String(nextNumber("material")) : kind === "comment" ? String.fromCharCode(64 + nextNumber("comment")) : "LABEL";
+    const label = given ?? (kind === "material" ? String(nextNumber("material")) : kind === "comment" ? String.fromCharCode(64 + nextNumber("comment")) : "LABEL");
     const c = s.view.center;
     const it = importFragment(calloutSvg({ kind, label, x: c.x, y: c.y, tx: c.x + size() * 3, ty: c.y + size() * 2 }, size()));
     if (!it) return;
@@ -535,6 +535,8 @@ export function FlatEditor({ flat, canEdit, onChange }: { flat: FlatData; canEdi
     select(it);
     commit();
   };
+  // Trims are labels T1, T2 … matching the trim columns (T1, T2 …) of the colour breakdown.
+  const nextTrim = () => `T${(layer("callouts")?.children.filter((c) => /^T\d+$/.test(String((c.data as { label?: string }).label ?? ""))).length ?? 0) + 1}`;
   const nextNumber = (kind: string) => (layer("callouts")?.children.filter((c) => (c.data as { kind?: string }).kind === kind).length ?? 0) + 1;
 
   const relabel = (label: string) => {
@@ -675,6 +677,7 @@ export function FlatEditor({ flat, canEdit, onChange }: { flat: FlatData; canEdi
             <div className="flex flex-wrap gap-2">
               <ToolButton onClick={() => addCallout("material")} testId="add-material-callout">+ Material</ToolButton>
               <ToolButton onClick={() => addCallout("comment")} testId="add-comment-callout">+ Comment</ToolButton>
+              <ToolButton onClick={() => addCallout("logo", nextTrim())} testId="add-trim-callout">+ Trim</ToolButton>
               <ToolButton onClick={() => addCallout("logo")} testId="add-label-callout">+ Label</ToolButton>
             </div>
             {sel && (sel.kind === "material" || sel.kind === "comment" || sel.kind === "logo") && (
