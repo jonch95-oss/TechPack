@@ -90,7 +90,9 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   const ctx = { category: p.pack.category, answers: a, brand: p.brand };
   const unit = a["dims.unit"] === "INCHES" ? "in" : "cm";
   const U = unit === "in" ? '"' : " CM";
-  const fmt = (v: unknown) => (typeof v === "number" ? `${trim(v)}${U}` : "");
+  // "Show secondary unit in brackets": every pack dimension also in the other unit — 16 CM (6.3"), 6.25" (15.88 CM).
+  const D = (v: number) => `${trim(v)}${U}${a["dims.show_secondary"] === true ? ` (${unit === "in" ? `${trim(v * 2.54)} CM` : `${trim(v / 2.54)}"`})` : ""}`;
+  const fmt = (v: unknown) => (typeof v === "number" ? D(v) : "");
   const componentOnly = p.pack.category === "Hardware";
 
   /* ---------- resolve library items ---------- */
@@ -173,15 +175,15 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
   const sizeLines: string[] = [];
   const hwd = (["h", "w", "d"] as const).filter((k) => typeof dims[k] === "number");
   const overall = duffel
-    ? (["w", "d", "h"] as const).filter((k) => typeof dims[k] === "number").map((k) => `${trim(dims[k]!)}${U} ${dimNames[k][0]}`).join(" X ")
-    : hwd.map((k) => `${trim(dims[k]!)}${U} ${k.toUpperCase()}`).join(" X ");
+    ? (["w", "d", "h"] as const).filter((k) => typeof dims[k] === "number").map((k) => `${D(dims[k]!)} ${dimNames[k][0]}`).join(" X ")
+    : hwd.map((k) => `${D(dims[k]!)} ${k.toUpperCase()}`).join(" X ");
   const lugSize = typeof a["lug.size"] === "string" ? String(a["lug.size"]) : typeof a["softlug.size"] === "string" ? String(a["softlug.size"]) : "";
   const setSizes = ((a["lug.set_sizes"] ?? a["softlug.set_sizes"]) as string[] | undefined) ?? [];
   if (lugSize) sizeLines.push([lugSize === "SET" && setSizes.length ? `SET: ${setSizes.join(" / ")}` : lugSize, overall].filter(Boolean).join(" — "));
   else if (overall) sizeLines.push(overall);
   // A set: one line per piece, said with its type (CUBE L, POUCH M …) — a flat piece has no H.
   for (const r of (a["cube.set"] as { piece?: string; size?: string; qty?: number; l?: number; w?: number; h?: number }[] | undefined) ?? []) {
-    const parts = (["l", "w", "h"] as const).filter((k) => typeof r[k] === "number").map((k) => `${trim(r[k]!)}${U} ${k.toUpperCase()}`);
+    const parts = (["l", "w", "h"] as const).filter((k) => typeof r[k] === "number").map((k) => `${D(r[k]!)} ${k.toUpperCase()}`);
     const name = [r.piece, r.size].filter(Boolean).join(" ");
     if (name || parts.length) sizeLines.push(`${name ? `${name}: ` : ""}${parts.join(" X ")}${(r.qty ?? 1) > 1 ? ` × ${r.qty}` : ""}`.trim());
   }
@@ -323,7 +325,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     m("HANDLE DROP", `${pfx}.handle_drop`);
     m("STRAP TOTAL LENGTH", `${pfx}.strap.length`);
   }
-  if (typeof a["branding.offset"] === "number") measures.push({ key: "branding.offset", label: `LOGO ${a["branding.offset_edge"] ? `ABOVE ${a["branding.offset_edge"]}` : "OFFSET"}`, value: `${trim(Number(a["branding.offset"]) / (unit === "in" ? 25.4 : 10))}${U}` });
+  if (typeof a["branding.offset"] === "number") measures.push({ key: "branding.offset", label: `LOGO ${a["branding.offset_edge"] ? `ABOVE ${a["branding.offset_edge"]}` : "OFFSET"}`, value: D(Number(a["branding.offset"]) / (unit === "in" ? 25.4 : 10)) });
 
   /* ---------- points of measure, placements, zippers, construction, BOM ---------- */
   const pom = ((a["pom.list"] as PomRow[] | undefined) ?? []).filter((r) => r.point);
@@ -337,7 +339,7 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       position: String(z.position ?? ""),
       size: String(z.size ?? ""),
       type: String(z.type ?? ""),
-      length: typeof z.length === "number" ? `${trim(z.length)}${U}` : "",
+      length: typeof z.length === "number" ? D(z.length) : "",
       ends: String(z.ends ?? ""),
       slider: String(z.slider ?? ""),
       puller: (z.puller as LibValue | undefined)?.label ?? "",
@@ -575,6 +577,8 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     brand: { name: p.brand.name, logo: await img(p.brand.logoUrl) },
     unit,
     U,
+    /** A dimension as printed: the pack's unit, plus the other in brackets when the pack asks for it. */
+    dim: D,
     header: {
       description: (a["header.description"] as string) ?? "",
       retailer: (a["header.retailer"] as string) ?? "",

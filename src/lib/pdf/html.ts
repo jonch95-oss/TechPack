@@ -341,7 +341,7 @@ function overviewPage(doc: PackDoc, n: number, specs: SpecItem[] = doc.specChunk
     const inner: R = { x: box.x + 0.9, y: box.y + 0.5, w: frontW - 2.2 + (extra.length ? 0.9 : 0), h: box.h - 1.3 };
     const r = fit(doc.render, inner);
     const d = doc.dims;
-    const v = (x?: number) => (typeof x === "number" ? `${x}${doc.U}` : "");
+    const v = (x?: number) => (typeof x === "number" ? doc.dim(x) : "");
     drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(box.y)}in;width:${r2(frontW)}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, inner)}${materialCallouts(doc, r)}`;
     lines += [
       d.w != null ? lead(r.x, r.y + r.h + 0.3, r.x + r.w, r.y + r.h + 0.3, { arrow: "both", w: 0.03 }) + plate(r.x + r.w / 2, r.y + r.h + 0.3, v(d.w), 20) : "",
@@ -534,9 +534,9 @@ export function paginateSpecs(doc: PackDoc): PackDoc {
 function measurementsPage(doc: PackDoc, n: number) {
   const d = doc.dims;
   const overall = [
-    typeof d.h === "number" ? { t: `${d.h}${doc.U} TOTAL ${doc.dimNames.h}`, k: "dims." } : null,
-    typeof d.w === "number" ? { t: `${d.w}${doc.U} TOTAL ${doc.dimNames.w}`, k: "dims." } : null,
-    typeof d.d === "number" ? { t: `${d.d}${doc.U} TOTAL ${doc.dimNames.d}`, k: "dims." } : null,
+    typeof d.h === "number" ? { t: `${doc.dim(d.h)} TOTAL ${doc.dimNames.h}`, k: "dims." } : null,
+    typeof d.w === "number" ? { t: `${doc.dim(d.w)} TOTAL ${doc.dimNames.w}`, k: "dims." } : null,
+    typeof d.d === "number" ? { t: `${doc.dim(d.d)} TOTAL ${doc.dimNames.d}`, k: "dims." } : null,
   ].filter(Boolean) as { t: string; k: string }[];
   const closureRef = doc.references.find((r) => r.onMeasurements);
   const sideRef = doc.references.find((r) => r.role === "SIDE_VIEW");
@@ -597,7 +597,7 @@ function measurementsPage(doc: PackDoc, n: number) {
 
   const pomTable = doc.pom.length
     ? `<table class="spec"><tr><th>POM</th><th style="text-align:left">POINT OF MEASURE</th><th>VALUE</th><th>TOL ±</th><th style="text-align:left">HOW TO MEASURE</th></tr>${doc.pom
-        .map((r, i) => `<tr><td class="code">M${String(i + 1).padStart(2, "0")}</td><td style="text-align:left">${up(r.point)}</td><td class="red">${r.value != null ? `${r.value}${esc(doc.U)}` : ""}</td><td>${r.tol != null ? `${r.tol}${esc(doc.U)}` : ""}</td><td style="text-align:left;font-size:9.5pt">${up(r.how)}</td></tr>`)
+        .map((r, i) => `<tr><td class="code">M${String(i + 1).padStart(2, "0")}</td><td style="text-align:left">${up(r.point)}</td><td class="red">${r.value != null ? esc(doc.dim(r.value)) : ""}</td><td>${r.tol != null ? `${r.tol}${esc(doc.U)}` : ""}</td><td style="text-align:left;font-size:9.5pt">${up(r.how)}</td></tr>`)
         .join("")}</table>`
     : "";
   const placementTable = doc.placements.length
@@ -873,9 +873,9 @@ function wallTitle(wall: string, mode: "hatched" | "lining", centered: boolean) 
 function pocketLine(doc: PackDoc, p: PackDoc["interior"]["pockets"][number]) {
   return [
     `${(p.qty ?? 1) > 1 ? `${p.qty} × ` : ""}${up(p.type)}${p.wall ? ` ON ${up(p.wall)}` : ""}`,
-    p.w != null && `${p.w}${doc.U} WIDE`,
-    p.h != null && `${p.h}${doc.U} HIGH`,
-    p.top_offset != null && `${p.top_offset}${doc.U} FROM TOP`,
+    p.w != null && `${doc.dim(p.w)} WIDE`,
+    p.h != null && `${doc.dim(p.h)} HIGH`,
+    p.top_offset != null && `${doc.dim(p.top_offset)} FROM TOP`,
     p.construction && up(p.construction),
     p.zip_size && `${up(p.zip_size)} ZIP`,
     p.note && up(p.note),

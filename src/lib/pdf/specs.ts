@@ -28,7 +28,7 @@ const INTERNAL_KEYS = new Set(["id", "seen", "source", "status", "confidence", "
 const DERIVED_FACTS = new Set(["$capacity", "$nesting"]);
 
 /** Not facts about the product: page switches, the comments (checked on their own), automatic values. */
-const SKIP_IDS = new Set(["comments.list"]);
+const SKIP_IDS = new Set(["comments.list", "dims.show_secondary"]); // a print setting, not a fact
 const SKIP_PREFIX = ["pages.", "optional."];
 const SKIP_KINDS = new Set<Question["kind"]>(["file"]);
 
@@ -45,6 +45,9 @@ export function mmText(mm: number, inches: boolean) {
 
 function stepText(n: number, unit: string, answers: AnswerMap) {
   if (unit === "mm") return mmText(n, answers["dims.unit"] === "INCHES");
+  // A pack dimension, with the other unit in brackets when the pack asks for it.
+  if (unit === "dim" && answers["dims.show_secondary"] === true)
+    return `${num(n)}${unitText(unit, answers)} (${answers["dims.unit"] === "INCHES" ? `${num(n * 2.54)} CM` : `${num(n / 2.54)}"`})`;
   return `${num(n)}${unitText(unit, answers)}`;
 }
 
