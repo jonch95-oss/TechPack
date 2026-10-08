@@ -374,3 +374,8 @@ Pure checks in `src/lib/checks.ts`, gathered by the PDF builder and reported in 
 
 ## Hardware library: PDF uploads
 - The hardware photo and the 100% front / side / rear views accept a PDF as well as an image. The browser renders the PDF's first page to a PNG (pdf.js, long side ≈ 2400 px, white page fill) and uploads that, so crop, thumbnails and the tech-pack PDF work unchanged. pdf.js's legacy build is used: the modern build calls Map.getOrInsertComputed, which current Chrome doesn't have.
+
+## Colour / print, secondary unit, trim callouts
+- **Colour / print per material:** each material cell in the breakdown carries the colour it comes in: a print artwork from the library (printed colourway) or a typed Pantone (solid). It is optional, so it never blocks. PDF: printed under the material in the breakdown table (COLOR: / PRINT:) and as COLOR/PRINT in the SKU block under each CAD. The material picker opens on swatch cards again; print artwork stays pickable there for cells chosen that way before.
+- **Show secondary unit in brackets:** every pack dimension in the PDF also prints in the other unit (16 CM (6.3"), 6.25" (15.88 CM)): overall size, dimension lines, measurement sheet, POM values, pockets, zipper lengths, logo offset, spec lines. The toggle itself no longer prints as a spec line. Tolerances and line-art dimension labels stay in the pack unit. Dimension labels slide in from the page edge when the longer text would run off it.
+- **+ Trim callout:** the flat editor adds T1, T2 … labels, matching the breakdown's trim columns, so a designer marks where each trim goes on the flat.
