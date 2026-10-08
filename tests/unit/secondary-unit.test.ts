@@ -13,3 +13,13 @@ describe("show secondary unit in brackets", () => {
     expect(specItems("Handbags", { "dims.unit": "CM", "dims.h": 16 }).find((i) => i.qid === "dims.h")?.lines).toEqual(["16 CM"]);
   });
 });
+
+describe("breakdown colour / print", () => {
+  it("prints each material with its Pantone or print", () => {
+    const items = specItems("Handbags", {
+      "materials.list": [{ callout: 1, name: "MAIN BODY", locations: ["BODY"] }],
+      "materials.matrix": { "-A": { mat_1: { text: "NYLON", colour: { text: "PANTONE 11-1111 TCX" } } }, "-B": { mat_1: { text: "SAFFIANO PU", colour: { lib: { id: "x", label: "WISTERIA FLORAL" } } } } },
+    });
+    expect(items.find((i) => i.qid === "materials.matrix")?.lines).toEqual(["-A: NYLON / PANTONE 11-1111 TCX", "-B: SAFFIANO PU / WISTERIA FLORAL"]);
+  });
+});

@@ -257,7 +257,8 @@ function lead(x1: number, y1: number, x2: number, y2: number, o: { w?: number; a
 function plate(x: number, y: number, text: string, size = 15, anchor: "start" | "middle" | "end" = "middle") {
   const w = (text.length * size * 0.0072 + 0.16),
     h = size / 72 + 0.1;
-  const x0 = anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x;
+  // Kept on the page: a long label (e.g. with the secondary unit in brackets) slides in from the left edge.
+  const x0 = Math.max(0.25, anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x);
   return `<rect x="${r2(x0)}" y="${r2(y - h / 2)}" width="${r2(w)}" height="${r2(h)}" fill="#fff"/><text x="${r2(x0 + w / 2)}" y="${r2(y + size / 72 / 2.9)}" text-anchor="middle" font-size="${r2(size / 72)}" fill="${RED}" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(text)}</text>`;
 }
 
@@ -641,7 +642,9 @@ function colourwaysPage(doc: PackDoc, n: number) {
   };
   const rows = doc.rows
     .map((r) => {
-      const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${refOf(r.code, r.cells[i])}</td>`).join("");
+      // A material cell shows its colour / print under the material (NYLON / PANTONE 11-1111 TCX).
+      const colourLine = (c: (typeof r.cells)[number] | undefined) => (c?.colour ? `<div style="margin-top:3px"><b>${c.colourIsPrint ? "PRINT" : "COLOR"}:</b> ${up(c.colour)}</div>` : "");
+      const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${colourLine(r.cells[i])}${refOf(r.code, r.cells[i])}</td>`).join("");
       // A named variant (no suffix) shows its name under the style #.
       const label = r.name || (r.code.startsWith("-") ? "" : r.code);
       return `<tr><td class="cw">${up(sku(doc, r.code))}${label ? `<div style="font-size:11pt;margin-top:3px">${up(label)}</div>` : ""}</td>${cells}</tr>`;
@@ -650,11 +653,12 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const table = `<table class="variant"><tr><th>COLOURWAY</th>${used.map(headCell).join("")}</tr>${rows}</table>`;
   // SKU blocks: each colourway's render — the pack render for the first colourway when it has no
   // colourway render of its own (golden run 1, P0.4) — with its facts.
-  const cell = (cw: string, key: string) => {
+  const cellOf = (cw: string, key: string) => {
     const r = doc.rows.find((x) => x.code === cw);
     const i = doc.matrixColumns.findIndex((c) => c.key === key);
-    return r && i >= 0 ? String(r.cells[i]?.text ?? "") : "";
+    return r && i >= 0 ? r.cells[i] : undefined;
   };
+  const cell = (cw: string, key: string) => String(cellOf(cw, key)?.text ?? "");
   const renders = doc.pack.colorways
     .map((cw, k) => ({ colorway: cw, img: doc.colorwayRenders.find((x) => x.colorway === cw)?.img ?? (k === 0 ? doc.render : null) }))
     .filter((x) => x.img);
@@ -667,12 +671,14 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const block = (cw: string) => {
     const name = doc.rows.find((x) => x.code === cw)?.name;
     const file = doc.printFiles[cw] ?? "";
+    const mainKey = doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "";
     const facts = [
       ["SKU#", sku(doc, cw)],
       ["FILE NAME", file],
       ["COLOR", name ?? ""],
       ["PANTONE", doc.pantones[cw] || (file ? "SEE PRINT FILE" : "")],
-      ["FABRIC", cell(cw, doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "")],
+      ["FABRIC", cell(cw, mainKey)],
+      ["COLOR/PRINT", cellOf(cw, mainKey)?.colour ?? ""],
       ["LINING", cell(cw, "lining")],
       ["ZIPPER", cell(cw, "zipper")],
     ].filter(([, v]) => v);

@@ -131,7 +131,11 @@ export type MaterialEntry = {
   /** Pattern matching at seams (checks, stripes, placed prints). */
   matching?: string;
 };
-export type MatrixCell = { lib?: LibValue; text?: string };
+/**
+ * A breakdown cell. Material cells also carry the colour it comes in (`colour`): a Pantone for a
+ * solid (text) or a print artwork for a printed one (lib) — "NYLON" + "PANTONE 11-1111 TCX".
+ */
+export type MatrixCell = { lib?: LibValue; text?: string; colour?: { text?: string; lib?: LibValue } };
 export type MatrixValue = Record<string, Record<string, MatrixCell>>;
 export type Dims2Value = { w: number | null; h: number | null };
 

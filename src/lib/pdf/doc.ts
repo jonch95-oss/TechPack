@@ -542,7 +542,10 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
       let text = cell?.text ?? "";
       if (mat) text = materialLabel(mat);
       if (pr) text = `${pr.application || "PRINT"} ${pr.name.includes("CUSTOM") ? "" : "CUSTOM ARTWORK"}`.trim();
-      return { key: c.key, text, callout: c.callout ?? null, refKind: (mat && c.callout ? "swatch" : pr ? "artwork" : null) as "swatch" | "artwork" | null };
+      // The colour the material comes in: its print artwork (by name) or the Pantone typed for a solid.
+      const colourPrint = cell?.colour?.lib ? printById.get(cell.colour.lib.id) : undefined;
+      const colour = colourPrint ? colourPrint.name : (cell?.colour?.text ?? cell?.colour?.lib?.label ?? "");
+      return { key: c.key, text, colour, colourIsPrint: !!colourPrint, callout: c.callout ?? null, refKind: (mat && c.callout ? "swatch" : pr ? "artwork" : null) as "swatch" | "artwork" | null };
     }),
   }));
   const placementRef = refAnswers["branding.placement"] ? refText(refAnswers["branding.placement"]) : "";
