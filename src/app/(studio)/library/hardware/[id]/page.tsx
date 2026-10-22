@@ -7,6 +7,7 @@ import { requireUser, can } from "@/lib/auth/dal";
 import { usedIn } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 import { HardwareForm } from "@/components/library/hardware-form";
+import { HardwareDelete } from "@/components/library/hardware-delete";
 import { HardwareCreated } from "./created";
 
 export default async function HardwareItemPage(props: PageProps<"/library/hardware/[id]">) {
@@ -22,7 +23,7 @@ export default async function HardwareItemPage(props: PageProps<"/library/hardwa
   return (
     <>
       <Link href="/library/hardware" className="eyebrow hover:text-ink inline-block mb-8">← Hardware</Link>
-      <PageHeader eyebrow={item ? item.type : "New component"} title={item ? item.code : "New component"}>
+      <PageHeader eyebrow={item ? item.type : "New component"} title={item ? item.code : "New component"} actions={item && can(user, "admin") ? <HardwareDelete id={item.id} code={item.code} /> : undefined}>
         {isNew && "Type, dimensions, views, material, logo treatment, enamel and hollow/solid. Enter the code — it is checked against every component and style number."}
       </PageHeader>
       {isNew ? <HardwareCreated brands={all} /> : <HardwareForm item={item!} brands={all} canEdit={can(user, "designer")} usedIn={used} standards={standards} />}

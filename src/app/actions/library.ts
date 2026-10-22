@@ -1,13 +1,13 @@
 "use server";
 
 import { friendlyAIError } from "@/lib/ai/errors";
-import { eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { hardware, materials, prints, type Approval, type ChipBox, type FieldStatusMap, type FinishSpec, type HardwareRecord, type HardwareViewCrops, type PantoneColour } from "@/db/schema";
 import { requireRole } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
-import { checkComponentCode } from "@/lib/data";
+import { checkComponentCode, usedIn } from "@/lib/data";
 import { readStoredFile } from "@/lib/storage";
 import { callTechnicalDesigner } from "@/lib/ai/client";
 import {
@@ -258,6 +258,16 @@ export async function saveHardware(input: HardwareInput): Promise<ActionResult &
 export async function deleteHardware(id: string): Promise<ActionResult> {
   const user = await requireRole("admin");
   const [before] = await db.select().from(hardware).where(eq(hardware.id, id));
+  if (!before) return { ok: false, error: "That component no longer exists." };
+  // A part a pack still uses (or a finish standard other parts point at) stays: deleting it would
+  // leave those packs printing a component the library no longer has.
+  const packs = (await usedIn([id])).get(id) ?? [];
+  if (packs.length) return { ok: false, error: `${before.code} is used in ${packs.join(", ")}. Remove it from ${packs.length > 1 ? "those packs" : "that pack"} first.` };
+  const dependants = await db
+    .select({ code: hardware.code })
+    .from(hardware)
+    .where(and(ne(hardware.id, id), sql`${hardware.record}->>'finishStandardId' = ${id}`));
+  if (dependants.length) return { ok: false, error: `${before.code} is the finish standard for ${dependants.map((d) => d.code).join(", ")}. Point them at another standard first.` };
   await db.delete(hardware).where(eq(hardware.id, id));
   await audit({ userId: user.id, entity: "hardware", entityId: id, action: "delete", before });
   revalidatePath("/library/hardware");
