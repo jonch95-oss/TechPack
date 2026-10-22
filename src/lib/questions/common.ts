@@ -35,6 +35,7 @@ export const HARDWARE_TYPES = [
   "BUNGEE-CORD PULLER",
   "WEBBING PULLER",
   "LOCK",
+  "DECORATIVE",
   "FINISH STANDARD",
 ];
 

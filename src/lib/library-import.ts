@@ -132,6 +132,7 @@ export function normaliseType(t: string): string {
   if (!up) return "";
   if (HARDWARE_TYPES.includes(up)) return up;
   const rules: [RegExp, string][] = [
+    [/DECORATIVE|ORNAMENT/, "DECORATIVE"],
     [/KEY ?CHAIN|CHARM|KEYRING/, "KEYCHAIN/CHARM"],
     [/SLIDER/, "ZIPPER SLIDER"],
     [/PULL|PULLER/, "ZIPPER PULL"],
