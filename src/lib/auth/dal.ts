@@ -24,7 +24,11 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
 
 export async function requireUser(): Promise<User> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    // A cookie whose session has ended is cleared first: /login alone would send it back here (loop).
+    if (await auth()) redirect("/signout");
+    redirect("/login");
+  }
   return user;
 }
 
