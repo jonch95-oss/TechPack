@@ -28,7 +28,7 @@ const INTERNAL_KEYS = new Set(["id", "seen", "source", "status", "confidence", "
 const DERIVED_FACTS = new Set(["$capacity", "$nesting"]);
 
 /** Not facts about the product: page switches, the comments (checked on their own), automatic values. */
-const SKIP_IDS = new Set(["comments.list"]);
+const SKIP_IDS = new Set(["comments.list", "dims.show_secondary"]); // a print setting, not a fact
 const SKIP_PREFIX = ["pages.", "optional."];
 const SKIP_KINDS = new Set<Question["kind"]>(["file"]);
 
@@ -45,6 +45,9 @@ export function mmText(mm: number, inches: boolean) {
 
 function stepText(n: number, unit: string, answers: AnswerMap) {
   if (unit === "mm") return mmText(n, answers["dims.unit"] === "INCHES");
+  // A pack dimension, with the other unit in brackets when the pack asks for it.
+  if (unit === "dim" && answers["dims.show_secondary"] === true)
+    return `${num(n)}${unitText(unit, answers)} (${answers["dims.unit"] === "INCHES" ? `${num(n * 2.54)} CM` : `${num(n / 2.54)}"`})`;
   return `${num(n)}${unitText(unit, answers)}`;
 }
 
@@ -120,13 +123,15 @@ export function valueOf(q: Question, v: unknown, answers: AnswerMap): { lines: s
     case "colorway_matrix": {
       const lines: string[] = [];
       const needles: string[] = [];
-      for (const [cw, row] of Object.entries((v ?? {}) as Record<string, Record<string, { text?: string; lib?: { id?: string; label?: string } }>>)) {
+      type Cell = { text?: string; lib?: { id?: string; label?: string }; colour?: { text?: string; lib?: { label?: string } } };
+      for (const [cw, row] of Object.entries((v ?? {}) as Record<string, Record<string, Cell>>)) {
+        const colourOf = (c: Cell) => up(c?.colour?.text ?? c?.colour?.lib?.label ?? "");
         const cells = Object.values(row ?? {})
-          .map((c) => (c?.text ? up(c.text) : c?.lib?.label ? up(c.lib.label) : ""))
+          .map((c) => [c?.text ? up(c.text) : c?.lib?.label ? up(c.lib.label) : "", colourOf(c)].filter(Boolean).join(" / "))
           .filter(Boolean);
         if (cells.length) lines.push(`${up(cw)}: ${cells.join(" · ")}`);
         // Library cells print from the library (its own label format); typed cells print as typed.
-        needles.push(...Object.values(row ?? {}).map((c) => (c?.text ? up(c.text) : "")).filter(Boolean));
+        needles.push(...Object.values(row ?? {}).flatMap((c) => [c?.text ? up(c.text) : "", c?.colour?.text ? up(c.colour.text) : ""]).filter(Boolean));
       }
       return { lines, needles };
     }

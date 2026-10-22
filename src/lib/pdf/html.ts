@@ -257,7 +257,8 @@ function lead(x1: number, y1: number, x2: number, y2: number, o: { w?: number; a
 function plate(x: number, y: number, text: string, size = 15, anchor: "start" | "middle" | "end" = "middle") {
   const w = (text.length * size * 0.0072 + 0.16),
     h = size / 72 + 0.1;
-  const x0 = anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x;
+  // Kept on the page: a long label (e.g. with the secondary unit in brackets) slides in from the left edge.
+  const x0 = Math.max(0.25, anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x);
   return `<rect x="${r2(x0)}" y="${r2(y - h / 2)}" width="${r2(w)}" height="${r2(h)}" fill="#fff"/><text x="${r2(x0 + w / 2)}" y="${r2(y + size / 72 / 2.9)}" text-anchor="middle" font-size="${r2(size / 72)}" fill="${RED}" font-family="IconCond, Arial Narrow, sans-serif" font-weight="700">${esc(text)}</text>`;
 }
 
@@ -341,7 +342,7 @@ function overviewPage(doc: PackDoc, n: number, specs: SpecItem[] = doc.specChunk
     const inner: R = { x: box.x + 0.9, y: box.y + 0.5, w: frontW - 2.2 + (extra.length ? 0.9 : 0), h: box.h - 1.3 };
     const r = fit(doc.render, inner);
     const d = doc.dims;
-    const v = (x?: number) => (typeof x === "number" ? `${x}${doc.U}` : "");
+    const v = (x?: number) => (typeof x === "number" ? doc.dim(x) : "");
     drawing = `<div class="big-label abs" style="left:${r2(box.x)}in;top:${r2(box.y)}in;width:${r2(frontW)}in;text-align:center">FRONT VIEW</div>${imgIn(doc.render, inner)}${materialCallouts(doc, r)}`;
     lines += [
       d.w != null ? lead(r.x, r.y + r.h + 0.3, r.x + r.w, r.y + r.h + 0.3, { arrow: "both", w: 0.03 }) + plate(r.x + r.w / 2, r.y + r.h + 0.3, v(d.w), 20) : "",
@@ -534,9 +535,9 @@ export function paginateSpecs(doc: PackDoc): PackDoc {
 function measurementsPage(doc: PackDoc, n: number) {
   const d = doc.dims;
   const overall = [
-    typeof d.h === "number" ? { t: `${d.h}${doc.U} TOTAL ${doc.dimNames.h}`, k: "dims." } : null,
-    typeof d.w === "number" ? { t: `${d.w}${doc.U} TOTAL ${doc.dimNames.w}`, k: "dims." } : null,
-    typeof d.d === "number" ? { t: `${d.d}${doc.U} TOTAL ${doc.dimNames.d}`, k: "dims." } : null,
+    typeof d.h === "number" ? { t: `${doc.dim(d.h)} TOTAL ${doc.dimNames.h}`, k: "dims." } : null,
+    typeof d.w === "number" ? { t: `${doc.dim(d.w)} TOTAL ${doc.dimNames.w}`, k: "dims." } : null,
+    typeof d.d === "number" ? { t: `${doc.dim(d.d)} TOTAL ${doc.dimNames.d}`, k: "dims." } : null,
   ].filter(Boolean) as { t: string; k: string }[];
   const closureRef = doc.references.find((r) => r.onMeasurements);
   const sideRef = doc.references.find((r) => r.role === "SIDE_VIEW");
@@ -597,7 +598,7 @@ function measurementsPage(doc: PackDoc, n: number) {
 
   const pomTable = doc.pom.length
     ? `<table class="spec"><tr><th>POM</th><th style="text-align:left">POINT OF MEASURE</th><th>VALUE</th><th>TOL ±</th><th style="text-align:left">HOW TO MEASURE</th></tr>${doc.pom
-        .map((r, i) => `<tr><td class="code">M${String(i + 1).padStart(2, "0")}</td><td style="text-align:left">${up(r.point)}</td><td class="red">${r.value != null ? `${r.value}${esc(doc.U)}` : ""}</td><td>${r.tol != null ? `${r.tol}${esc(doc.U)}` : ""}</td><td style="text-align:left;font-size:9.5pt">${up(r.how)}</td></tr>`)
+        .map((r, i) => `<tr><td class="code">M${String(i + 1).padStart(2, "0")}</td><td style="text-align:left">${up(r.point)}</td><td class="red">${r.value != null ? esc(doc.dim(r.value)) : ""}</td><td>${r.tol != null ? `${r.tol}${esc(doc.U)}` : ""}</td><td style="text-align:left;font-size:9.5pt">${up(r.how)}</td></tr>`)
         .join("")}</table>`
     : "";
   const placementTable = doc.placements.length
@@ -641,7 +642,9 @@ function colourwaysPage(doc: PackDoc, n: number) {
   };
   const rows = doc.rows
     .map((r) => {
-      const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${refOf(r.code, r.cells[i])}</td>`).join("");
+      // A material cell shows its colour / print under the material (NYLON / PANTONE 11-1111 TCX).
+      const colourLine = (c: (typeof r.cells)[number] | undefined) => (c?.colour ? `<div style="margin-top:3px"><b>${c.colourIsPrint ? "PRINT" : "COLOR"}:</b> ${up(c.colour)}</div>` : "");
+      const cells = idx.map((i) => `<td>${up(r.cells[i]?.text ?? "")}${colourLine(r.cells[i])}${refOf(r.code, r.cells[i])}</td>`).join("");
       // A named variant (no suffix) shows its name under the style #.
       const label = r.name || (r.code.startsWith("-") ? "" : r.code);
       return `<tr><td class="cw">${up(sku(doc, r.code))}${label ? `<div style="font-size:11pt;margin-top:3px">${up(label)}</div>` : ""}</td>${cells}</tr>`;
@@ -650,11 +653,12 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const table = `<table class="variant"><tr><th>COLOURWAY</th>${used.map(headCell).join("")}</tr>${rows}</table>`;
   // SKU blocks: each colourway's render — the pack render for the first colourway when it has no
   // colourway render of its own (golden run 1, P0.4) — with its facts.
-  const cell = (cw: string, key: string) => {
+  const cellOf = (cw: string, key: string) => {
     const r = doc.rows.find((x) => x.code === cw);
     const i = doc.matrixColumns.findIndex((c) => c.key === key);
-    return r && i >= 0 ? String(r.cells[i]?.text ?? "") : "";
+    return r && i >= 0 ? r.cells[i] : undefined;
   };
+  const cell = (cw: string, key: string) => String(cellOf(cw, key)?.text ?? "");
   const renders = doc.pack.colorways
     .map((cw, k) => ({ colorway: cw, img: doc.colorwayRenders.find((x) => x.colorway === cw)?.img ?? (k === 0 ? doc.render : null) }))
     .filter((x) => x.img);
@@ -667,12 +671,14 @@ function colourwaysPage(doc: PackDoc, n: number) {
   const block = (cw: string) => {
     const name = doc.rows.find((x) => x.code === cw)?.name;
     const file = doc.printFiles[cw] ?? "";
+    const mainKey = doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "";
     const facts = [
       ["SKU#", sku(doc, cw)],
       ["FILE NAME", file],
       ["COLOR", name ?? ""],
       ["PANTONE", doc.pantones[cw] || (file ? "SEE PRINT FILE" : "")],
-      ["FABRIC", cell(cw, doc.matrixColumns.find((c) => c.key.startsWith("mat_"))?.key ?? "")],
+      ["FABRIC", cell(cw, mainKey)],
+      ["COLOR/PRINT", cellOf(cw, mainKey)?.colour ?? ""],
       ["LINING", cell(cw, "lining")],
       ["ZIPPER", cell(cw, "zipper")],
     ].filter(([, v]) => v);
@@ -873,9 +879,9 @@ function wallTitle(wall: string, mode: "hatched" | "lining", centered: boolean) 
 function pocketLine(doc: PackDoc, p: PackDoc["interior"]["pockets"][number]) {
   return [
     `${(p.qty ?? 1) > 1 ? `${p.qty} × ` : ""}${up(p.type)}${p.wall ? ` ON ${up(p.wall)}` : ""}`,
-    p.w != null && `${p.w}${doc.U} WIDE`,
-    p.h != null && `${p.h}${doc.U} HIGH`,
-    p.top_offset != null && `${p.top_offset}${doc.U} FROM TOP`,
+    p.w != null && `${doc.dim(p.w)} WIDE`,
+    p.h != null && `${doc.dim(p.h)} HIGH`,
+    p.top_offset != null && `${doc.dim(p.top_offset)} FROM TOP`,
     p.construction && up(p.construction),
     p.zip_size && `${up(p.zip_size)} ZIP`,
     p.note && up(p.note),

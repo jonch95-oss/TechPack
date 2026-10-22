@@ -229,7 +229,7 @@ export async function buildTechPackJson(p: LoadedPack) {
         const cell = row[c.key];
         if (c.key.startsWith("mat_")) {
           const m = cell?.lib ? matById.get(cell.lib.id) : undefined;
-          cells[c.key] = { library_id: cell?.lib?.id ?? "", text: m ? materialLabel(m) : cell?.text ?? cell?.lib?.label ?? "" };
+          cells[c.key] = { library_id: cell?.lib?.id ?? "", text: m ? materialLabel(m) : cell?.text ?? cell?.lib?.label ?? "", colour: cell?.colour?.lib?.label ?? cell?.colour?.text ?? "" };
         } else {
           cells[c.key] = cell?.lib?.label ?? cell?.text ?? "";
         }

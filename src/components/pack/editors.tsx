@@ -187,13 +187,19 @@ export function MatrixEditor({
 }) {
   const m = (value as MatrixValue) ?? {};
   const cols = matrixColumns(ctx);
-  const setCell = (cw: string, key: string, cell: MatrixCell | null) => {
+  // Changing a cell's material keeps its colour / print, and the other way round.
+  const put = (cw: string, key: string, cell: MatrixCell) => {
     const row = { ...(m[cw] ?? {}) };
-    if (cell) row[key] = cell;
+    if (cell.lib || cell.text || cell.colour) row[key] = cell;
     else delete row[key];
     onChange({ ...m, [cw]: row });
   };
-  const printFiles = (ctx.answers["colorways.print_file"] as Record<string, string> | undefined) ?? {};
+  const setCell = (cw: string, key: string, cell: MatrixCell | null) => put(cw, key, { ...(cell ?? {}), ...(m[cw]?.[key]?.colour ? { colour: m[cw][key].colour } : {}) });
+  const setColour = (cw: string, key: string, colour: MatrixCell["colour"] | null) => {
+    const { colour: _old, ...rest } = m[cw]?.[key] ?? {};
+    void _old;
+    put(cw, key, colour && (colour.text || colour.lib) ? { ...rest, colour } : rest);
+  };
   const implied = impliedCells(ctx);
   const fillable = colorways.flatMap((cw) => Object.keys(implied).filter((k) => cols.some((c) => c.key === k) && !m[cw]?.[k]).map((k) => [cw, k]));
 
@@ -246,9 +252,9 @@ export function MatrixEditor({
                         {c.lib && (
                           <LibraryPicker
                             compact
-                            // A body material can be a solid swatch card or, on a printed colourway, its print
-                            // artwork; the picker opens on Print artwork when the colourway names a print file.
-                            kind={c.lib === "print" || (c.key.startsWith("mat_") && printFiles[cw]?.trim()) ? "print" : "material"}
+                            // A body material is a swatch card; its print (or Pantone) goes on the Colour / print line
+                            // below. Print artwork stays pickable here for cells chosen that way before.
+                            kind={c.lib === "print" ? "print" : "material"}
                             kinds={c.key === "lining" || c.key.startsWith("mat_") ? ["material", "print"] : undefined}
                             value={cell?.lib}
                             onChange={(v) => setCell(cw, c.key, v ? { lib: v } : null)}
@@ -294,6 +300,25 @@ export function MatrixEditor({
                           </>
                         )}
                       </div>
+                      {c.key.startsWith("mat_") && (
+                        // The colour this material comes in: a Pantone for a solid, a print artwork for a printed one.
+                        <>
+                          <div className="text-[10px] tracking-[0.18em] uppercase text-taupe sm:pl-7">Colour / print</div>
+                          <div className="flex items-center gap-2 min-w-0 flex-nowrap" data-testid={`cell-colour-${cw}-${c.key}`}>
+                            <LibraryPicker compact kind="print" value={cell?.colour?.lib} onChange={(v) => setColour(cw, c.key, v ? { lib: v } : null)} disabled={disabled} />
+                            {!cell?.colour?.lib && (
+                              <div className="flex-1 min-w-40">
+                                <CommitText
+                                  value={cell?.colour?.text ?? ""}
+                                  onCommit={(t) => setColour(cw, c.key, t ? { text: t.toUpperCase() } : null)}
+                                  disabled={disabled}
+                                  placeholder="Or a Pantone — e.g. PANTONE 11-1111 TCX"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}

@@ -6,6 +6,7 @@ import { checkHardwareCode, saveHardware, type HardwareInput } from "@/app/actio
 import type { CodeCheck } from "@/lib/codes";
 import { HARDWARE_FINISHES, HARDWARE_MATERIALS, HARDWARE_TYPES, MOUNTINGS, NON_METAL, RELIEF_TREATMENTS } from "@/lib/questions/common";
 import { uploadFile } from "@/lib/client/upload";
+import { pdfToImage } from "@/lib/client/pdf-image";
 import { Badge, Button, Label, Select, TextInput, Thumb, cx } from "@/components/ui";
 import { ChipRow, Toggle } from "@/components/chips";
 import { ApprovalBlock, EMPTY_APPROVAL } from "./approval";
@@ -88,7 +89,8 @@ export function HardwareForm({
 
   const upload = async (f: File, apply: (url: string) => void) => {
     try {
-      apply(await uploadFile(f, "hardware"));
+      // A supplier PDF (drawing / spec page) goes in as an image of its first page.
+      apply(await uploadFile(await pdfToImage(f), "hardware"));
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     }
@@ -300,7 +302,7 @@ export function HardwareForm({
         <div>
           <div className="eyebrow mb-3">Photo</div>
           <Thumb src={v.photoUrl} alt="Hardware photo" className="w-full aspect-square" />
-          {canEdit && <FileButton label={v.photoUrl ? "Replace photo" : "Upload photo"} onFile={(f) => upload(f, (u) => set("photoUrl", u))} testId="hw-photo" />}
+          {canEdit && <FileButton label={v.photoUrl ? "Replace photo" : "Upload photo"} onFile={(f) => upload(f, (u) => set("photoUrl", u))} testId="hw-photo" accept={IMAGE_OR_PDF} />}
         </div>
         <div>
           <div className="eyebrow mb-3">Views at 100% scale</div>
@@ -314,6 +316,7 @@ export function HardwareForm({
                     <FileButton
                       small
                       label="+"
+                      accept={IMAGE_OR_PDF}
                       onFile={(f) =>
                         upload(f, (u) => {
                           set("views", { ...v.views, [k]: u });
@@ -384,6 +387,8 @@ export function HardwareForm({
     </div>
   );
 }
+
+const IMAGE_OR_PDF = "image/*,application/pdf,.pdf";
 
 export function FileButton({ label, onFile, small, testId, accept = "image/*" }: { label: string; onFile: (f: File) => void | Promise<void>; small?: boolean; testId?: string; accept?: string }) {
   const [busy, setBusy] = useState(false);

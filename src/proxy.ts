@@ -8,7 +8,7 @@ const { auth } = NextAuth(authConfig);
 export default auth((req) => {
   const { pathname, search } = req.nextUrl;
   const signedIn = !!req.auth;
-  if (pathname.startsWith("/api/auth")) return NextResponse.next();
+  if (pathname.startsWith("/api/auth") || pathname === "/signout") return NextResponse.next();
   if (pathname === "/login") return signedIn ? NextResponse.redirect(new URL("/", req.nextUrl)) : NextResponse.next();
   if (!signedIn) {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
