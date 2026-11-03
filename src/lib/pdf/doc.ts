@@ -179,7 +179,15 @@ async function buildDocData(p: LoadedPack, opts: { images?: boolean; stage?: "PR
     : hwd.map((k) => `${D(dims[k]!)} ${k.toUpperCase()}`).join(" X ");
   const lugSize = typeof a["lug.size"] === "string" ? String(a["lug.size"]) : typeof a["softlug.size"] === "string" ? String(a["softlug.size"]) : "";
   const setSizes = ((a["lug.set_sizes"] ?? a["softlug.set_sizes"]) as string[] | undefined) ?? [];
-  if (lugSize) sizeLines.push([lugSize === "SET" && setSizes.length ? `SET: ${setSizes.join(" / ")}` : lugSize, overall].filter(Boolean).join(" — "));
+  // A cosmetic set: "SET OF 3" then one line per piece (the main piece's H × W × D is one of them).
+  const cosPieces = a["cos.is_set"] === true ? ((a["cos.set_pieces"] as { piece?: string; qty?: number; h?: number; w?: number; d?: number; note?: string }[] | undefined) ?? []).filter((r) => r?.piece || typeof r?.h === "number") : [];
+  if (cosPieces.length) {
+    sizeLines.push(`SET OF ${cosPieces.reduce((t, r) => t + (r.qty ?? 1), 0)}`);
+    for (const r of cosPieces) {
+      const parts = (["h", "w", "d"] as const).filter((k) => typeof r[k] === "number").map((k) => `${D(r[k]!)} ${k.toUpperCase()}`);
+      sizeLines.push(`${r.piece ? `${r.piece}: ` : ""}${parts.join(" X ")}${(r.qty ?? 1) > 1 ? ` × ${r.qty}` : ""}${r.note ? ` (${r.note})` : ""}`.trim());
+    }
+  } else if (lugSize) sizeLines.push([lugSize === "SET" && setSizes.length ? `SET: ${setSizes.join(" / ")}` : lugSize, overall].filter(Boolean).join(" — "));
   else if (overall) sizeLines.push(overall);
   // A set: one line per piece, said with its type (CUBE L, POUCH M …) — a flat piece has no H.
   for (const r of (a["cube.set"] as { piece?: string; size?: string; qty?: number; l?: number; w?: number; h?: number }[] | undefined) ?? []) {

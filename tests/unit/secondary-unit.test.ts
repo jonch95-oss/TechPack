@@ -23,3 +23,18 @@ describe("breakdown colour / print", () => {
     expect(items.find((i) => i.qid === "materials.matrix")?.lines).toEqual(["-A: NYLON / PANTONE 11-1111 TCX", "-B: SAFFIANO PU / WISTERIA FLORAL"]);
   });
 });
+
+describe("cosmetic multi-piece set", () => {
+  it("asks for the pieces only when the set switch is on, and prints them", async () => {
+    const { visibleQuestions } = await import("@/lib/questions");
+    const ids = (a: Record<string, unknown>) => visibleQuestions({ category: "Cosmetic bags", answers: a }).map((q) => q.id);
+    expect(ids({})).not.toContain("cos.set_pieces");
+    expect(ids({ "cos.is_set": true })).toContain("cos.set_pieces");
+    const items = specItems("Cosmetic bags", {
+      "dims.unit": "INCHES",
+      "cos.is_set": true,
+      "cos.set_pieces": [{ piece: "LARGE POUCH", qty: 1, h: 6, w: 9, d: 3 }, { piece: "FLAT POUCH", qty: 2, h: 4, w: 6 }],
+    });
+    expect(items.find((i) => i.qid === "cos.set_pieces")?.lines).toEqual(['LARGE POUCH · 1 · 6" · 9" · 3"', 'FLAT POUCH · 2 · 4" · 6"']);
+  });
+});

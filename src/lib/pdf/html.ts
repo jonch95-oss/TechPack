@@ -372,7 +372,7 @@ function overviewPage(doc: PackDoc, n: number, specs: SpecItem[] = doc.specChunk
     }
   }
   const size = doc.sizeLines.length
-    ? `<div class="abs" style="left:0.4in;top:${r2(box.y + box.h + 0.1)}in;width:${box.w}in;text-align:center;font-size:${doc.sizeLines.length > 1 ? 16 : 20}pt;line-height:1.3">${doc.sizeLines.map((l, k) => `<div class="red">${esc(l.toUpperCase())}${k === 0 ? upd(doc, "dims.", "duf.size", "rduf.size", "cube.set", "lug.size") : ""}</div>`).join("")}</div>`
+    ? `<div class="abs" style="left:0.4in;top:${r2(box.y + box.h + 0.1)}in;width:${box.w}in;text-align:center;font-size:${doc.sizeLines.length > 1 ? 16 : 20}pt;line-height:1.3">${doc.sizeLines.map((l, k) => `<div class="red">${esc(l.toUpperCase())}${k === 0 ? upd(doc, "dims.", "duf.size", "rduf.size", "cube.set", "cos.set_pieces", "lug.size") : ""}</div>`).join("")}</div>`
     : "";
   const instruction = h.instruction ? `<div class="abs red" style="left:0.4in;top:${r2(box.y + box.h + sizeH + 0.1)}in;width:${box.w}in;text-align:center;font-size:${fitPt(h.instruction.toUpperCase(), box.w, 1, 30, 16)}pt">${up(h.instruction)}${upd(doc, "header.instruction")}</div>` : "";
   return `<section class="page">
