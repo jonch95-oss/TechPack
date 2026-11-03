@@ -436,6 +436,25 @@ const cosmetic: Section = {
   title: "Cosmetic bag / toiletry kit",
   questions: [
     { id: "cos.shape", label: "Shape", kind: "chips", options: ["DOME", "BOX / DOPP", "FLAT POUCH", "TRAIN CASE", "HANGING", "TRAPEZOID"], required: true },
+    // A multi-piece set: Height / Width / Depth above are the main (largest) piece, which the line
+    // art is drawn from; every piece, the main one included, is listed here with its own size.
+    { id: "cos.is_set", label: "Multi-piece set", kind: "toggle", help: "Enter the largest piece in Height / Width / Depth, then list every piece (largest included) below." },
+    {
+      id: "cos.set_pieces",
+      label: "Pieces in the set",
+      kind: "rows",
+      required: true,
+      addLabel: "Add piece",
+      showIf: { q: "cos.is_set", eq: true },
+      columns: [
+        { key: "piece", label: "Piece", kind: "text", required: true },
+        { key: "qty", label: "Qty", kind: "stepper", unit: "qty" },
+        { key: "h", label: "H", kind: "stepper", unit: "dim", required: true },
+        { key: "w", label: "W", kind: "stepper", unit: "dim", required: true },
+        { key: "d", label: "D (blank for a flat piece)", kind: "stepper", unit: "dim" },
+        { key: "note", label: "Note", kind: "text" },
+      ],
+    },
     { id: "cos.zip_size", label: "Zip size", kind: "chips", options: ["#3", "#5", "#8"], required: true },
     { id: "cos.zip_type", label: "Zip type", kind: "chips", options: ZIP_TYPES, required: true },
     { id: "cos.zip_tape", label: "Zip tape colour", kind: "chips", options: ["DTM", "BLACK", "CONTRAST"], required: true },

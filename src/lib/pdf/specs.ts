@@ -28,7 +28,7 @@ const INTERNAL_KEYS = new Set(["id", "seen", "source", "status", "confidence", "
 const DERIVED_FACTS = new Set(["$capacity", "$nesting"]);
 
 /** Not facts about the product: page switches, the comments (checked on their own), automatic values. */
-const SKIP_IDS = new Set(["comments.list", "dims.show_secondary"]); // a print setting, not a fact
+const SKIP_IDS = new Set(["comments.list", "dims.show_secondary", "cos.is_set"]); // print settings / said by the size lines (SET OF N)
 const SKIP_PREFIX = ["pages.", "optional."];
 const SKIP_KINDS = new Set<Question["kind"]>(["file"]);
 
